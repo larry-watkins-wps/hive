@@ -433,11 +433,30 @@ Entry to sleep is cooperative:
 
 1. Region publishes `hive/system/sleep/request` with its name.
 2. Glia checks the region's inbound queue depth via MQTT (inspecting `hive/system/heartbeat/<region>` metadata, which includes a queue-depth snapshot). If `queue_depth_messages < sleep_max_queue_depth` (config, default 5), glia publishes `hive/system/sleep/granted` with the region name.
-3. Region receives grant, transitions phase → `SLEEP`, cancels the message consumer task, continues heartbeat emission with `status="sleep"`.
+3. Region receives grant, transitions phase → `SLEEP`, cancels the **normal handler-dispatch** message consumer, and brings up a **minimal SLEEP-phase listener** (A.4.4.1). Heartbeat emission continues with `status="sleep"`.
 4. `SleepCoordinator.run(ctx)` executes the sleep pipeline (Section D.5).
 5. On completion, one of:
-   - **No handler changes** → phase → `WAKE`, resume message consumer.
+   - **No handler changes** → phase → `WAKE`, tear down the SLEEP-phase listener, resume the normal message consumer.
    - **Handler / prompt / subscription changes** → phase → `SHUTDOWN`, publish `hive/system/restart/request` with `reason="self_modification_commit=<sha>"`, exit 0.
+
+##### A.4.4.1 SLEEP-phase message handling
+
+During SLEEP, the normal handler-dispatch pipeline is paused — user-level traffic queues at the broker (QoS 1 delivery guarantees it on wake). But a small set of **system topics** must still be processed, otherwise sleep-internal flows (spawn replies, modulator-driven abort) cannot complete.
+
+The runtime's SLEEP-phase listener subscribes to (and only to):
+
+| Topic | Purpose |
+|---|---|
+| `hive/system/spawn/complete` (filter by `change_id` or name) | Reply to `spawn_new_region` calls |
+| `hive/system/spawn/failed` (same filter) | Reply to `spawn_new_region` calls |
+| `hive/system/codechange/failed` (ACC only) | Reply to `approve_code_change` calls (post-v0) |
+| `hive/modulator/cortisol` | Fuel for `SleepCoordinator.abort()` when cortisol > threshold |
+| `hive/broadcast/shutdown` | Graceful shutdown path must work during sleep |
+| `hive/system/sleep/force` | Operator or ACC may escalate |
+
+Messages on these topics are delivered to an in-process `asyncio.Queue` consumed by `SleepCoordinator`. Every other topic's messages buffer at the broker and are delivered on WAKE resumption (MQTT clean_session=false + QoS 1).
+
+Handlers registered for the above topics in `handlers/` are NOT invoked during SLEEP — the SLEEP listener is a framework mechanism, not a handler dispatch path. This keeps sleep reasoning deterministic and prevents a handler from interfering with sleep-internal protocols.
 
 Glia's restart policy treats exit 0 as "planned restart" (E.4).
 
@@ -700,6 +719,10 @@ If any fails, returns `{ok: False, reason}`.
 
 **Privileged tool.** Capability flag `can_spawn: true` is set ONLY for `anterior_cingulate` in F.3. Any other region calling this gets `CapabilityDenied` immediately.
 
+**Why sleep-only:** a spawn creates persistent DNA-level side effects (new region directory, git repo, ACL entries, new container). Principle IX applies to all persistent architectural mutations, not just local handler edits. Treating spawn as sleep-only inherits the gating (phase, commit, rollback) that makes self-modification safe.
+
+**Reply delivery:** the 30s block is serviced by the SLEEP-phase listener (A.4.4.1). `SelfModifyTools.spawn_new_region` publishes `hive/system/spawn/request`, then awaits an `asyncio.Future` that resolves when `hive/system/spawn/complete` (or `/failed`) arrives on the SLEEP listener with a matching `correlation_id`. On timeout, the Future is cancelled; glia may still publish `spawn/complete` later (best-effort reconciliation — the calling region has already recorded the request in STM and can observe the outcome on next WAKE via `hive/system/spawn/complete` retained by glia in a rolling 100-event log — see E.11).
+
 ```python
 async def spawn_new_region(self, proposal: SpawnProposal) -> SpawnResult:
     """Publish hive/system/spawn/request with the full proposal.
@@ -810,7 +833,7 @@ Transition table:
 | sleep_request | WAKE | timeout or denial | Log WARN, continue |
 | SLEEP | WAKE | no handler changes | Resume message consumer |
 | SLEEP | SHUTDOWN | changes committed, restart required | Publish restart/request |
-| WAKE | SLEEP | forced abort (modulator > threshold) | Emergency wake via SleepCoordinator.abort() |
+| SLEEP | WAKE | forced abort (modulator > threshold) | Emergency wake via SleepCoordinator.abort(); in-progress edits reverted |
 | any | SHUTDOWN | SIGTERM | Graceful path |
 | any | crash | unhandled exception in runtime loop | Exit nonzero; LWT fires |
 
@@ -1184,16 +1207,31 @@ For `hive/metacognition/error/detected`:
         "handler_timeout",
         "handler_crash",
         "poison_message",
+        "source_spoof",
         "llm_failure",
         "llm_over_budget",
         "backpressure",
         "capability_denied",
         "sandbox_escape",
         "acl_rejected",
+        "acl_render_failure",
+        "acl_conflict",
         "git_failure",
+        "oom_kill",
+        "crash_loop",
+        "region_config_error",
+        "region_git_error",
+        "region_rollback",
+        "rollback_failed",
+        "singleton_violation",
+        "unknown_region_type",
         "spawn_rejected",
+        "codechange_rejected",
+        "codechange_failed",
+        "codechange_rollback",
         "self_model_mismatch"
-      ]
+      ],
+      "description": "Closed enumeration. Adding a kind requires a spec update and envelope_version bump. Consumers MUST reject unknown kinds as poison_message."
     },
     "detail": {"type": "string"},
     "context": {"type": "object", "description": "kind-specific additional fields"}
@@ -1201,7 +1239,159 @@ For `hive/metacognition/error/detected`:
 }
 ```
 
-Other content types (proposal schemas for spawn/code-change, reflection, motor intent) are specified in their respective flow sections but follow the same pattern: a top-level `data` object with a small, validated schema.
+#### B.3.6 `application/hive+motor-intent`
+
+Carried on `hive/motor/intent` and `hive/motor/speech/intent`.
+
+```json
+{
+  "type": "object",
+  "required": ["action"],
+  "properties": {
+    "action": {"type": "string", "minLength": 1, "description": "Free-form action label, e.g. 'write_file', 'http_get', or for speech: 'speak'"},
+    "text": {"type": "string", "description": "For speech intents: the utterance text"},
+    "parameters": {"type": "object", "description": "Action-specific arguments"},
+    "urgency": {"type": "string", "enum": ["low", "normal", "high"], "default": "normal"},
+    "deadline_ms": {"type": "integer", "minimum": 0, "description": "Optional SLA. 0 = no deadline."}
+  }
+}
+```
+
+#### B.3.7 `application/hive+sensory-features`
+
+Carried on `hive/sensory/*/features`. Intentionally schema-light — sensory regions own the shape per modality.
+
+```json
+{
+  "type": "object",
+  "required": ["modality", "features"],
+  "properties": {
+    "modality": {"type": "string", "enum": ["visual", "auditory", "haptic", "olfactory"]},
+    "features": {
+      "type": "object",
+      "description": "Modality-specific feature bag. Consumers look up keys they care about and ignore the rest. Publisher SHOULD document the key set in its starter prompt."
+    },
+    "ts_window_ms": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2, "description": "[start_ms, end_ms] observation window"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+  }
+}
+```
+
+#### B.3.8 `application/hive+spawn-proposal`
+
+Carried on `hive/system/spawn/proposed` (any region may publish to suggest a spawn; ACC deliberates).
+
+```json
+{
+  "type": "object",
+  "required": ["name", "role", "rationale"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{2,30}$"},
+    "role": {"type": "string", "minLength": 10, "maxLength": 500},
+    "modality": {"type": ["string", "null"], "description": "New modality this region owns, if any"},
+    "rationale": {"type": "string", "minLength": 20, "description": "Why this region is needed. ACC reads this."},
+    "suggested_llm": {
+      "type": "object",
+      "properties": {
+        "provider": {"type": "string"},
+        "model": {"type": "string"}
+      }
+    },
+    "suggested_capabilities": {"$ref": "#/$defs/capabilities"}
+  }
+}
+```
+
+#### B.3.9 `application/hive+spawn-request`
+
+Carried on `hive/system/spawn/request` (only ACC may publish; glia executes).
+
+```json
+{
+  "type": "object",
+  "required": ["name", "role", "llm", "capabilities", "starter_prompt", "initial_subscriptions"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{2,30}$"},
+    "role": {"type": "string", "minLength": 10, "maxLength": 500},
+    "modality": {"type": ["string", "null"]},
+    "llm": {
+      "type": "object",
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": {"type": "string"},
+        "model": {"type": "string"},
+        "params": {"type": "object"}
+      }
+    },
+    "capabilities": {"$ref": "#/$defs/capabilities"},
+    "starter_prompt": {"type": "string", "minLength": 100},
+    "initial_subscriptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["topic", "qos"],
+        "properties": {
+          "topic": {"type": "string"},
+          "qos": {"type": "integer", "minimum": 0, "maximum": 1},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "approved_by_acc": {"type": "string", "format": "uuid", "description": "ID of ACC's deliberation record"}
+  }
+}
+```
+
+#### B.3.10 `application/hive+code-change-proposal`
+
+Carried on `hive/system/codechange/proposed` and `hive/system/codechange/approved`.
+
+```json
+{
+  "type": "object",
+  "required": ["change_id", "patch", "justification", "affected_regions"],
+  "properties": {
+    "change_id": {"type": "string", "format": "uuid"},
+    "patch": {"type": "string", "description": "Unified diff against region_template/ or bus/"},
+    "justification": {"type": "string", "minLength": 50},
+    "affected_regions": {"type": "array", "items": {"type": "string"}},
+    "approver_region": {"type": "string", "description": "Required on /approved: which cognitive region authorized"},
+    "human_cosigner": {"type": "string", "description": "Required on /approved at v0: email or key ID"},
+    "cosign_signature": {"type": "string", "description": "Required on /approved: detached signature over patch+change_id"}
+  }
+}
+```
+
+#### B.3.11 `application/hive+reflection`
+
+Carried on `hive/metacognition/reflection/request` and `hive/metacognition/reflection/response`.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "topic": {"type": "string", "description": "What to reflect on; e.g., 'recent anger', 'identity since last sleep'"},
+    "depth": {"type": "string", "enum": ["quick", "deep"], "default": "quick"},
+    "context": {"type": "string", "description": "Optional pre-context from the asker"},
+    "reflection": {"type": "string", "description": "On /response: the reflection itself"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+  },
+  "oneOf": [
+    {"required": ["topic"]},
+    {"required": ["reflection"]}
+  ]
+}
+```
+
+#### B.3.12 Validation policy for unmatched content types
+
+If a consumer receives an envelope whose `content_type` is listed in the envelope `content_type` enum (B.2) but has no sub-schema in B.3.1 – B.3.11, the consumer MUST:
+
+- Accept the envelope (the outer schema passed).
+- Skip deep validation of `payload.data`.
+- Log at DEBUG the missing sub-schema reference.
+
+Adding a new content-type to B.2 requires adding its B.3 sub-schema in the same spec update — no orphan types. The "Other content types" slot (e.g., `application/hive+reflection`) exists so new types can be added incrementally without breaking existing consumers.
 
 ### B.4 Topic catalog (canonical)
 
@@ -1277,11 +1467,14 @@ The wildcard rule: `hive/cognitive/<region>/request` is a dedicated inbox for `<
 | `hive/system/spawn/request` | N | 1 | `anterior_cingulate` | `glia` |
 | `hive/system/spawn/complete` | N | 1 | `glia` | `*` |
 | `hive/system/spawn/failed` | N | 1 | `glia` | `*` |
+| `hive/system/spawn/query` | N | 1 | `*` | `glia` |
+| `hive/system/spawn/query_response` | N | 1 | `glia` | `*` |
 | `hive/system/codechange/proposed` | N | 1 | `*` | `anterior_cingulate`, external human |
 | `hive/system/codechange/approved` | N | 1 | `anterior_cingulate` (co-signed) | `glia` |
 | `hive/system/metrics/compute` | R (last value) | 0 | `glia` | `*` |
 | `hive/system/metrics/tokens` | R | 0 | `glia` | `*` |
 | `hive/system/metrics/region_health` | R | 0 | `glia` | `*` |
+| `hive/system/region_stats/<region>` | N | 0 | `<region>` | `glia` |
 
 #### Metacognition — ACC channels
 
@@ -1380,7 +1573,7 @@ Retained topics have a specific semantic (P-XVI):
 A publisher using retained semantics MUST:
 
 1. Publish the updated value whenever it changes (no polling).
-2. Use a sentinel empty payload `{"value": null, ...}` to explicitly clear (for cases like modulator reset at sleep).
+2. To **explicitly clear** a retained value (e.g., amygdala zeroing cortisol before sleep), publish a zero-length payload with `retain=true` — this is MQTT's native clear-retained mechanism and is honored by both the broker (removes the retained slot) and the envelope validator (zero-length payloads are exempt from schema validation for the clear case). Consumers MUST treat a zero-length payload on a retained topic as "topic cleared; return to default."
 3. Document the decay/TTL policy in its starter prompt (already done for amygdala, VTA).
 
 A publisher MUST NOT publish retained to a topic not on the retained list in B.4.
@@ -1398,8 +1591,9 @@ pattern deny #
 
 # ── Common rules for every region ─────────────────────────────────
 user %c
-# Every region publishes its own heartbeat
+# Every region publishes its own heartbeat and per-region stats
 pattern write hive/system/heartbeat/%c
+pattern write hive/system/region_stats/%c
 # Every region publishes metacog errors and sleep requests
 topic write hive/metacognition/error/detected
 topic write hive/system/sleep/request
@@ -1411,6 +1605,7 @@ topic read hive/modulator/#
 topic read hive/attention/#
 topic read hive/rhythm/#
 topic read hive/system/sleep/granted
+topic read hive/system/metrics/#
 topic read hive/broadcast/#
 
 # ── Per-region rules (generated from acl_templates/) ──────────────
@@ -2729,7 +2924,7 @@ glia/
 
 Glia runs as a **single container** (`hive-glia:v0`) with:
 
-- Read-only mount `./regions/:/hive/regions/:ro` to list and inspect regions.
+- **Read-write** mount `./regions/:/hive/regions/:rw` — glia writes during rollback (`git revert`/`reset --hard` in E.5) and during spawn scaffolding (E.11). Day-to-day reads (list regions, parse config) dominate; writes are rare and sleep-triggered. Despite RW access, glia NEVER edits handler code, prompts, or memory — the filesystem sandbox is enforced by **convention and code review**, not by the mount mode (since `git reset` inherently needs write access).
 - Read-write mount `./region_template/:/hive/region_template/:rw` **only when processing an approved code-change** (mounted via a short-lived sidecar, see E.10).
 - Read-write mount `/var/run/docker.sock:/var/run/docker.sock` so it can manage containers on the host.
 - Read-write mount `./bus/:/hive/bus/:rw` so it can regenerate `acl.conf`.
@@ -2983,8 +3178,8 @@ On `hive/system/spawn/request` from ACC:
 4. **ACL template**: copy `bus/acl_templates/_new_region_stub.j2` to `bus/acl_templates/<name>.j2`, parameterized by `initial_subscriptions`.
 5. **Apply ACL** via `AclManager.render_and_apply()`.
 6. **Launch** via `launcher.start(name)`.
-7. On success, publish `hive/system/spawn/complete` with the name and initial commit sha.
-8. On any failure, clean up (`rm -rf regions/<name>`, revert ACL template), publish `hive/system/spawn/failed` with the reason.
+7. On success, publish `hive/system/spawn/complete` with the name, the originating `correlation_id` (copied from the spawn/request envelope), and the initial commit sha. Glia ALSO keeps a rolling 100-event log of recent spawn outcomes in memory; on any `hive/system/spawn/query` inbound from a region (including ACC after wake-from-sleep), glia responds with the matching record if found. This covers the race where a SLEEP-phase-blocking caller (A.7.7) missed the original complete.
+8. On any failure, clean up (`rm -rf regions/<name>`, revert ACL template), publish `hive/system/spawn/failed` with the reason and correlation_id.
 
 Spawn is mechanical. Glia never evaluates whether the spawn is a good idea — that was ACC's job.
 
@@ -4362,9 +4557,11 @@ No sleep cycle involved. Prompt changes take effect on next bootstrap.
 
 Gaps and tensions surfaced during spec writing. Each requires resolution before or during Phase 4 implementation. None changes the approved design; they are open questions within it.
 
-### L.1 Bootstrapping mPFC's self-state
+### L.1 Bootstrapping mPFC's self-state — RESOLVED
 
-The starter prompt instructs mPFC to publish retained `hive/self/*` on first boot. But what if mPFC crashes on first boot before publishing? Other regions' step-7 bootstrap waits for these retained values. Proposed resolution in J.4 (fallback self-state) covers mid-run crashes but not first-boot race. Phase 4 MUST decide whether glia pre-seeds `hive/self/*` as a bootstrap step, or whether the fallback always applies for up to 30s.
+**Resolution:** glia does NOT pre-seed `hive/self/*`. The mPFC-owned topics are populated exclusively by mPFC (Principle III, sovereignty). During bootstrap, regions SHOULD subscribe to `hive/self/#` before their WAKE transition but MUST NOT block waiting for values. After 30s of WAKE time without a retained `hive/self/identity`, the region uses `region_template/defaults.yaml`'s `self_fallback` block (J.4) as working context. When mPFC eventually publishes, the retained-value update arrives and overrides the fallback transparently.
+
+This preserves the P-III boundary (mPFC owns self-state) without creating a hard dependency that would cascade into "all 14 regions wait on mPFC's first successful publish." Phase 4 implementation MUST surface a metacog `self_state_fallback_active` at 30s so ACC can observe if mPFC is chronically failing.
 
 ### L.2 Glia's privilege escalation
 
