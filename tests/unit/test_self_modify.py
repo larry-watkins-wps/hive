@@ -39,7 +39,7 @@ from region_template.errors import (
     SandboxEscape,
 )
 from region_template.git_tools import CommitResult, GitTools
-from region_template.memory import MemoryStore
+from region_template.memory import LtmMetadata, LtmWriteResult, MemoryStore
 from region_template.self_modify import (
     HandlerWrite,
     SelfModifyTools,
@@ -52,6 +52,8 @@ from region_template.types import CapabilityProfile, LifecyclePhase
 _SHA_LEN = 40
 _PRE_CHECK_VALUE = 42
 _PROMPT_FIXTURE = "hello world\nsecond line\n"
+_DEFAULT_IMPORTANCE = 0.5
+_CUSTOM_IMPORTANCE = 0.9
 
 
 # ---------------------------------------------------------------------------
@@ -448,6 +450,73 @@ async def test_write_ltm_happy_path(tmp_path: Path) -> None:
     target = root / "memory" / "ltm" / "core" / "identity.md"
     assert target.exists()
     assert "I am the test region." in target.read_text(encoding="utf-8")
+
+
+async def test_write_ltm_custom_metadata_flows_through(tmp_path: Path) -> None:
+    """Caller-supplied metadata must reach MemoryStore.write_ltm unchanged."""
+    tools, _, _, _ = _build(tmp_path)
+    captured: dict[str, object] = {}
+
+    async def _spy(
+        path: str,
+        content: str,
+        metadata: object,
+        reason: str,
+    ) -> object:
+        captured["path"] = path
+        captured["content"] = content
+        captured["metadata"] = metadata
+        captured["reason"] = reason
+        return LtmWriteResult(path=path, created=True, summary=reason)
+
+    tools._memory.write_ltm = _spy  # type: ignore[assignment,method-assign]
+
+    result = await tools.write_ltm(
+        "core/reflection.md",
+        "I felt grateful today.",
+        "journal entry",
+        topic="reflection",
+        importance=_CUSTOM_IMPORTANCE,
+        tags=["gratitude"],
+        emotional_tag="positive",
+    )
+    assert result.ok
+    meta = captured["metadata"]
+    assert isinstance(meta, LtmMetadata)
+    assert meta.topic == "reflection"
+    assert meta.importance == _CUSTOM_IMPORTANCE
+    assert meta.tags == ["gratitude"]
+    assert meta.emotional_tag == "positive"
+
+
+async def test_write_ltm_defaults_unchanged(tmp_path: Path) -> None:
+    """Without metadata kwargs, MemoryStore receives the synthesized defaults."""
+    tools, _, _, _ = _build(tmp_path)
+    captured: dict[str, object] = {}
+
+    async def _spy(
+        path: str,
+        content: str,
+        metadata: object,
+        reason: str,
+    ) -> object:
+        captured["metadata"] = metadata
+        return LtmWriteResult(path=path, created=True, summary=reason)
+
+    tools._memory.write_ltm = _spy  # type: ignore[assignment,method-assign]
+
+    result = await tools.write_ltm(
+        "core/identity.md",
+        "I am the test region.",
+        "seed identity",
+    )
+    assert result.ok
+    meta = captured["metadata"]
+    assert isinstance(meta, LtmMetadata)
+    assert meta.topic == "self_modify"
+    assert meta.importance == _DEFAULT_IMPORTANCE
+    assert meta.tags == []
+    assert meta.emotional_tag is None
 
 
 # ---------------------------------------------------------------------------

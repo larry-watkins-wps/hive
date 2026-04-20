@@ -388,8 +388,20 @@ class SelfModifyTools:
         filename: str,
         content: str,
         reason: str,
+        *,
+        topic: str = "self_modify",
+        importance: float = 0.5,
+        tags: list[str] | None = None,
+        emotional_tag: str | None = None,
     ) -> EditResult:
-        """Create or append to ``memory/ltm/<filename>.md``."""
+        """Create or append to ``memory/ltm/<filename>.md``. Sleep-only.
+
+        Metadata (``topic``/``importance``/``tags``/``emotional_tag``) feeds
+        the LTM index per spec §D.3.3. Defaults produce a low-signal
+        ``"self_modify"`` entry at importance ``0.5``; callers (ACC, mPFC,
+        etc.) should override with meaningful values when they have them,
+        so retention / ranking work as the spec intends.
+        """
         _validate_reason(reason, min_len=_REASON_MIN, max_len=_REASON_MAX)
         _validate_ltm_filename(filename)
         # Sandbox: full resolved path must stay under region_root.
@@ -397,10 +409,10 @@ class SelfModifyTools:
         _ = self._sandboxed_path(Path("memory") / "ltm" / filename)
 
         metadata = LtmMetadata(
-            topic="self_modify",
-            tags=[],
-            importance=0.5,
-            emotional_tag=None,
+            topic=topic,
+            tags=list(tags) if tags is not None else [],
+            importance=importance,
+            emotional_tag=emotional_tag,
         )
         result = await self._memory.write_ltm(
             filename, content, metadata, reason
