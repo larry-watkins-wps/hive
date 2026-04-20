@@ -1,0 +1,17 @@
+user {{ region }}
+# Every region publishes its own heartbeat and per-region stats
+pattern write hive/system/heartbeat/%c
+pattern write hive/system/region_stats/%c
+# Every region publishes metacog errors and sleep requests
+topic write hive/metacognition/error/detected
+topic write hive/system/sleep/request
+topic write hive/system/restart/request
+# Every region subscribes to globally broadcast state
+topic read hive/self/#
+topic read hive/interoception/#
+topic read hive/modulator/#
+topic read hive/attention/#
+topic read hive/rhythm/#
+topic read hive/system/sleep/granted
+topic read hive/system/metrics/#
+topic read hive/broadcast/#
