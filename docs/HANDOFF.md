@@ -1,7 +1,7 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-20 (Phase 4 COMPLETE — Dockerfile + smoke-run)
-**Current phase:** Phase 4 (Runtime Docker image) ✅; Phase 5 (Glia) or Phase 8 (14 regions) next
+**Last updated:** 2026-04-20 (Phase 5 COMPLETE — Glia infrastructure stack)
+**Current phase:** Phase 5 (Glia) ✅; Phase 6 (Bootstrap CLI), Phase 7 (Observability), or Phase 8 (14 regions) next
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
@@ -379,7 +379,7 @@ The plan should:
 | 2. MQTT layer / bus (4 tasks) | ✅ | `bus/topic_schema.md`, `bus/mosquitto.conf`, `bus/acl_templates/_base.j2` + 14 per-region + `_new_region_stub.j2` |
 | 3. Runtime DNA (17 tasks) | ✅ **Complete (17/17)** | All waves done. 508 unit tests + 6 component tests (real mosquitto via testcontainers). Ruff clean. |
 | 4. Region Docker image | ✅ | `region_template/Dockerfile` (commit `f79c91a`). Builds `hive-region:v0` from `python:3.11-slim-bookworm@sha256:9c6f908…`. `docker run --rm hive-region:v0 --help` prints usage. |
-| 5. Glia (12 tasks) | ⏳ | |
+| 5. Glia (12 tasks) | ✅ | All 12 tasks done: registry, launcher, heartbeat monitor, ACL manager, rollback, codechange executor, spawn executor, metrics aggregator, supervisor, `__main__`, 6 bridges. `docker build -t hive-glia:v0 -f glia/Dockerfile .` succeeds. |
 | 6. Bootstrap CLI (2 tasks) | ⏳ | |
 | 7. Observability tools (4 tasks) | ⏳ | |
 | 8. Region scaffolding × 14 | ⏳ | PARALLEL-OK |
@@ -411,6 +411,66 @@ The plan should:
 **Plus** `35b2863 spec: §D.5.7/§D.10/§F.10 align with implementation` — the Wave-B-flagged spec deviations patched at start of Wave C. And `2af2df0 tests: ruff lint cleanup for shared-phase tests` from Wave A.
 
 **Git state:** `impl/v0` has 48 commits total ahead of origin (18 new in Wave C, 30 from Waves A+B). **508 unit tests + 6 component tests passing** (full region_template + 3 MQTT component tests + 3 region-entry component tests against real eclipse-mosquitto:2 via testcontainers). `ruff check region_template/ tests/` clean. **Push to origin on next handoff.**
+
+---
+
+## Phase 5 — Glia — COMPLETE (2026-04-20)
+
+All 12 tasks landed on `main`. 23 commits on top of Phase 4's HEAD. **691 unit tests passing**. `ruff check region_template/ glia/ tests/` clean. `docker build -t hive-glia:v0 -f glia/Dockerfile .` succeeds.
+
+**Per-task status:**
+
+| Task | File | Status | Commits |
+|---|---|---|---|
+| 5.1 | `glia/pyproject.toml` + `Dockerfile` + `__init__.py` | ✅ | `e372da8` |
+| 5.2 | `glia/registry.py` + `regions_registry.yaml` | ✅ | `90271ff` impl, `ee0a2f2` review fixes |
+| 5.3 | `glia/launcher.py` | ✅ | `3c46d54` impl, `6441669` review fixes |
+| 5.4 | `glia/heartbeat_monitor.py` | ✅ | `b70db34` impl, `0e55f36` clock fix, `3c58850` review fixes |
+| 5.5 | `glia/acl_manager.py` | ✅ | `315a43a` impl, `9e5ff2e` review fixes (Windows CRLF) |
+| 5.6 | `glia/rollback.py` | ✅ | `da0b4d4` |
+| 5.7 | `glia/codechange_executor.py` | ✅ | `f03ee1c` impl, `701f56b` review fixes (rollback relaunch-all) |
+| 5.7a | `glia/spawn_executor.py` | ✅ | `28347d0` impl, `baa4b3c` review fixes (ACL-fail cleanup, cancel cleanup) |
+| 5.8 | `glia/metrics.py` | ✅ | `78736b9` impl, `690a260` review fixes (mem cache) |
+| 5.9 | `glia/supervisor.py` | ✅ | `0f31ede` impl, `f73faa7` review fixes (fire-and-forget restart) |
+| 5.10 | `glia/__main__.py` | ✅ | `8458f0a` — `docker build -t hive-glia:v0` succeeds |
+| 5.11 | `glia/bridges/*` (6 bridges) | ✅ | `d9f6de1` impl, `574176d` review fixes (log.warning on degrade) |
+
+**Spec-vs-plan deviations resolved during Phase 5 (implementation follows spec; flagged in module docstrings):**
+
+1. **§F.3 registry YAML**: plan mentioned per-entry `image/env/volumes/restart_policy`; spec §F.3 has `layer/required_capabilities/default_capabilities/singleton/reserved` only. Launcher-oriented fields are computed by `RegionRegistry.docker_spec(name)` helper.
+2. **Container naming**: spec §G.7 shows `hive-region-<name>` but plan and registry use `hive-<name>`. Plan wins; documented inline.
+3. **§E.5 rollback retry**: plan mentions "up to N=3 times"; spec §E.5 pseudocode is single-shot. Impl is single-shot mechanism; supervisor owns the retry counter via circuit breaker (§E.4).
+4. **§E.6 ACL rendering**: spec pseudocode renders `_base.j2` once; the real template contains `{{ region }}` and mosquitto ACLs need `user <name>` per section. Impl renders `_base.j2` per region.
+5. **§E.10 codechange sidecar**: spec mentions a short-lived privileged container; v0 uses in-glia `git apply` with RW bind-mount. Documented as v0 reduction.
+6. **§E.11 spawn ACL stub**: spec says "parameterized by `initial_subscriptions`"; v0 copies the stub verbatim (region's own cognitive namespace grant only). Document that external-namespace subscriptions need approved code-change to amend the template.
+7. **§E.11 `config_loader.serialize`**: helper doesn't exist in codebase; spawn scaffolder uses direct `ruamel.yaml` dump.
+8. **§E.3 clock choice**: spec §E.3 says `time.time()` literal; monotonic would be more robust but spec wins. Injectable clock preserved for NTP-resilient callers.
+9. **§E.11 launcher naming**: spec uses `launcher.start(name)`; Launcher API is `launch_region(name)`. Same semantics.
+
+**Follow-up items worth tracking (non-blocking):**
+
+- **Docker-events listener** for exit-code-based restart dispatch is not wired. `Supervisor.on_region_exit(region, exit_code)` is implemented and tested but has no docker-events subscriber yet. v0 relies on heartbeat-miss detection (§E.3). Adding the listener is a small `docker.events.listen()` task inside `glia/__main__.py`.
+- **Component tests deferred** (all skip-marked with rationales): `test_launcher_docker.py`, `test_spawn_executor.py` (component), `test_supervisor.py` (component). Each needs a real broker + built `hive-region:v0` image + region-config fixture chain. Un-defer together once Phase 8 lands.
+- **Bridges not wired** into `glia/__main__.py`. Current implementation treats them as standalone modules with injected publish callables. Wiring is a small follow-up: instantiate `RhythmGenerator` + `InputTextBridge` (the two enabled-by-default bridges) inside `_main()`, start them alongside supervisor, stop in the finally block.
+- **Bridge `handle_message` dispatch**: `SpeakerBridge` and `MotorBridge` expose `handle_message(envelope)` but have no MQTT subscription wiring yet. Defer with bridge-wiring follow-up.
+- **Image tag rollback (§E.10)**: `_rollback_image` re-tags `hive-region:v0-prev` → `hive-region:v0`. If the previous image was pruned, rollback fails silently. Worth a `docker.images.get()` guard in future.
+- **`test_sweep_loop_runs_and_increments_misses`**: deleted during 5.4 review as timing-sensitive. Replace with event-based signaling if we want an actual loop-body test.
+- **Registry duplicate-name detection**: removed the dead guard during 5.2 review. `ruamel.yaml typ="safe"` last-wins on duplicates. If we want actual duplicate detection, switch to `typ="rt"`.
+- **spawn_executor config.yaml shape**: scaffold writes a minimal subset (region/role/llm/capabilities). The region's own `config_loader.load_config` validates fully on boot. If that rejects the scaffolded config for a missing default, the region will exit 2 → rollback. Monitor when Phase 8 regions spawn their first test.
+
+**Cumulative gotchas (Phase 5 additions):**
+
+- `docker.errors.NotFound` is a subclass of `APIError`. Several glia modules had bugs where `except APIError` accidentally swallowed NotFound cases. Pattern: always catch NotFound explicitly BEFORE `except APIError`.
+- `ACL_PATH` / `ACL_TMP_PATH` module constants removed from `glia/acl_manager.py` during 5.5 review — they weren't referenced in production code (bus_dir is injected).
+- `os.O_BINARY` pattern required for ACL writes on Windows (same as `self_modify._atomic_write_text`) — mosquitto config rejects CRLF line endings in some builds.
+- Docker mem stats include page cache. Real memory pressure: subtract `stats.inactive_file` (cgroups v2) or `stats.cache` (v1). Fixed in 5.8 review.
+- `aiomqtt` v2 uses `identifier=` keyword, not v1's `client_id=`.
+- `docker.containers.run(..., volumes=...)` keys must use forward slashes on Windows too — Docker daemon is Linux. Use `f"./regions/{name}"` literals, not `Path("./regions") / name` (backslashes on Windows).
+- `ruamel.yaml typ="safe"` last-wins on duplicate keys; duplicate detection requires `typ="rt"`.
+- Supervisor's restart handlers must be fire-and-forget via `asyncio.create_task` + `_pending_tasks` set; otherwise long backoff delays (up to 300s) stall the routing loop. Same pattern applies to any future long-running task handler.
+- Spec §E.5 single-shot rollback; supervisor owns retry budget via §E.4 circuit breaker. Don't conflate.
+- Codechange rollback must relaunch ALL partially-rolled regions on old tag, not just the failed-and-subsequent ones.
+- `_restart_with_backoff(exit_code=None)` (heartbeat-miss path) counts toward the crash budget. Spec grey-area; documented as conservative choice.
 
 **Spec updates during Phase 3:**
 - §A.4.1 — `LifecyclePhase(str, Enum)` → `LifecyclePhase(StrEnum)` (commit `bd77a61`, Larry-approved).
@@ -460,7 +520,7 @@ The plan should:
 
 Implement Hive v0 per the plan. Multi-session; use parallel dispatched agents for the 14-region scaffolding work in Phase 8.
 
-### Prompt for next Phase-5/8 session (Phases 3 & 4 DONE)
+### Prompt for next Phase-6/7/8 session (Phases 3–5 DONE)
 
 Paste the following into a new Claude Code session:
 
@@ -468,40 +528,47 @@ Paste the following into a new Claude Code session:
 
 ```
 You are continuing Hive v0 at C:/repos/hive/ on branch `main`.
-Phase 3 (Runtime DNA) and Phase 4 (Region Docker image) are COMPLETE.
-`hive-region:v0` builds from `python:3.11-slim-bookworm@sha256:9c6f908…`
-and `docker run --rm hive-region:v0 --help` prints runtime usage.
-Next: Phase 5 (Glia) or Phase 8 (14-region scaffolding). Larry picks.
+Phases 3 (Runtime DNA), 4 (Region Docker image), and 5 (Glia) are COMPLETE.
+Both `hive-region:v0` and `hive-glia:v0` images build; 691 unit tests pass;
+ruff clean. Next: Phase 6 (Bootstrap CLI), Phase 7 (Observability),
+or Phase 8 (14-region scaffolding). Larry picks.
 
 ## Start here
 
-1. Read `docs/HANDOFF.md` in full. The Phase-3/4 progress table is the
+1. Read `docs/HANDOFF.md` in full. The Phase-3/4/5 progress tables are the
    authoritative state snapshot. The "Follow-up items worth tracking"
    section lists non-blocking cleanup candidates.
 2. Confirm git state:
      git fetch origin && git checkout main && git log --oneline -10
-   Expected HEAD is `f79c91a runtime: Dockerfile (task 4.1)` or newer.
+   Expected HEAD is `574176d glia: bridges review fixes` or newer.
 3. Confirm environment (assumes `.venv` on Python 3.12 from scripts/setup.sh):
      cd C:/repos/hive && source .venv/Scripts/activate
-     python -m pytest tests/unit/ -q       # 502 passed (README says 508 — 6-test drift to reconcile)
-     python -m ruff check region_template/ tests/
-     docker build -t hive-region:v0 -f region_template/Dockerfile .  # optional re-verify
+     python -m pytest tests/unit/ -q       # 691 passed
+     python -m ruff check region_template/ glia/ tests/
+     docker build -t hive-glia:v0 -f glia/Dockerfile .   # optional re-verify
 4. Pick the next phase and read its plan section:
      docs/superpowers/plans/2026-04-19-hive-v0-plan.md
-   - Phase 5 (Tasks 5.1-5.12): Glia (infrastructure, no LLM). Launcher,
-     heartbeat monitor, ACL manager, rollback, registry. Sequential
-     through 5.1-5.10; `bridges/` (5.11) is parallelizable.
+   - Phase 6 (Tasks 6.1-6.2): docker-compose.yaml + hive_cli.py. Small.
+   - Phase 7 (Tasks 7.1-7.4): observability — log aggregator, traffic
+     inspector, metric dashboards, debug tooling. Small.
    - Phase 8 (Tasks 8.1-8.14): 14-region scaffolding. **PARALLEL-OK** —
-     each region is independent once Phase 5 is done. Good fit for
+     each region is independent now that glia exists. Good fit for
      `superpowers:dispatching-parallel-agents`.
 
 ## Suggested order (Larry's call)
 
-- **Phase 5 first** — full infrastructure stack before regions. Larger
-  scope; tighter feedback loop for integration bugs. Recommended.
-- **Phase 8 first** — stress-tests the region template against 14 real
-  configs before building glia; surfaces config schema gaps early, but
-  regions can't actually run end-to-end until glia exists.
+- **Phase 8 first** — the big push: 14 regions scaffolded in parallel
+  dispatches (3-4 at a time per handoff). Each region is independent
+  and can be tested against the real `hive-region:v0` + `hive-glia:v0`
+  images. Component tests deferred in Phase 5 can be unblocked here.
+- **Phase 6 first** — docker-compose + CLI lets operator actually
+  `hive up` the system before any region scaffolding lands. Small
+  scope; useful for the first real end-to-end smoke test.
+- **Phase 7 first** — observability is nice-to-have before Phase 8
+  regions start behaving strangely. Optional; can defer.
+
+Recommendation: **Phase 6 → Phase 8** — compose lets you smoke-test
+each region as it lands; Phase 7 is backfillable anytime.
 
 ## Execution model — unchanged
 
@@ -521,18 +588,19 @@ implementers at a time (not all 14 — too much context to review in
 parallel). Each implementer gets the region's starter prompt +
 capability profile + a minimal test that boots against a fake broker.
 
-## Known gotchas (inherit cumulatively from Wave C)
+## Known gotchas (inherit cumulatively)
 
-See HANDOFF.md's "Known gotchas for future sessions" section — 14
-items spanning env setup, Windows platform nuances, library pins,
+See HANDOFF.md's "Cumulative gotchas (Phase 5 additions)" section
+plus the Phase-3 "Known gotchas for future sessions" — ~25 items
+total spanning env setup, Windows platform nuances, library pins,
+docker-SDK quirks (NotFound/APIError, memory cache), aiomqtt v2,
 and repo hygiene. The `=2.6` / `=24` stray files at repo root are
 still pip-install typos, still left alone.
 
-Spec-vs-plan deviations from Wave C are catalogued in
-"Spec-vs-plan deviations resolved during Wave C" — 8 items. Read
-these before the first Phase-4/5/8 implementer dispatch so you can
-flag the relevant ones in prompts that touch §C (LLM), §B (MQTT),
-§A.7 (tools), or §D.5 (sleep).
+Spec-vs-plan deviations are catalogued in two sections: Phase-3
+Wave C (8 items touching §C/§B/§A.7/§D.5) and Phase 5 (9 items
+touching §E and §F). Read both before the first Phase-6/8
+implementer dispatch.
 
 ## Deliverable at end of session
 
