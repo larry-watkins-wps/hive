@@ -1,7 +1,7 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-19
-**Current phase:** Phase 4 (Implementation) — ready to start
+**Last updated:** 2026-04-19 (Phase 3 Wave A complete)
+**Current phase:** Phase 4 (Implementation) — Phase 3 (Runtime DNA) Wave A done, Wave B next
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
@@ -370,14 +370,14 @@ The plan should:
 
 ## Phase 4: Implementation — IN PROGRESS (branch `impl/v0`)
 
-### Status as of 2026-04-19
+### Status as of 2026-04-19 (Phase 3 Wave A complete)
 
 | Phase | Status | Notes |
 |---|---|---|
 | 0. Foundation (3 tasks) | ✅ | `pyproject.toml`, `.gitignore`, `.env.example`, `scripts/bootstrap_env.sh`, `scripts/make_passwd.sh` |
 | 1. Shared library (5 tasks) | ✅ | `shared/envelope_schema.json`, `shared/message_envelope.py` (39 tests), `shared/topics.py` (55 tests), `shared/metric_schemas.json` |
 | 2. MQTT layer / bus (4 tasks) | ✅ | `bus/topic_schema.md`, `bus/mosquitto.conf`, `bus/acl_templates/_base.j2` + 14 per-region + `_new_region_stub.j2` |
-| 3. Runtime DNA (17 tasks) | ⏳ **Next** | `region_template/` — critical path, longest phase |
+| 3. Runtime DNA (17 tasks) | 🟡 **In progress (4/17)** | Wave A ✅ (3.1-3.4), Wave B next (3.5, 3.6, 3.9, 3.10, 3.13 — parallel-safe), Wave C after |
 | 4. Region Docker image | ⏳ | |
 | 5. Glia (12 tasks) | ⏳ | |
 | 6. Bootstrap CLI (2 tasks) | ⏳ | |
@@ -386,84 +386,190 @@ The plan should:
 | 9. Integration + smoke + self-mod tests | ⏳ | |
 | 10. Docs + HANDOFF | ⏳ | |
 
-**Git state:** 12 commits on `impl/v0` (pushed to `origin/impl/v0`). `main` still holds docs + spec + plan only. 94 unit tests passing (envelope + topics).
+**Phase 3 progress (4/17 tasks done, Wave A):**
 
-**Execution model:** `superpowers:subagent-driven-development` — fresh implementer subagent per task; spec review (always) + code quality review (for real code); commit-per-task; checkpoint with user every ~10-15 tasks.
+| Task | File | Status | Commits |
+|---|---|---|---|
+| 3.1 | `region_template/pyproject.toml` + `__init__.py` | ✅ | `924b289` |
+| 3.2 | `region_template/types.py` (+ tests) | ✅ | `acdcfd6` impl, `3079852` lint fix, `bd77a61` spec §A.4.1 StrEnum update |
+| 3.3 | `region_template/errors.py` (+ tests) | ✅ | `1ec03d9` impl, `f57cd8b` review fixes (raise/catch round-trip, `*args: Any`) |
+| 3.4 | `region_template/logging_setup.py` (+ tests) | ✅ | `f218d1f` impl, `1d664e3` review fixes (ProcessorFormatter for stdlib, honest docstring) |
+| 3.5 | `region_template/config_loader.py` | ⏳ Wave B | — |
+| 3.6 | `region_template/capability.py` | ⏳ Wave B | — |
+| 3.7 | `region_template/mqtt_client.py` | ⏳ Wave C | — |
+| 3.8 | LLM adapter stack (5 files) | ⏳ Wave C | — |
+| 3.9 | `region_template/memory.py` | ⏳ Wave B | — |
+| 3.10 | `region_template/git_tools.py` | ⏳ Wave B | — |
+| 3.11 | `region_template/self_modify.py` | ⏳ Wave C | — |
+| 3.12 | `region_template/handlers_loader.py` | ⏳ Wave C | — |
+| 3.13 | `region_template/heartbeat.py` | ⏳ Wave B | — |
+| 3.14 | `region_template/sleep.py` | ⏳ Wave C | — |
+| 3.15 | `region_template/runtime.py` | ⏳ Wave C | — |
+| 3.16 | `region_template/__main__.py` | ⏳ Wave C | — |
+| 3.17 | `defaults.yaml` + `litellm.config.yaml` | ⏳ Config-only | — |
+
+Plus one side-commit: `2af2df0 tests: ruff lint cleanup for shared-phase tests` (cleaned up 7 ruff findings in Phase 1 test files that predated ruff config enforcement).
+
+**Git state:** 22 commits on `impl/v0`. 190 unit tests passing (envelope + topics + types + errors + logging_setup). `ruff check region_template/ tests/unit/` is clean. Push to origin on next handoff update.
+
+**Spec updates during Phase 3 so far:**
+- §A.4.1 — `LifecyclePhase(str, Enum)` → `LifecyclePhase(StrEnum)` (commit `bd77a61`, approved by Larry). StrEnum behavior is identical for `.value`, `isinstance`, and JSON serialization; changes `str(phase)` from `"LifecyclePhase.WAKE"` to `"wake"` (safer for MQTT topic f-strings).
+
+**Noted known gotchas for future sessions:**
+- The host Python env lacks `pydantic`, `structlog`, `ruff`, `testcontainers` by default on fresh shells. Implementers have pip-installed these on demand. `scripts/bootstrap_env.sh` exists from Phase 0 — consider using it to create a proper venv.
+- structlog 25.x hardcodes `warn` → `warning` internally; `region_template/logging_setup.py` installs `_remap_warning_to_warn` processor to satisfy spec §H.1.2's lowercase-`warn` requirement.
+- `ConnectionError` in `region_template/errors.py` intentionally shadows the stdlib — always reference fully-qualified (`region_template.errors.ConnectionError`) or import-alias to avoid ambiguity.
+
+**Execution model:** `superpowers:subagent-driven-development` — fresh implementer subagent per task; spec review (always) + code quality review (for real code; skip for config-only); commit-per-task; checkpoint with user every ~10-15 tasks or at wave boundaries.
 
 ### Goal
 
 Implement Hive v0 per the plan. Multi-session; use parallel dispatched agents for the 14-region scaffolding work in Phase 8.
 
-### Prompt for next Phase-4 session (resume in-progress work)
+### Prompt for next Phase-4 session (resume in-progress work — Wave B)
 
 Paste the following into a new Claude Code session:
 
 ---
 
 ```
-You are continuing Hive v0 Phase 4 implementation at C:/repos/hive/ on
-branch `impl/v0`.
+You are continuing Hive v0 Phase 3 implementation at C:/repos/hive/ on
+branch `impl/v0`. Wave A (tasks 3.1-3.4) is complete. Your job this
+session is Wave B (5 parallel-safe tasks), then checkpoint with Larry
+before Wave C.
 
 ## Start here
 
-1. Read `docs/HANDOFF.md` in full — it has authoritative phase status.
+1. Read `docs/HANDOFF.md` in full. The Phase-3 progress table is the
+   authoritative state snapshot. Expect to see 22 commits on `impl/v0`
+   and 190 unit tests passing.
 2. Confirm git state:
-     git fetch origin && git checkout impl/v0 && git log origin/impl/v0 --oneline -15
-   You should see ~12+ commits from Phases 0-2.
-3. Read the next phase's section of the plan:
+     git fetch origin && git checkout impl/v0 && git log --oneline -15
+   Expected HEAD: `1d664e3 runtime: logging_setup review fixes
+   (ProcessorFormatter + docstring)` OR the HANDOFF.md commit after it
+   (whichever is newest).
+3. Confirm environment:
+     cd C:/repos/hive && python -m pytest tests/unit/ -q
+   Must show "190 passed" (or 190+N if later work landed).
+     python -m ruff check region_template/ tests/unit/
+   Must show "All checks passed!".
+4. Read the plan's Wave B section:
      docs/superpowers/plans/2026-04-19-hive-v0-plan.md
-   Use the Phase-level task list in HANDOFF.md's status table to find where
-   to resume.
-4. Spot-read the relevant spec section before starting any real-code task
-   (e.g., for Phase 3 runtime, read §A of
-   docs/superpowers/specs/2026-04-19-hive-v0-design.md).
+   Tasks 3.5, 3.6, 3.9, 3.10, 3.13 (lines 381-520 in the plan).
+5. Spot-read the relevant spec sections before each implementer dispatch:
+   - 3.5 config_loader → spec §F (config schema + loader)
+   - 3.6 capability → spec §A.7.8 (decorators)
+   - 3.9 memory → spec §D.2-D.4 (STM/LTM schemas)
+   - 3.10 git_tools → spec §D.5.7 + §D.8
+   - 3.13 heartbeat → spec §A.5
 
-## Execution model
+## Execution model — approach C (batched parallel)
 
-Use `superpowers:subagent-driven-development`:
-- Fresh implementer subagent per task — never re-use context across tasks.
-- Spec review after every task (dispatch plan-document-reviewer template
-  adapted, or general-purpose + focused prompt).
-- Code quality review for any task producing real code (skip for
-  config-only/data-only tasks).
-- One commit per plan task. Don't batch multiple tasks into one commit —
-  granular history is a project constraint (Principle XII).
-- Use HEREDOC commit messages with Co-Authored-By trailer:
+Use `superpowers:subagent-driven-development` but batch Wave B into two
+parallel groups instead of running all 5 serially:
+
+### Batch 1 — dispatch in parallel:
+  - 3.6 `capability.py` (smaller, self-contained, decorators only)
+  - 3.10 `git_tools.py` (subprocess wrapper, self-contained)
+  - 3.13 `heartbeat.py` (asyncio ticker, self-contained)
+
+  Fire all three implementer subagents in a SINGLE message (multi-tool
+  call). Wait for all three to return. Then run spec + code-quality
+  reviews sequentially per task (per skill's standard pattern).
+
+### Batch 2 — dispatch in parallel after batch 1 reviews pass:
+  - 3.5 `config_loader.py` (bigger — Pydantic RegionConfig + YAML merge)
+  - 3.9 `memory.py` (bigger — STM atomic writes, TTL, ring buffer, LTM)
+
+  Same pattern: parallel implementers, sequential reviews.
+
+### Per-task discipline (unchanged):
+- Fresh implementer subagent per task. Never reuse context.
+- Spec compliance review after each implementer returns.
+- Code quality review (via `superpowers:code-reviewer` subagent type)
+  after spec review passes. Skip for config-only tasks.
+- One commit per plan task (may end up 2+ commits if review finds fixes
+  — that's fine, still one logical task).
+- HEREDOC commit messages ending with:
     Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+- Verify `python -m ruff check region_template/ tests/unit/` clean
+  after each task.
 
-## Chunking
+## Known gotchas (inherit these from prior sessions)
 
-Work manageable chunks. Checkpoint with Larry (user) every ~10-15 tasks
-or at phase boundaries, whichever is sooner. Don't push silently through
-a full phase of 17 tasks.
+1. Spec-vs-plan conflicts: the spec is authoritative. The plan's plain-
+   prose descriptions sometimes paraphrase loosely (e.g., HandlerContext
+   field list, key names in log output). When the spec's code block and
+   the plan's prose differ, follow the spec, and flag the discrepancy
+   in your implementer prompt so the subagent doesn't get confused.
+
+2. Host Python env may lack `pydantic`, `structlog`, `ruff`, `GitPython`,
+   `testcontainers`. Implementers have been pip-installing on demand.
+   No venv has been set up yet; `scripts/bootstrap_env.sh` exists but
+   hasn't been used. If an implementer can't `import` something, tell
+   them to pip install and continue.
+
+3. `region_template/errors.py` intentionally shadows stdlib
+   `ConnectionError`. Always reference fully-qualified or use an import
+   alias. Spec §A.9 acknowledges this.
+
+4. `LifecyclePhase` is `StrEnum` (Python 3.11+), NOT `(str, Enum)`.
+   Spec §A.4.1 was updated in commit `bd77a61`. `str(phase)` returns
+   the lowercase value (e.g., "wake"), not "LifecyclePhase.WAKE".
+
+5. `tool_use: "wizard"` in a region config must raise ConfigError —
+   only `none | basic | advanced` are valid per spec §F.2. `CapabilityProfile`
+   is already implemented in `region_template/types.py` with a Literal
+   type — config_loader composes it.
+
+6. Ruff config lives at `C:/repos/hive/pyproject.toml` (workspace root,
+   tool config only). Package-specific `region_template/pyproject.toml`
+   MUST NOT re-declare tool blocks.
 
 ## When you hit a spec issue
 
-Flag it — do not silently improvise. Spec is 4,792 lines and has been
-review-iterated three times; if something looks wrong, surface it before
-coding around it.
+Flag it — don't silently improvise. The spec is 4,792 lines and has
+been review-iterated three times. If something looks wrong or genuinely
+conflicts with lint rules, bring it to Larry before deciding. Example
+from prior session: UP042 flagged `(str, Enum)` → Larry approved
+switching to StrEnum AND updating the spec section to match.
 
-## Next work
+## Chunking & checkpoints
 
-Phase 3 (Runtime DNA) — 17 tasks in `region_template/`. Follow the
-dependency waves in the plan:
-  - Wave A (sequential): 3.1-3.4 (pyproject, types, errors, logging)
-  - Wave B (parallel after A): 3.5, 3.6, 3.9, 3.10, 3.13
-  - Wave C (sequential, composes B): 3.7, 3.8, 3.11, 3.12, 3.14, 3.15, 3.16, 3.17
+After all 5 Wave B tasks complete with reviews passing, CHECKPOINT with
+Larry. Do NOT start Wave C silently. State of play to report:
+  - Wave B complete (5/5 tasks)
+  - Total Phase 3: 9/17 tasks done
+  - Test count and ruff status
+  - Any spec deviations or open questions
+  - Summary of what Wave C needs (reviewing the bigger pieces —
+    mqtt_client + LLM adapter stack + runtime.py integrator)
 
-Complete-session deliverables for Phase 3:
-- `region_template/` with all 17 modules, each with passing unit tests
-- Component tests for mqtt_client (testcontainers mosquitto) passing
-- RegionRuntime boots in-process against a mock broker
-- HANDOFF.md updated to mark Phase 3 ✅ and move "Next" flag to Phase 4
+If any Wave B task blocks or surfaces a major spec issue, stop and
+surface it rather than continuing through the batch.
 
-## Reminders (from memory)
+## Deliverable at end of session
+
+- 5 more tasks committed on `impl/v0` (total 22 + N commits).
+- Unit suite passing (expected ~230-260 tests depending on how many
+  each Wave B module adds).
+- Ruff clean across `region_template/` and `tests/unit/`.
+- HANDOFF.md updated: Wave B row transitions to ✅ in the phase-3
+  progress table; the "Next work" section pivots to Wave C.
+- Clear checkpoint summary for Larry.
+
+## Reminders (from memory / project principles)
 
 - Larry designs before coding; the spec + plan are authoritative.
 - Biology is the tiebreaker (P-I). If you feel a Python idiom tugging
   against the biological metaphor, the biology wins.
-- Infrastructure (glia) does not deliberate; cognition (regions) does not
-  execute infrastructure. Don't cross this line in the implementation.
+- Infrastructure (glia) does not deliberate; cognition (regions) does
+  not execute infrastructure. Don't cross this line.
+- Commit-per-task is mandated by Principle XII (Every Change is Committed).
+  Granular history is a feature.
+- Auto mode may be active — if so, execute immediately on routine
+  decisions; only pause for spec conflicts, risky ops, or Larry's
+  explicit checkpoints.
 ```
 
 ---
