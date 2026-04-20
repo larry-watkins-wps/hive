@@ -106,6 +106,10 @@ class Launcher:
 
         Returns the ``docker.models.containers.Container`` object.
 
+        Note: not thread-safe against concurrent launches for the same region
+        name; docker will return a name-conflict APIError which is surfaced as
+        GliaError. Supervisor is responsible for serializing launches.
+
         Raises
         ------
         GliaError
@@ -164,9 +168,14 @@ class Launcher:
 
         try:
             container.stop(timeout=timeout)
-            container.remove()
         except APIError as exc:
             raise GliaError(f"docker API error stopping {name}: {exc}") from exc
+        try:
+            container.remove()
+        except NotFound:
+            pass  # already removed between stop() and remove() — acceptable
+        except APIError as exc:
+            raise GliaError(f"docker API error removing {name}: {exc}") from exc
 
     def restart_region(self, name: str) -> Container:
         """Stop (if running) then launch the region.  Returns new container."""

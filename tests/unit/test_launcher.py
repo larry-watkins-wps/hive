@@ -243,6 +243,18 @@ def test_stop_region_api_error_wrapped(
         launcher.stop_region("amygdala")
 
 
+def test_stop_region_remove_not_found_is_noop(
+    launcher: Launcher, mock_client: MagicMock
+) -> None:
+    container = MagicMock()
+    container.remove.side_effect = NotFound("already gone")
+    mock_client.containers.get.side_effect = None
+    mock_client.containers.get.return_value = container
+    launcher.stop_region("amygdala")  # must not raise
+    container.stop.assert_called_once()
+    container.remove.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
 # 8. restart_region
 # ---------------------------------------------------------------------------
