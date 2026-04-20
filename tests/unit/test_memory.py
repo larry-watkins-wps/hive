@@ -61,6 +61,7 @@ _EVENTS_AT_LEAST = 8
 _QUERY_MIN_HITS = 2
 _SUN1_SUNSET_COUNT = 2
 _SUN1_WARMTH_COUNT = 3
+_FRONTMATTER_DELIMITER_COUNT = 2  # opening + closing `---`
 
 
 # ---------------------------------------------------------------------------
@@ -592,6 +593,85 @@ async def test_build_index_is_idempotent(store: MemoryStore) -> None:
     # built_at will differ — compare the content fields.
     assert idx_a["documents"] == idx_b["documents"]
     assert idx_a["postings"] == idx_b["postings"]
+
+
+# ---------------------------------------------------------------------------
+# LTM — sandbox path guard (`_reject_ltm_traversal`)
+# ---------------------------------------------------------------------------
+
+
+async def test_write_ltm_rejects_windows_drive_letter_absolute(
+    store: MemoryStore,
+) -> None:
+    """`C:/foo/bar.md` must be rejected regardless of host OS."""
+    meta = LtmMetadata(topic="t", tags=[], importance=0.5, emotional_tag=None)
+    with pytest.raises(ValueError, match="illegal LTM path"):
+        await store.write_ltm("C:/foo/bar.md", "body", meta, reason="r")
+
+
+async def test_write_ltm_rejects_windows_drive_letter_backslash(
+    store: MemoryStore,
+) -> None:
+    """`C:\\foo\\bar.md` must also be rejected regardless of host OS."""
+    meta = LtmMetadata(topic="t", tags=[], importance=0.5, emotional_tag=None)
+    with pytest.raises(ValueError, match="illegal LTM path"):
+        await store.write_ltm("C:\\foo\\bar.md", "body", meta, reason="r")
+
+
+async def test_write_ltm_rejects_unc_path(store: MemoryStore) -> None:
+    """`\\\\server\\share\\x.md` (UNC) must be rejected."""
+    meta = LtmMetadata(topic="t", tags=[], importance=0.5, emotional_tag=None)
+    with pytest.raises(ValueError, match="illegal LTM path"):
+        await store.write_ltm("\\\\server\\share\\x.md", "body", meta, reason="r")
+
+
+async def test_write_ltm_rejects_posix_absolute_path(store: MemoryStore) -> None:
+    """`/etc/passwd` must be rejected."""
+    meta = LtmMetadata(topic="t", tags=[], importance=0.5, emotional_tag=None)
+    with pytest.raises(ValueError, match="illegal LTM path"):
+        await store.write_ltm("/etc/passwd", "body", meta, reason="r")
+
+
+async def test_write_ltm_rejects_parent_traversal(store: MemoryStore) -> None:
+    """`../escape.md` must be rejected."""
+    meta = LtmMetadata(topic="t", tags=[], importance=0.5, emotional_tag=None)
+    with pytest.raises(ValueError, match="illegal LTM path"):
+        await store.write_ltm("../escape.md", "body", meta, reason="r")
+
+
+async def test_write_ltm_accepts_relative_path(store: MemoryStore) -> None:
+    """Sanity check: plain relative paths still succeed after the guard."""
+    meta = LtmMetadata(topic="t", tags=[], importance=0.5, emotional_tag=None)
+    result = await store.write_ltm("episodes/ok.md", "body", meta, reason="r")
+    assert result.created is True
+
+
+# ---------------------------------------------------------------------------
+# LTM — concurrent writes serialize cleanly under `self._lock`
+# ---------------------------------------------------------------------------
+
+
+async def test_concurrent_write_ltm_to_same_file_serialize_cleanly(
+    store: MemoryStore,
+) -> None:
+    """Two `asyncio.gather`-ed write_ltm calls to the same path interleave
+    cleanly — both sections remain visible and the file is well-formed
+    (front-matter intact; no half-written body).
+    """
+    meta = LtmMetadata(topic="t", tags=[], importance=0.5, emotional_tag=None)
+    await asyncio.gather(
+        store.write_ltm("knowledge/concurrent.md", "first note", meta, reason="r1"),
+        store.write_ltm("knowledge/concurrent.md", "second note", meta, reason="r2"),
+    )
+    text = (store.root / "ltm" / "knowledge" / "concurrent.md").read_text(
+        encoding="utf-8"
+    )
+    # Front-matter must be intact (no half-written file).
+    assert text.startswith("---")
+    assert text.count("---") >= _FRONTMATTER_DELIMITER_COUNT
+    # Both sections are present — the second call prepended on top of the first.
+    assert "first note" in text
+    assert "second note" in text
 
 
 # ---------------------------------------------------------------------------

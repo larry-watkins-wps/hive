@@ -33,7 +33,7 @@ import os
 import re
 import time
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import structlog
@@ -469,58 +469,68 @@ class MemoryStore:
         the eventual SleepCoordinator git-commit message.
         """
         self._reject_ltm_traversal(path)
-        target = self.root / "ltm" / path
-        _ensure_dir(target.parent)
+        async with self._lock:
+            target = self.root / "ltm" / path
+            _ensure_dir(target.parent)
 
-        ts_header = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-        section_header = "## " + _now_iso()
-        new_section = f"{section_header}\n\n{content.strip()}\n"
+            ts_header = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            section_header = "## " + _now_iso()
+            new_section = f"{section_header}\n\n{content.strip()}\n"
 
-        created: bool
-        if target.exists():
-            created = False
-            existing = target.read_text(encoding="utf-8")
-            fm_end = existing.find("---", 3)
-            if not existing.startswith("---") or fm_end < 0:
-                raise ValueError(
-                    f"existing LTM file {path!r} has no front-matter delimiters"
+            created: bool
+            if target.exists():
+                created = False
+                existing = target.read_text(encoding="utf-8")
+                fm_end = existing.find("---", 3)
+                if not existing.startswith("---") or fm_end < 0:
+                    raise ValueError(
+                        f"existing LTM file {path!r} has no front-matter delimiters"
+                    )
+                old_fm = existing[3:fm_end]
+                body = existing[fm_end + 3 :].lstrip("\n")
+                fm_fields = _parse_frontmatter(old_fm)
+                created_at = fm_fields.get("created_at", ts_header)
+                new_fm = _render_frontmatter(
+                    metadata=metadata,
+                    created_at=created_at,
+                    updated_at=ts_header,
                 )
-            old_fm = existing[3:fm_end]
-            body = existing[fm_end + 3 :].lstrip("\n")
-            fm_fields = _parse_frontmatter(old_fm)
-            created_at = fm_fields.get("created_at", ts_header)
-            new_fm = _render_frontmatter(
-                metadata=metadata,
-                created_at=created_at,
-                updated_at=ts_header,
-            )
-            new_content = f"---\n{new_fm}---\n\n{new_section}\n{body}"
-        else:
-            created = True
-            new_fm = _render_frontmatter(
-                metadata=metadata,
-                created_at=ts_header,
-                updated_at=ts_header,
-            )
-            new_content = f"---\n{new_fm}---\n\n{new_section}"
+                new_content = f"---\n{new_fm}---\n\n{new_section}\n{body}"
+            else:
+                created = True
+                new_fm = _render_frontmatter(
+                    metadata=metadata,
+                    created_at=ts_header,
+                    updated_at=ts_header,
+                )
+                new_content = f"---\n{new_fm}---\n\n{new_section}"
 
-        # Atomic write-rename for the LTM file.
-        tmp = target.with_suffix(target.suffix + ".tmp")
-        tmp.write_text(new_content, encoding="utf-8")
-        os.replace(str(tmp), str(target))
+            # Atomic write-rename for the LTM file.
+            tmp = target.with_suffix(target.suffix + ".tmp")
+            tmp.write_text(new_content, encoding="utf-8")
+            os.replace(str(tmp), str(target))
 
-        log.info(
-            "ltm_write",
-            region=self.region_name,
-            path=path,
-            created=created,
-            reason=reason,
-        )
-        return LtmWriteResult(path=path, created=created, summary=reason)
+            log.info(
+                "ltm_write",
+                region=self.region_name,
+                path=path,
+                created=created,
+                reason=reason,
+            )
+            return LtmWriteResult(path=path, created=created, summary=reason)
 
     def _reject_ltm_traversal(self, path: str) -> None:
-        """Refuse paths that escape ``memory/ltm/``."""
-        if path.startswith("/") or ".." in Path(path).parts or path.startswith("\\"):
+        """Refuse paths that escape ``memory/ltm/``.
+
+        Uses both :class:`PureWindowsPath` and :class:`PurePosixPath` so a
+        Windows drive-letter / UNC path is rejected on Linux runners and a
+        POSIX absolute path is rejected on Windows.
+        """
+        if (
+            PureWindowsPath(path).is_absolute()
+            or PurePosixPath(path).is_absolute()
+            or any(part == ".." for part in Path(path).parts)
+        ):
             raise ValueError(f"illegal LTM path: {path!r}")
 
     @sleep_only
@@ -532,46 +542,47 @@ class MemoryStore:
         if not terms:
             return []
 
-        hits: list[MemoryHit] = []
-        for md_path in _iter_markdown(self.root / "ltm"):
-            rel = md_path.relative_to(self.root / "ltm").as_posix()
-            text = md_path.read_text(encoding="utf-8")
-            fm, body = _split_frontmatter(text)
-            meta = _parse_frontmatter(fm)
-            body_terms = _tokenize(body)
-            counts: dict[str, int] = {}
-            for t in body_terms:
-                counts[t] = counts.get(t, 0) + 1
+        async with self._lock:
+            hits: list[MemoryHit] = []
+            for md_path in _iter_markdown(self.root / "ltm"):
+                rel = md_path.relative_to(self.root / "ltm").as_posix()
+                text = md_path.read_text(encoding="utf-8")
+                fm, body = _split_frontmatter(text)
+                meta = _parse_frontmatter(fm)
+                body_terms = _tokenize(body)
+                counts: dict[str, int] = {}
+                for t in body_terms:
+                    counts[t] = counts.get(t, 0) + 1
 
-            score = sum(counts.get(t, 0) for t in terms)
-            if score == 0:
-                continue
+                score = sum(counts.get(t, 0) for t in terms)
+                if score == 0:
+                    continue
 
-            # Apply importance boost (keeps strict descending order stable).
-            try:
-                importance = float(meta.get("importance", 0.5))
-            except (TypeError, ValueError):
-                importance = 0.5
+                # Apply importance boost (keeps strict descending order stable).
+                try:
+                    importance = float(meta.get("importance", 0.5))
+                except (TypeError, ValueError):
+                    importance = 0.5
 
-            # Topic boost: if the query topics match, add a small bump.
-            topic_bump = 0.0
-            doc_topic = meta.get("topic")
-            if doc_topic and doc_topic in q.topics:
-                topic_bump = 1.0
+                # Topic boost: if the query topics match, add a small bump.
+                topic_bump = 0.0
+                doc_topic = meta.get("topic")
+                if doc_topic and doc_topic in q.topics:
+                    topic_bump = 1.0
 
-            confidence = float(score) * (0.5 + importance) + topic_bump
+                confidence = float(score) * (0.5 + importance) + topic_bump
 
-            hits.append(
-                MemoryHit(
-                    source=rel,
-                    content=body.strip(),
-                    confidence=confidence,
-                    emotional_tag=meta.get("emotional_tag"),
+                hits.append(
+                    MemoryHit(
+                        source=rel,
+                        content=body.strip(),
+                        confidence=confidence,
+                        emotional_tag=meta.get("emotional_tag"),
+                    )
                 )
-            )
 
-        hits.sort(key=lambda h: h.confidence, reverse=True)
-        return hits[: q.max_results]
+            hits.sort(key=lambda h: h.confidence, reverse=True)
+            return hits[: q.max_results]
 
     @sleep_only
     async def build_index(self) -> dict[str, Any]:
@@ -579,53 +590,54 @@ class MemoryStore:
 
         Returns the index dict (also written to disk).
         """
-        documents: dict[str, Any] = {}
-        postings: dict[str, list[str]] = {}
+        async with self._lock:
+            documents: dict[str, Any] = {}
+            postings: dict[str, list[str]] = {}
 
-        for md_path in _iter_markdown(self.root / "ltm"):
-            rel = md_path.relative_to(self.root / "ltm").as_posix()
-            text = md_path.read_text(encoding="utf-8")
-            fm, body = _split_frontmatter(text)
-            meta = _parse_frontmatter(fm)
-            body_terms = _tokenize(body)
-            counts: dict[str, int] = {}
-            for t in body_terms:
-                counts[t] = counts.get(t, 0) + 1
+            for md_path in _iter_markdown(self.root / "ltm"):
+                rel = md_path.relative_to(self.root / "ltm").as_posix()
+                text = md_path.read_text(encoding="utf-8")
+                fm, body = _split_frontmatter(text)
+                meta = _parse_frontmatter(fm)
+                body_terms = _tokenize(body)
+                counts: dict[str, int] = {}
+                for t in body_terms:
+                    counts[t] = counts.get(t, 0) + 1
 
-            try:
-                importance = float(meta.get("importance", 0.5))
-            except (TypeError, ValueError):
-                importance = 0.5
+                try:
+                    importance = float(meta.get("importance", 0.5))
+                except (TypeError, ValueError):
+                    importance = 0.5
 
-            documents[rel] = {
-                "tags": _parse_list(meta.get("tags", "[]")),
-                "topic": meta.get("topic"),
-                "created_at": meta.get("created_at"),
-                "updated_at": meta.get("updated_at"),
-                "importance": importance,
-                "term_counts": counts,
+                documents[rel] = {
+                    "tags": _parse_list(meta.get("tags", "[]")),
+                    "topic": meta.get("topic"),
+                    "created_at": meta.get("created_at"),
+                    "updated_at": meta.get("updated_at"),
+                    "importance": importance,
+                    "term_counts": counts,
+                }
+                for term in counts:
+                    postings.setdefault(term, []).append(rel)
+
+            # Deterministic posting list ordering.
+            for term_list in postings.values():
+                term_list.sort()
+
+            index = {
+                "schema_version": 1,
+                "built_at": _now_iso(),
+                "documents": documents,
+                "postings": postings,
             }
-            for term in counts:
-                postings.setdefault(term, []).append(rel)
 
-        # Deterministic posting list ordering.
-        for term_list in postings.values():
-            term_list.sort()
-
-        index = {
-            "schema_version": 1,
-            "built_at": _now_iso(),
-            "documents": documents,
-            "postings": postings,
-        }
-
-        index_path = self.root / "index.json"
-        tmp = self.root / "index.json.tmp"
-        tmp.write_text(
-            json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        os.replace(str(tmp), str(index_path))
-        return index
+            index_path = self.root / "index.json"
+            tmp = self.root / "index.json.tmp"
+            tmp.write_text(
+                json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            os.replace(str(tmp), str(index_path))
+            return index
 
 
 # ---------------------------------------------------------------------------
