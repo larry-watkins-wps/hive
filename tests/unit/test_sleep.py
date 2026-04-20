@@ -504,3 +504,71 @@ async def test_run_prunes_stm_slots(tmp_path: Path) -> None:
     assert result.stm_pruned == 1
     # Slot is gone.
     assert await runtime.memory.read_stm("temp_goal") is None
+
+
+# ---------------------------------------------------------------------------
+# 11. Short LLM reason uses fallback (regression)
+# ---------------------------------------------------------------------------
+
+
+async def test_short_llm_reason_uses_fallback(tmp_path: Path) -> None:
+    """A handler edit with a too-short LLM reason must use the fallback.
+
+    Spec §A.7.3 requires handler-edit ``reason`` to be >= 10 chars
+    (see ``self_modify._HANDLER_REASON_MIN``). If the LLM returns
+    something truthy but under that threshold (e.g. ``"ok"``), the old
+    ``reason or fallback`` short-circuit kept the two-char string,
+    ``edit_handlers`` rejected it with ``ConfigError("reason too short")``,
+    the coordinator caught it as a gate failure, and the pipeline silently
+    returned ``no_change`` — dropping the legitimate handler edit.
+
+    With the length-aware fallback, the short LLM reason is replaced by
+    ``"sleep_handler_revision"`` (>= 10 chars), ``edit_handlers`` accepts
+    it, the edit lands, and the cycle commits as usual.
+    """
+    handler_edit = {
+        "path": "on_audio.py",
+        "content": "def on_audio(event, ctx):\n    return None\n",
+        "delete": False,
+    }
+    coord, runtime = _build_coordinator(
+        tmp_path,
+        scripted_llm_responses=[
+            _completion(
+                _review_json(
+                    handler_edits=[handler_edit],
+                    needs_restart=True,
+                    reason="ok",  # 2 chars — below _HANDLER_REASON_MIN=10
+                )
+            )
+        ],
+    )
+    result = await coord.run(trigger="heartbeat_cycle")
+
+    # Pipeline must NOT silently degrade to no_change — the handler edit
+    # should land and the cycle should request a restart.
+    assert result.status == "committed_restart"
+    assert result.restart is True
+    assert result.sha is not None
+    assert (
+        runtime.region_root / "handlers" / "on_audio.py"
+    ).read_text(encoding="utf-8").startswith("def on_audio")
+    assert runtime.git.status_clean()
+
+    # The sleep commit message (§D.5.6) carries the LLM's review reason
+    # verbatim in the "reason:" line — that's distinct from the
+    # self_modify reason we substituted. The presence of a commit at all
+    # (status=committed_restart above) is the definitive signal that the
+    # fallback fired on the self_modify path; without it, edit_handlers
+    # would have raised and the coordinator would have reverted.
+    log_result = subprocess.run(
+        ["git", "log", "-1", "--pretty=%B", result.sha],
+        cwd=runtime.region_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    message = log_result.stdout
+    assert message.startswith("sleep: heartbeat_cycle @ ")
+    assert "handlers: changed" in message
+    assert "reason: ok" in message  # review reason, unchanged

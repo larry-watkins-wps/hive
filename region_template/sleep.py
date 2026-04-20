@@ -36,7 +36,7 @@ import structlog
 
 from region_template.errors import LlmError
 from region_template.llm_adapter import CompletionRequest, Message
-from region_template.self_modify import HandlerWrite
+from region_template.self_modify import _HANDLER_REASON_MIN, HandlerWrite
 from region_template.types import LifecyclePhase
 
 if TYPE_CHECKING:
@@ -423,8 +423,15 @@ class SleepCoordinator:
         await self._runtime.memory.build_index()
 
     async def _apply_prompt_edit(self, new_text: str, reason: str) -> None:
-        """Step 6: persist a revised prompt via SelfModifyTools."""
-        effective_reason = reason or "sleep_revision"
+        """Step 6: persist a revised prompt via SelfModifyTools.
+
+        Spec §A.7.1 requires ``reason`` to be 1..200 chars — any
+        non-whitespace string is valid, so a simple ``bool`` fallback
+        is sufficient here.
+        """
+        effective_reason = (
+            reason if reason and reason.strip() else "sleep_revision"
+        )
         await self._runtime.tools.edit_prompt(
             new_text=new_text, reason=effective_reason
         )
@@ -442,7 +449,17 @@ class SleepCoordinator:
             ``True`` on success; ``False`` if either gate failed.
         """
         writes, deletes = self._split_handler_edits(edits)
-        effective_reason = reason or "sleep_handler_revision"
+        # Spec §A.7.3: handler reasons must be >= _HANDLER_REASON_MIN chars.
+        # A truthy-only fallback (``reason or ...``) would pass a short LLM
+        # reason like "ok" straight through to ``edit_handlers``, which
+        # would reject it and silently degrade the whole cycle to
+        # ``no_change``. Use a length-aware fallback instead so short LLM
+        # reasons don't drop otherwise-valid handler edits.
+        effective_reason = (
+            reason
+            if reason and len(reason.strip()) >= _HANDLER_REASON_MIN
+            else "sleep_handler_revision"
+        )
 
         try:
             result = await self._runtime.tools.edit_handlers(
