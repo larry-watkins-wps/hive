@@ -12,14 +12,16 @@ Cases:
 import json
 import re
 import uuid
+
 import pytest
 
 from shared.message_envelope import (
+    ENVELOPE_VERSION,
     Envelope,
     EnvelopeValidationError,
-    ENVELOPE_VERSION,
 )
 
+EXPECTED_ATTENTION_HINT = 0.8
 
 # ---------------------------------------------------------------------------
 # (a) Valid envelope round-trips through from_json(to_json())
@@ -57,13 +59,13 @@ def test_round_trip_preserves_all_optional_fields():
         data={"query": "what did I forget?"},
         reply_to="hive/memory/response",
         correlation_id=corr_id,
-        attention_hint=0.8,
+        attention_hint=EXPECTED_ATTENTION_HINT,
     )
     parsed = Envelope.from_json(env.to_json())
 
     assert parsed.reply_to == "hive/memory/response"
     assert parsed.correlation_id == corr_id
-    assert parsed.attention_hint == 0.8
+    assert parsed.attention_hint == EXPECTED_ATTENTION_HINT
 
 
 # ---------------------------------------------------------------------------

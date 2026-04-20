@@ -16,9 +16,15 @@ import types
 
 import pytest
 
-import shared.topics as topics
-from shared.topics import fill, topic_matches, SYSTEM_HEARTBEAT
-
+from shared import topics
+from shared.topics import (
+    COGNITIVE_REGION_INBOX,
+    MODULATOR_CORTISOL,
+    SYSTEM_HEARTBEAT,
+    TopicError,
+    fill,
+    topic_matches,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -148,19 +154,16 @@ def test_placeholder_fill_arbitrary_template():
 
 
 def test_placeholder_fill_cognitive_inbox():
-    from shared.topics import COGNITIVE_REGION_INBOX
     result = fill(COGNITIVE_REGION_INBOX, region="prefrontal_cortex")
     assert result == "hive/cognitive/prefrontal_cortex/#"
 
 
 def test_placeholder_fill_missing_key_raises():
-    from shared.topics import TopicError
     with pytest.raises((TopicError, KeyError)):
         fill(SYSTEM_HEARTBEAT)  # missing region=
 
 
 def test_placeholder_fill_no_placeholders():
-    from shared.topics import MODULATOR_CORTISOL
     assert fill(MODULATOR_CORTISOL) == "hive/modulator/cortisol"
 
 
