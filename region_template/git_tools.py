@@ -107,6 +107,19 @@ class GitTools:
         """Hard-reset the working tree + HEAD to ``sha`` (spec §D.5.7 / §D.8)."""
         self._run(["git", "reset", "--hard", sha])
 
+    def reset_working_tree(self) -> None:
+        """Drop all uncommitted changes — staged, unstaged, AND untracked.
+
+        Used by :class:`region_template.sleep.SleepCoordinator` to recover
+        a clean tree after a failed/aborted sleep pipeline: ``edit_handlers``
+        etc. write fresh files that are untracked until the sleep commit
+        lands, so a plain ``git reset --hard HEAD`` would leave them behind.
+        Runs ``git reset --hard HEAD`` followed by ``git clean -fd``.
+        """
+        self._run(["git", "reset", "--hard", "HEAD"])
+        # -f = force, -d = also remove untracked directories.
+        self._run(["git", "clean", "-fd"])
+
     def last_good_sha(self) -> str:
         """Return ``HEAD^`` — the parent of the current commit (spec §D.5.7).
 
