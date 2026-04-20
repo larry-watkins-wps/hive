@@ -24,7 +24,7 @@ from typing import Any
 
 import pytest
 
-from region_template.errors import LlmError
+from region_template.errors import ConfigError, LlmError
 from region_template.git_tools import GitTools
 from region_template.llm_adapter import (
     CompletionRequest,
@@ -33,6 +33,7 @@ from region_template.llm_adapter import (
 from region_template.memory import MemoryStore
 from region_template.self_modify import SelfModifyTools
 from region_template.sleep import (
+    _REVIEW_SCHEMA_STR,
     SleepCoordinator,
     SleepResult,
 )
@@ -572,3 +573,128 @@ async def test_short_llm_reason_uses_fallback(tmp_path: Path) -> None:
     assert message.startswith("sleep: heartbeat_cycle @ ")
     assert "handlers: changed" in message
     assert "reason: ok" in message  # review reason, unchanged
+
+
+# ---------------------------------------------------------------------------
+# 12. Finding 1 — late-pipeline exception reverts (dirty tree)
+# ---------------------------------------------------------------------------
+
+
+async def test_late_pipeline_exception_reverts_working_tree(
+    tmp_path: Path,
+) -> None:
+    """An oversized ``prompt_edit`` raises ``ConfigError`` from inside
+    ``edit_prompt`` — AFTER LTM writes have landed on disk. The outer
+    try/except must still revert the working tree so no partial state
+    leaks across the sleep boundary.
+
+    Regression: previously steps 6-8 ran OUTSIDE the try/except, so a
+    raise here left LTM files staged with no commit — a dirty tree.
+    """
+    # 200 KB of ASCII — blows past _PROMPT_MAX_BYTES=64*1024.
+    oversized_prompt = "x" * 200_000
+    ltm = {
+        "filename": "episodes/will_be_reverted.md",
+        "content": "Written to disk but never committed.",
+        "topic": "episode",
+        "importance": 0.5,
+        "tags": [],
+        "reason": "late-raise regression",
+    }
+    coord, runtime = _build_coordinator(
+        tmp_path,
+        scripted_llm_responses=[
+            _completion(
+                _review_json(
+                    ltm_candidates=[ltm],
+                    prompt_edit=oversized_prompt,
+                    reason="oversize",
+                )
+            )
+        ],
+    )
+    head_before = runtime.git.current_head_sha()
+
+    # ConfigError comes from edit_prompt._validate_utf8_size.
+    with pytest.raises(ConfigError):
+        await coord.run()
+
+    # Revert must have happened even though the raise came AFTER ltm writes.
+    assert runtime.git.status_clean()
+    assert runtime.git.current_head_sha() == head_before
+    # The LTM file must not survive the revert.
+    assert not (
+        runtime.region_root
+        / "memory"
+        / "ltm"
+        / "episodes"
+        / "will_be_reverted.md"
+    ).exists()
+
+
+# ---------------------------------------------------------------------------
+# 13. Finding 2 — _REVIEW_SCHEMA_STR is not double-braced
+# ---------------------------------------------------------------------------
+
+
+def test_review_schema_is_un_doubled_json() -> None:
+    """The schema constant is a VALUE passed to ``template.format(...)``,
+    not itself a format string — so its braces must be SINGLE. Doubled
+    braces would be shown to the LLM verbatim as ``{{...}}``, producing
+    malformed JSON the model has to reverse-engineer.
+    """
+    # Negative assertions — no double braces anywhere.
+    assert "{{" not in _REVIEW_SCHEMA_STR
+    assert "}}" not in _REVIEW_SCHEMA_STR
+    # Positive: should parse as JSON (proves braces are balanced single-braces).
+    json.loads(_REVIEW_SCHEMA_STR)
+
+
+# ---------------------------------------------------------------------------
+# 14. Finding 3 — compileall leaves no __pycache__ behind
+# ---------------------------------------------------------------------------
+
+
+async def test_compileall_does_not_leave_pycache(tmp_path: Path) -> None:
+    """Handler edits trigger a compileall pass. With
+    ``PYTHONDONTWRITEBYTECODE=1`` set on the subprocess and
+    ``__pycache__/`` in the region's ``.gitignore``, a sleep commit that
+    includes handler edits must NOT leave a pycache dir behind, and must
+    NOT stage any ``.pyc`` files in the commit.
+    """
+    handler_edit = {
+        "path": "on_audio.py",
+        "content": "def on_audio(event, ctx):\n    return None\n",
+        "delete": False,
+    }
+    coord, runtime = _build_coordinator(
+        tmp_path,
+        scripted_llm_responses=[
+            _completion(
+                _review_json(
+                    handler_edits=[handler_edit],
+                    reason="compileall bytecode test",
+                )
+            )
+        ],
+    )
+    result = await coord.run(trigger="heartbeat_cycle")
+    assert result.status == "committed_in_place"
+    assert result.sha is not None
+
+    # No pycache dir left on disk.
+    assert not (
+        runtime.region_root / "handlers" / "__pycache__"
+    ).exists()
+
+    # No .pyc files staged in the commit.
+    show_result = subprocess.run(
+        ["git", "show", "--name-only", "--pretty=", result.sha],
+        cwd=runtime.region_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    committed_paths = show_result.stdout.splitlines()
+    assert not any(p.endswith(".pyc") for p in committed_paths), committed_paths
+    assert not any("__pycache__" in p for p in committed_paths), committed_paths

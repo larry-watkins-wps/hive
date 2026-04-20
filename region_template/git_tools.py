@@ -57,10 +57,14 @@ class GitTools:
 
         A repo is deemed initialised when ``<root>/.git`` exists. If it's
         missing we ``git init``, set ``user.name`` / ``user.email`` scoped
-        to the region, then stage all current contents and make an
-        ``initial region state`` commit. If the initial tree is empty we
-        still need a root commit so ``HEAD`` resolves — ``--allow-empty``
-        is passed for that single call only.
+        to the region, write a minimal ``.gitignore`` (``__pycache__/`` +
+        ``*.pyc``) so no bytecode is ever staged into a sleep commit
+        (defence-in-depth alongside the ``PYTHONDONTWRITEBYTECODE=1`` env
+        var the sleep coordinator sets on its compileall subprocess), then
+        stage all current contents and make an ``initial region state``
+        commit. If the initial tree is empty we still need a root commit
+        so ``HEAD`` resolves — ``--allow-empty`` is passed for that single
+        call only.
         """
         if (self._root / ".git").exists():
             return
@@ -69,6 +73,12 @@ class GitTools:
         self._run(
             ["git", "config", "user.email", f"{self._region_name}@hive.local"]
         )
+        # Write the gitignore BEFORE ``git add .`` so it lands inside the
+        # single bootstrap commit (rather than requiring a second commit
+        # or an --amend). Don't clobber an existing one.
+        gitignore = self._root / ".gitignore"
+        if not gitignore.exists():
+            gitignore.write_text("__pycache__/\n*.pyc\n", encoding="utf-8")
         self._run(["git", "add", "."])
         # The working tree might be empty on a brand-new region; use
         # --allow-empty ONLY for this bootstrap commit so the repo has a

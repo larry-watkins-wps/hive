@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
+import shutil
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -98,20 +100,24 @@ class _ReviewOutput:
 
 
 # JSON schema shown to the LLM in the review prompt.
-# Keeps the reply constrained and easy to parse. Literal curly braces are
-# doubled so ``str.format`` won't try to interpolate them.
-_REVIEW_SCHEMA_STR = """{{
+# Keeps the reply constrained and easy to parse. This constant is passed as
+# a VALUE to ``template.format(review_schema=_REVIEW_SCHEMA_STR)`` — only the
+# template itself is format-substituted, so the schema must use single
+# braces. (An earlier version doubled them on the mistaken assumption that
+# this string would also pass through ``str.format``; the LLM then saw
+# ``{{...}}`` literally and the JSON was malformed.)
+_REVIEW_SCHEMA_STR = """{
   "ltm_candidates": [
-    {{"filename": "str", "content": "str", "topic": "str",
+    {"filename": "str", "content": "str", "topic": "str",
       "importance": 0.0, "tags": ["str"], "reason": "str",
-      "emotional_tag": "str or null"}}
+      "emotional_tag": "str or null"}
   ],
   "prune_keys": ["str"],
   "prompt_edit": "str or null",
-  "handler_edits": [{{"path": "str", "content": "str", "delete": false}}],
+  "handler_edits": [{"path": "str", "content": "str", "delete": false}],
   "needs_restart": false,
   "reason": "str"
-}}"""
+}"""
 
 
 # Strips ```json ... ``` fences from LLM output.
@@ -186,6 +192,75 @@ class SleepCoordinator:
             ltm_writes = await self._integrate_to_ltm(review)
             stm_pruned = await self._prune_stm(review.prune_keys)
             await self._rebuild_index()
+
+            prompt_changed = False
+            handlers_changed = False
+
+            if review.prompt_edit:
+                await self._apply_prompt_edit(
+                    review.prompt_edit, reason=review.reason
+                )
+                prompt_changed = True
+
+            if review.handler_edits:
+                ok = await self._apply_handler_edits(
+                    review.handler_edits, reason=review.reason
+                )
+                if not ok:
+                    # D.5.4 — gate failed. Revert and mark skipped.
+                    self._log.warning("sleep_handler_gate_failed")
+                    await self._revert_working_tree()
+                    return SleepResult(
+                        status="no_change",
+                        restart=False,
+                        sha=None,
+                        events_reviewed=len(snap.get("recent_events", [])),
+                        ltm_writes=0,
+                        stm_pruned=0,
+                    )
+                handlers_changed = True
+
+            events_reviewed = len(snap.get("recent_events", []))
+
+            # If nothing substantive changed, return no_change. Revert the
+            # working tree so spurious byproducts (e.g. index.json rewrite
+            # with a new timestamp, pycache files from compileall) don't
+            # leak across the sleep boundary — "no commit" means "no
+            # change".
+            anything_changed = (
+                ltm_writes > 0
+                or stm_pruned > 0
+                or prompt_changed
+                or handlers_changed
+            )
+            if not anything_changed:
+                await self._revert_working_tree()
+                return SleepResult(
+                    status="no_change",
+                    restart=False,
+                    sha=None,
+                    events_reviewed=events_reviewed,
+                    ltm_writes=ltm_writes,
+                    stm_pruned=stm_pruned,
+                )
+
+            # Build the commit message (D.5.6) and commit.
+            commit_msg = self._format_commit_message(
+                trigger=trigger,
+                events_reviewed=events_reviewed,
+                ltm_writes=ltm_writes,
+                ltm_files=[
+                    c.get("filename", "<unknown>")
+                    for c in review.ltm_candidates
+                ],
+                stm_pruned=stm_pruned,
+                prompt_changed=prompt_changed,
+                handlers_changed=handlers_changed,
+                restart=review.needs_restart
+                and (handlers_changed or prompt_changed),
+                reason=review.reason,
+            )
+            commit = await self._commit(commit_msg)
         except LlmError:
             # LLM failed during review (step 2) or parsing — before any
             # on-disk writes we control. Revert anyway in case something
@@ -195,78 +270,14 @@ class SleepCoordinator:
             await self._revert_working_tree()
             raise
         except BaseException:
-            # Any other failure — revert before bubbling up, to honour the
-            # "no partial commits" guarantee (Principle XIV).
+            # Any other failure after LTM/STM writes or during prompt /
+            # handler / commit steps — revert before bubbling up, to honour
+            # the "no partial commits" guarantee (Principle XIV). Covers
+            # e.g. oversized prompt_edit raising ConfigError, compileall
+            # subprocess failure, GitError on commit, asyncio.CancelledError.
             await self._revert_working_tree()
             raise
 
-        prompt_changed = False
-        handlers_changed = False
-
-        if review.prompt_edit:
-            await self._apply_prompt_edit(
-                review.prompt_edit, reason=review.reason
-            )
-            prompt_changed = True
-
-        if review.handler_edits:
-            ok = await self._apply_handler_edits(
-                review.handler_edits, reason=review.reason
-            )
-            if not ok:
-                # D.5.4 — gate failed. Revert and mark skipped.
-                self._log.warning("sleep_handler_gate_failed")
-                await self._revert_working_tree()
-                return SleepResult(
-                    status="no_change",
-                    restart=False,
-                    sha=None,
-                    events_reviewed=len(snap.get("recent_events", [])),
-                    ltm_writes=0,
-                    stm_pruned=0,
-                )
-            handlers_changed = True
-
-        events_reviewed = len(snap.get("recent_events", []))
-
-        # If nothing substantive changed, return no_change. Revert the
-        # working tree so spurious byproducts (e.g. index.json rewrite
-        # with a new timestamp, pycache files from compileall) don't leak
-        # across the sleep boundary — "no commit" means "no change".
-        anything_changed = (
-            ltm_writes > 0
-            or stm_pruned > 0
-            or prompt_changed
-            or handlers_changed
-        )
-        if not anything_changed:
-            await self._revert_working_tree()
-            return SleepResult(
-                status="no_change",
-                restart=False,
-                sha=None,
-                events_reviewed=events_reviewed,
-                ltm_writes=ltm_writes,
-                stm_pruned=stm_pruned,
-            )
-
-        # Build the commit message (D.5.6) and commit.
-        commit_msg = self._format_commit_message(
-            trigger=trigger,
-            events_reviewed=events_reviewed,
-            ltm_writes=ltm_writes,
-            ltm_files=[
-                c.get("filename", "<unknown>")
-                for c in review.ltm_candidates
-            ],
-            stm_pruned=stm_pruned,
-            prompt_changed=prompt_changed,
-            handlers_changed=handlers_changed,
-            restart=review.needs_restart
-            and (handlers_changed or prompt_changed),
-            reason=review.reason,
-        )
-        commit = await self._commit(commit_msg)
         self._log.info(
             "sleep_committed",
             sha=commit.sha,
@@ -479,7 +490,16 @@ class SleepCoordinator:
             return False
 
         # Bytecode gate — compileall. Runs *after* writes land on disk.
+        # Pass ``PYTHONDONTWRITEBYTECODE=1`` so ordinary imports the
+        # subprocess triggers don't leave stray ``.pyc`` behind, and ALSO
+        # remove ``handlers/__pycache__/`` after the run — ``compileall``
+        # itself ignores the env var because its explicit purpose is to
+        # compile, so we need the belt-and-braces cleanup to keep the
+        # region's git repo free of bytecode noise. The repo's
+        # ``.gitignore`` (written by ``GitTools._ensure_repo``) is the
+        # third line of defence.
         handlers_dir = self._runtime.region_root / "handlers"
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
         try:
             proc = await asyncio.create_subprocess_exec(
                 sys.executable,
@@ -489,23 +509,31 @@ class SleepCoordinator:
                 str(handlers_dir),
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
             _, stderr = await proc.communicate()
-            if proc.returncode != 0:
+            compileall_ok = proc.returncode == 0
+            if not compileall_ok:
                 self._log.warning(
                     "compileall_gate_failed",
                     stderr=stderr.decode(errors="replace").strip(),
                 )
-                return False
         except FileNotFoundError as exc:
-            # Python binary missing from PATH — can't gate. Don't block sleep.
+            # Python binary missing from PATH — can't gate. Don't block
+            # sleep: ast.parse already ran inside edit_handlers.
             self._log.warning(
                 "compileall_unavailable", error=str(exc)
             )
-            # Fall through: ast.parse already ran inside edit_handlers; we
-            # rely on that. Returning True keeps the pipeline flowing.
-            return True
-        return True
+            compileall_ok = True
+        finally:
+            # Always clean up any pycache the subprocess wrote; do this in
+            # a finally so gate failures don't leave bytecode on disk either.
+            pycache_dir = handlers_dir / "__pycache__"
+            if pycache_dir.exists():
+                await asyncio.to_thread(
+                    shutil.rmtree, pycache_dir, ignore_errors=True
+                )
+        return compileall_ok
 
     async def _commit(self, message: str) -> CommitResult:
         """Step 8: ``SelfModifyTools.commit_changes``."""
