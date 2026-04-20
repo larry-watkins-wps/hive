@@ -14,9 +14,9 @@
 set -euo pipefail
 
 # Resolve repo root regardless of the working directory from which the script
-# is invoked (follows symlinks via readlink -f).
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-REPO_ROOT="${SCRIPT_DIR}/.."
+# is invoked. BSD (macOS) readlink lacks -f, so use a portable equivalent.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 ENV_FILE="${REPO_ROOT}/.env"
 EXAMPLE_FILE="${REPO_ROOT}/.env.example"
