@@ -1,0 +1,117 @@
+# glia/regions_registry.yaml
+schema_version: 1
+regions:
+  # ---- Cognitive ----
+  medial_prefrontal_cortex:
+    layer: cognitive
+    required_capabilities: [self_modify, tool_use]
+    default_capabilities: {self_modify: true, tool_use: advanced, vision: false, audio: false}
+    singleton: true
+
+  prefrontal_cortex:
+    layer: cognitive
+    required_capabilities: [self_modify, tool_use]
+    default_capabilities: {self_modify: true, tool_use: advanced}
+    singleton: true
+
+  anterior_cingulate:
+    layer: cognitive
+    required_capabilities: [self_modify, tool_use, can_spawn]
+    default_capabilities: {self_modify: true, tool_use: advanced, can_spawn: true}
+    singleton: true
+
+  hippocampus:
+    layer: cognitive
+    required_capabilities: [self_modify, tool_use]
+    default_capabilities: {self_modify: true, tool_use: advanced}
+    singleton: true
+
+  thalamus:
+    layer: cognitive
+    required_capabilities: [tool_use]
+    default_capabilities: {self_modify: true, tool_use: basic}
+    singleton: true
+
+  association_cortex:
+    layer: cognitive
+    required_capabilities: [self_modify]
+    default_capabilities: {self_modify: true, tool_use: basic}
+    singleton: true
+
+  # ---- Sensory ----
+  visual_cortex:
+    layer: sensory
+    required_capabilities: [self_modify, vision]
+    default_capabilities: {self_modify: true, tool_use: basic, vision: true}
+    singleton: true
+
+  auditory_cortex:
+    layer: sensory
+    required_capabilities: [self_modify, audio]
+    default_capabilities: {self_modify: true, tool_use: basic, audio: true}
+    singleton: true
+
+  # ---- Motor ----
+  motor_cortex:
+    layer: motor
+    required_capabilities: [self_modify, tool_use]
+    default_capabilities: {self_modify: true, tool_use: advanced}
+    singleton: true
+
+  broca_area:
+    layer: motor
+    required_capabilities: [self_modify, tool_use]
+    default_capabilities: {self_modify: true, tool_use: advanced, stream: true}
+    singleton: true
+
+  # ---- Modulatory ----
+  amygdala:
+    layer: modulatory
+    required_capabilities: []
+    default_capabilities: {self_modify: true, tool_use: basic}
+    singleton: true
+
+  vta:
+    layer: modulatory
+    required_capabilities: []
+    default_capabilities: {self_modify: true, tool_use: basic}
+    singleton: true
+
+  # ---- Homeostatic ----
+  insula:
+    layer: homeostatic
+    required_capabilities: []
+    default_capabilities: {self_modify: true, tool_use: basic}
+    singleton: true
+
+  basal_ganglia:
+    layer: homeostatic
+    required_capabilities: [self_modify]
+    default_capabilities: {self_modify: true, tool_use: basic}
+    singleton: true
+
+  # ---- Post-v0 slots (publisher-reserved via ACL, no container yet) ----
+  raphe_nuclei:
+    layer: modulatory
+    singleton: true
+    reserved: true
+
+  locus_coeruleus:
+    layer: modulatory
+    singleton: true
+    reserved: true
+
+  hypothalamus:
+    layer: modulatory
+    singleton: true
+    reserved: true
+
+  basal_forebrain:
+    layer: modulatory
+    singleton: true
+    reserved: true
+
+  cerebellum:
+    layer: motor
+    singleton: true
+    reserved: true
