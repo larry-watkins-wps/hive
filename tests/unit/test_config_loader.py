@@ -156,16 +156,24 @@ def test_missing_llm_provider_raises(tmp_path):
     data = _minimal_valid_config()
     del data["llm"]["provider"]
     path = _write_fixture(tmp_path, data)
-    with pytest.raises(ConfigError):
+    with pytest.raises(ConfigError) as exc_info:
         load_config(path)
+    # Error should locate the failure at/under the llm block so ops can
+    # disambiguate. Don't pin exact wording — assert the field path is present.
+    msg = str(exc_info.value)
+    assert "llm" in msg
 
 
 def test_tool_use_outside_enum_raises(tmp_path):
     data = _minimal_valid_config()
     data["capabilities"]["tool_use"] = "wizard"
     path = _write_fixture(tmp_path, data)
-    with pytest.raises(ConfigError):
+    with pytest.raises(ConfigError) as exc_info:
         load_config(path)
+    # Schema-violation messages must surface the JSON path so operators
+    # aren't left grepping the schema.
+    msg = str(exc_info.value)
+    assert "capabilities.tool_use" in msg
 
 
 def test_missing_name_raises(tmp_path):
@@ -235,14 +243,20 @@ def test_env_interpolation_replaces_value(tmp_path, monkeypatch):
 
 
 def test_env_interpolation_missing_env_raises(tmp_path, monkeypatch):
-    """Missing env var referenced via ${ENV:VAR} → ConfigError."""
+    """Missing env var referenced via ${ENV:VAR} → ConfigError.
+
+    The error should name the missing env var AND include the config file
+    path so ops can disambiguate when multiple regions fail at boot.
+    """
     monkeypatch.delenv("HIVE_TEST_MISSING", raising=False)
     data = _minimal_valid_config()
     data["llm"]["provider"] = "${ENV:HIVE_TEST_MISSING}"
     path = _write_fixture(tmp_path, data)
     with pytest.raises(ConfigError) as exc_info:
         load_config(path)
-    assert "HIVE_TEST_MISSING" in str(exc_info.value)
+    msg = str(exc_info.value)
+    assert "HIVE_TEST_MISSING" in msg
+    assert str(path) in msg
 
 
 def test_env_interpolation_nested_dict(tmp_path, monkeypatch):

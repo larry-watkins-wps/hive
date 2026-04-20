@@ -259,7 +259,8 @@ def load_config(path: Path) -> RegionConfig:
         raise ConfigError(f"config file is empty: {path}")
     if not isinstance(data, dict):
         raise ConfigError(
-            f"config must be a YAML mapping at the top level; got {type(data).__name__}"
+            f"{path}: config must be a YAML mapping at the top level; "
+            f"got {type(data).__name__}"
         )
 
     # 2. Deep-merge over defaults
@@ -270,13 +271,21 @@ def load_config(path: Path) -> RegionConfig:
     try:
         _VALIDATOR.validate(merged)
     except JsonSchemaValidationError as exc:
-        raise ConfigError(f"config schema violation: {exc.message}") from exc
+        # exc.absolute_path is a deque of field names leading to the bad value.
+        # Empty deque → top-level issue; surface as "<root>".
+        path_parts = ".".join(str(p) for p in exc.absolute_path) or "<root>"
+        raise ConfigError(
+            f"{path}: config schema violation at {path_parts}: {exc.message}"
+        ) from exc
 
     # 4. Env interpolation
-    merged = _interp_env(merged)
+    try:
+        merged = _interp_env(merged)
+    except ConfigError as exc:
+        raise ConfigError(f"{path}: {exc}") from exc
 
     # 5. Construct typed object
     try:
         return RegionConfig(**merged)
     except ValidationError as exc:
-        raise ConfigError(f"config model violation: {exc}") from exc
+        raise ConfigError(f"{path}: config model violation: {exc}") from exc
