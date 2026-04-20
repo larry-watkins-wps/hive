@@ -115,6 +115,15 @@ class GitTools:
         """
         return self._run(["git", "rev-parse", "HEAD^"]).stdout.strip()
 
+    def current_head_sha(self) -> str:
+        """Return ``HEAD`` — the sha of the current commit.
+
+        Used by :mod:`region_template.self_modify` to check whether the
+        region has committed any change since bootstrap before
+        requesting a restart (spec §A.7.6).
+        """
+        return self._run(["git", "rev-parse", "HEAD"]).stdout.strip()
+
     # ------------------------------------------------------------------
     # Subprocess helper
     # ------------------------------------------------------------------
