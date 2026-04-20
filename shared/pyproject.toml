@@ -1,0 +1,15 @@
+[build-system]
+requires = ["flit_core>=3.9"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "hive-shared"
+version = "0.1.0"
+description = "Shared schemas and utilities for Hive v0"
+requires-python = ">=3.11"
+dependencies = [
+  "jsonschema>=4.20",
+]
+
+[project.urls]
+Repository = "https://github.com/hive-local/hive"
