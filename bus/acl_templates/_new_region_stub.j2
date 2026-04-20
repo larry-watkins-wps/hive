@@ -1,0 +1,6 @@
+{# Per-region ACL: _new_region_stub — minimal grant for a newly spawned region #}
+{# Base (_base.j2) already covers: heartbeat/stats publish, metacog/sleep writes,  #}
+{# and global broadcast subscriptions. This stub adds only the cognitive namespace. #}
+{# Additional access granted via approved code-change flow after spawn.             #}
+topic read  hive/cognitive/{{ region }}/#
+topic write hive/cognitive/{{ region }}/#
