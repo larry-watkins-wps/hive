@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hive.local/schemas/envelope/v1.json",
+  "title": "Hive Message Envelope v1",
+  "type": "object",
+  "required": ["id", "timestamp", "source_region", "topic", "payload", "envelope_version"],
+  "additionalProperties": false,
+  "properties": {
+    "envelope_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Breaking changes bump this."
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID v4 unique to this message. Used for deduplication and tracing."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 UTC timestamp with millisecond precision."
+    },
+    "source_region": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{2,30}$",
+      "description": "Region name. Must match the region's config.name."
+    },
+    "topic": {
+      "type": "string",
+      "minLength": 1,
+      "description": "MQTT topic this was published to. Duplicated in payload for convenience; MUST match actual pub topic."
+    },
+    "reply_to": {
+      "type": ["string", "null"],
+      "description": "Optional: topic the receiver SHOULD respond on."
+    },
+    "correlation_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Links a chain of messages that descend from an originating event."
+    },
+    "attention_hint": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Publisher's suggested priority. Thalamus uses this for gating. Default 0.5."
+    },
+    "payload": {
+      "type": "object",
+      "required": ["content_type", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "content_type": {
+          "type": "string",
+          "enum": [
+            "text/plain",
+            "application/json",
+            "application/hive+memory-query",
+            "application/hive+memory-response",
+            "application/hive+sensory-features",
+            "application/hive+motor-intent",
+            "application/hive+modulator",
+            "application/hive+self-state",
+            "application/hive+spawn-proposal",
+            "application/hive+spawn-request",
+            "application/hive+code-change-proposal",
+            "application/hive+reflection",
+            "application/hive+error"
+          ],
+          "description": "Payload MIME-ish type. Specialized types have their own sub-schemas (B.3)."
+        },
+        "data": {
+          "description": "Type depends on content_type. Validated by matching sub-schema."
+        },
+        "encoding": {
+          "type": "string",
+          "enum": ["utf-8", "base64"],
+          "default": "utf-8"
+        }
+      }
+    }
+  }
+}
