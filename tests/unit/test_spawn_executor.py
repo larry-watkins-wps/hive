@@ -4,6 +4,7 @@ Covers the 8-step pipeline from spec §E.11 + the query responder.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 from pathlib import Path
@@ -440,6 +441,98 @@ async def test_failed_event_cleans_up_and_publishes(
     )
     assert failed_env.correlation_id == "corr-fail"
     assert "reason" in failed_env.payload.data
+
+
+@pytest.mark.asyncio
+async def test_acl_render_failure_cleans_up(
+    launcher: MagicMock,
+    registry: RegionRegistry,
+    acl_manager: MagicMock,
+    publish: AsyncMock,
+    regions_root: Path,
+    acl_templates: Path,
+) -> None:
+    """I-1: ApplyResult(ok=False) triggers cleanup + spawn/failed, no spawn/complete."""
+    acl_manager.render_and_apply = AsyncMock(
+        return_value=ApplyResult(ok=False, reason="acl conflict: duplicate topic")
+    )
+    ex = SpawnExecutor(
+        launcher=launcher,
+        registry=registry,
+        acl_manager=acl_manager,
+        publish=publish,
+        regions_root=regions_root,
+        acl_templates_dir=acl_templates,
+        runner=_default_git_runner(),
+    )
+    entry = await ex.handle_request(_spawn_envelope(correlation_id="corr-acl"))
+
+    assert entry.ok is False
+    assert entry.reason is not None
+    assert "ACL render_and_apply failed" in entry.reason or "acl conflict" in entry.reason
+
+    # (a) region dir removed
+    assert not (regions_root / "new_region").exists()
+    # (b) ACL template removed
+    assert not (acl_templates / "new_region.j2").exists()
+
+    topics = [call.args[0].topic for call in publish.await_args_list]
+    # (c) spawn/failed published
+    assert TOPIC_SPAWN_FAILED in topics
+    # (d) no spawn/complete published
+    assert TOPIC_SPAWN_COMPLETE not in topics
+
+
+@pytest.mark.asyncio
+async def test_cancellation_cleans_up_but_does_not_publish(
+    launcher: MagicMock,
+    registry: RegionRegistry,
+    acl_manager: MagicMock,
+    publish: AsyncMock,
+    regions_root: Path,
+    acl_templates: Path,
+) -> None:
+    """I-2: CancelledError during pipeline cleans up scaffold without publishing."""
+    # Use an Event that never fires so the task can be cancelled mid-pipeline.
+    block_event = asyncio.Event()
+
+    async def _blocking_render_and_apply() -> None:
+        await block_event.wait()  # will never resolve; task is cancelled first
+
+    acl_manager.render_and_apply = AsyncMock(side_effect=_blocking_render_and_apply)
+
+    ex = SpawnExecutor(
+        launcher=launcher,
+        registry=registry,
+        acl_manager=acl_manager,
+        publish=publish,
+        regions_root=regions_root,
+        acl_templates_dir=acl_templates,
+        runner=_default_git_runner(),
+    )
+
+    task = asyncio.create_task(ex.handle_request(_spawn_envelope()))
+
+    # Wait for the task to reach the blocking point, then cancel.
+    # 50 ms deadline is more than enough for the synchronous scaffold steps.
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.shield(task), timeout=0.05)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # region dir removed
+    assert not (regions_root / "new_region").exists()
+    # ACL template removed (was written before render_and_apply was called)
+    assert not (acl_templates / "new_region.j2").exists()
+    # No spawn/complete or spawn/failed published
+    spawn_topics = [
+        call.args[0].topic
+        for call in publish.await_args_list
+        if call.args[0].topic in (TOPIC_SPAWN_COMPLETE, TOPIC_SPAWN_FAILED)
+    ]
+    assert spawn_topics == []
 
 
 # ---------------------------------------------------------------------------

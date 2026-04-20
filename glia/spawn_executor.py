@@ -21,6 +21,8 @@ Executes ACC-approved spawn requests that arrive on
 5.  Invoke ``AclManager.render_and_apply()`` to rebuild ``bus/acl.conf``
     and SIGHUP mosquitto.
 6.  ``Launcher.launch_region(name)`` (wrapped in :func:`asyncio.to_thread`).
+    Note: spec §E.11 names this ``launcher.start``; the Launcher API uses
+    ``launch_region``.  Same semantics.
 7.  Publish ``hive/system/spawn/complete`` with ``name``, ``commit_sha`` and
     the originating ``correlation_id`` copied from the request.
 8.  Append to a rolling 100-event in-memory log, exposed via
@@ -30,15 +32,20 @@ On any step-2..6 failure the pipeline runs cleanup: ``rm -rf`` the new region
 directory, delete the new ACL template, publish ``spawn/failed`` with the
 reason + correlation_id, and append a failed log entry.
 
-v0 deviation (documented)
--------------------------
-The spec says the ACL stub is "parameterized by ``initial_subscriptions``".
-The existing ``_new_region_stub.j2`` only references ``{{ region }}`` and
-grants the region's own ``hive/cognitive/<region>/#`` namespace (read+write).
-We therefore copy the stub **verbatim** — subscriptions outside the region's
-own namespace are blocked by ACL until an approved code-change amends the
-per-region template.  Subscriptions inside the cognitive namespace work out
-of the box.
+v0 deviations (documented)
+--------------------------
+**Step 3 — config.yaml serialisation**: the spec mentions a
+``config_loader.serialize`` helper that does not exist in the codebase.
+Step 3 therefore uses a direct ``ruamel.yaml`` dump instead.  The dumped
+shape matches the region_template config schema exactly.
+
+**ACL stub parameterisation**: the spec says the ACL stub is "parameterized
+by ``initial_subscriptions``".  The existing ``_new_region_stub.j2`` only
+references ``{{ region }}`` and grants the region's own
+``hive/cognitive/<region>/#`` namespace (read+write).  We therefore copy the
+stub **verbatim** — subscriptions outside the region's own namespace are
+blocked by ACL until an approved code-change amends the per-region template.
+Subscriptions inside the cognitive namespace work out of the box.
 
 This is a conscious v0 reduction: it keeps the pipeline deterministic, avoids
 a brittle Jinja/regex expansion of arbitrary topic strings, and honours
@@ -284,7 +291,11 @@ class SpawnExecutor:
             commit_sha = self._scaffold_region(name, data)
             self._add_acl_template(name)
             acl_template_written = True
-            await self._acl_manager.render_and_apply()
+            acl_result = await self._acl_manager.render_and_apply()
+            if not acl_result.ok:
+                raise GliaError(
+                    f"ACL render_and_apply failed: {acl_result.reason}"
+                )
             await asyncio.to_thread(self._launcher.launch_region, name)
         except (GliaError, OSError, subprocess.SubprocessError) as exc:
             reason = f"spawn failed for {name!r}: {exc}"
@@ -308,6 +319,11 @@ class SpawnExecutor:
                 change_id=change_id,
                 reason=reason,
             )
+        except asyncio.CancelledError:
+            # Clean up half-scaffolded state but do not publish (caller is
+            # mid-cancel; broker may be unavailable or partially torn down).
+            self._cleanup(name, acl_template_written=acl_template_written)
+            raise  # propagate cancellation
 
         # --- Step 7: publish complete ---
         await self._publish_quiet(
