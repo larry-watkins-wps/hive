@@ -5,6 +5,7 @@ are deterministic and do not sleep.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -110,6 +111,24 @@ def supervisor(
         clock=clock,
         sleeper=sleeper,
     )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _drain_pending(supervisor: Supervisor) -> None:
+    """Await any in-flight fire-and-forget restart tasks.
+
+    Restart work is scheduled via ``asyncio.create_task`` and tracked in
+    ``supervisor._pending_tasks``; tests that assert side-effects of those
+    tasks must drain them first. The done-callback removes each task from
+    the set as it completes, so snapshot before gathering.
+    """
+    pending = list(supervisor._pending_tasks)
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +330,7 @@ async def test_on_region_exit_0_restarts_after_pause(
     publish: AsyncMock,
 ) -> None:
     await supervisor.on_region_exit("amygdala", 0)
+    await _drain_pending(supervisor)
     sleeper.assert_awaited_once_with(PLANNED_RESTART_PAUSE_S)
     sub_mocks["launcher"].restart_region.assert_called_once_with("amygdala")
     sub_mocks["rollback"].rollback_region.assert_not_awaited()
@@ -332,6 +352,7 @@ async def test_on_region_exit_1_records_crash_and_restarts_with_backoff(
     sleeper: AsyncMock,
 ) -> None:
     await supervisor.on_region_exit("amygdala", 1)
+    await _drain_pending(supervisor)
     sleeper.assert_awaited_once_with(EXPECTED_FIRST_BACKOFF)
     sub_mocks["launcher"].restart_region.assert_called_once_with("amygdala")
     sub_mocks["rollback"].rollback_region.assert_not_awaited()
@@ -344,6 +365,7 @@ async def test_on_region_exit_4_treated_as_transient(
     sleeper: AsyncMock,
 ) -> None:
     await supervisor.on_region_exit("amygdala", 4)
+    await _drain_pending(supervisor)
     sleeper.assert_awaited_once_with(EXPECTED_FIRST_BACKOFF)
     sub_mocks["launcher"].restart_region.assert_called_once_with("amygdala")
 
@@ -355,6 +377,7 @@ async def test_on_region_exit_137_treated_as_transient(
     sleeper: AsyncMock,
 ) -> None:
     await supervisor.on_region_exit("amygdala", 137)
+    await _drain_pending(supervisor)
     sleeper.assert_awaited_once_with(EXPECTED_FIRST_BACKOFF)
     sub_mocks["launcher"].restart_region.assert_called_once_with("amygdala")
 
@@ -403,6 +426,7 @@ async def test_backoff_schedule_progression(
         # check doesn't interact with the schedule test.
         clock.now = float(i) * 0.001  # tiny advance; within window anyway
         await sup.on_region_exit("amygdala", 1)
+        await _drain_pending(sup)
 
     observed = [call.args[0] for call in sleeper.await_args_list]
     assert tuple(observed) == BACKOFF_SEQUENCE
@@ -513,6 +537,7 @@ async def test_crash_loop_trips_after_threshold(
     for i in range(CRASH_THRESHOLD):
         clock.now = float(i)
         await supervisor.on_region_exit("amygdala", 1)
+        await _drain_pending(supervisor)
 
     # 5th crash trips — no 5th restart, no 5th sleeper call.
     assert (
@@ -530,6 +555,7 @@ async def test_crash_loop_trips_after_threshold(
     # 6th crash: circuit still broken, no further restart.
     clock.now = 5.0
     await supervisor.on_region_exit("amygdala", 1)
+    await _drain_pending(supervisor)
     assert (
         sub_mocks["launcher"].restart_region.call_count
         == EXPECTED_RELAUNCH_CALLS_AFTER_FIVE_SAFE_CRASHES
@@ -548,11 +574,13 @@ async def test_crash_window_expires_old_entries(
     for i in range(HEALTHY_CRASH_COUNT):
         clock.now = float(i)
         await supervisor.on_region_exit("amygdala", 1)
+        await _drain_pending(supervisor)
 
     # Jump beyond the 600s window, crash once more — old entries trimmed,
     # current window count is 1, circuit NOT broken.
     clock.now = TIME_AFTER_WINDOW_S
     await supervisor.on_region_exit("amygdala", 1)
+    await _drain_pending(supervisor)
 
     metacog_kinds = [
         call.args[0].payload.data["kind"]
@@ -574,6 +602,7 @@ async def test_handle_region_unhealthy_triggers_restart_with_backoff(
     sleeper: AsyncMock,
 ) -> None:
     await supervisor._handle_region_unhealthy("amygdala", reason="miss_threshold")
+    await _drain_pending(supervisor)
     sleeper.assert_awaited_once_with(EXPECTED_FIRST_BACKOFF)
     sub_mocks["launcher"].restart_region.assert_called_once_with("amygdala")
     # Rollback NOT invoked — heartbeat miss is not a §E.5 trigger.
@@ -595,6 +624,7 @@ async def test_handle_region_healthy_does_not_reset_crash_count(
 ) -> None:
     # Induce one crash.
     await supervisor.on_region_exit("amygdala", 1)
+    await _drain_pending(supervisor)
     assert supervisor._state["amygdala"].crash_count == 1
     await supervisor._handle_region_healthy("amygdala")
     assert supervisor._state["amygdala"].crash_count == 1
@@ -664,6 +694,50 @@ async def test_stop_without_start_is_noop(supervisor: Supervisor) -> None:
     await supervisor.stop()
 
 
+@pytest.mark.asyncio
+async def test_stop_cancels_pending_restart_tasks(
+    sub_mocks: dict[str, Any], publish: AsyncMock, clock: _Clock
+) -> None:
+    """A long backoff in flight is cancelled by stop() (doesn't stall teardown)."""
+    # Sleeper that never returns — simulates a 300s backoff we don't want to wait on.
+    forever = asyncio.Event()
+
+    async def never_returns(_: float) -> None:
+        await forever.wait()
+
+    sub_mocks["heartbeat_monitor"].on_heartbeat = AsyncMock()
+    sub_mocks["heartbeat_monitor"].start = AsyncMock()
+    sub_mocks["heartbeat_monitor"].stop = AsyncMock()
+    sub_mocks["metrics"].on_region_stats = AsyncMock()
+    sub_mocks["metrics"].start = AsyncMock()
+    sub_mocks["metrics"].stop = AsyncMock()
+    sup = Supervisor(
+        sub_mocks["registry"],
+        sub_mocks["launcher"],
+        sub_mocks["heartbeat_monitor"],
+        sub_mocks["acl_manager"],
+        sub_mocks["rollback"],
+        sub_mocks["spawn_executor"],
+        sub_mocks["codechange_executor"],
+        sub_mocks["metrics"],
+        publish=publish,
+        clock=clock,
+        sleeper=never_returns,
+    )
+    await sup.start()
+
+    await sup.on_region_exit("amygdala", 1)
+    # Yield so the scheduled task starts and blocks on the sleeper.
+    await asyncio.sleep(0)
+    assert len(sup._pending_tasks) == 1
+
+    await sup.stop()
+
+    assert len(sup._pending_tasks) == 0
+    # Sleeper never returned → no relaunch happened.
+    sub_mocks["launcher"].restart_region.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # 10. Reset crash counter
 # ---------------------------------------------------------------------------
@@ -674,6 +748,7 @@ async def test_reset_crash_counter_clears_state(
     supervisor: Supervisor, clock: _Clock
 ) -> None:
     await supervisor.on_region_exit("amygdala", 1)
+    await _drain_pending(supervisor)
     assert supervisor._state["amygdala"].crash_count == 1
     supervisor._circuit_broken.add("amygdala")
     supervisor.reset_crash_counter("amygdala")

@@ -50,7 +50,6 @@ import asyncio
 import time
 from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
@@ -185,6 +184,14 @@ class Supervisor:
         """Stop background loops + cancel any pending restart tasks. Idempotent."""
         if not self._started:
             return
+        # Cancel all pending restart tasks first so long backoffs don't stall teardown.
+        for task in list(self._pending_tasks):
+            if not task.done():
+                task.cancel()
+        if self._pending_tasks:
+            await asyncio.gather(*list(self._pending_tasks), return_exceptions=True)
+        self._pending_tasks.clear()
+
         # Best-effort: always attempt teardown even if one sub-module raises.
         try:
             await self._heartbeat_monitor.stop()
@@ -195,14 +202,6 @@ class Supervisor:
         except Exception:  # noqa: BLE001
             log.exception("supervisor.metrics_stop_failed")
 
-        # Cancel pending restart coroutines.
-        for task in list(self._pending_tasks):
-            if not task.done():
-                task.cancel()
-        for task in list(self._pending_tasks):
-            with suppress(asyncio.CancelledError, Exception):
-                await task
-        self._pending_tasks.clear()
         self._started = False
         log.info("supervisor.stopped")
 
@@ -295,10 +294,13 @@ class Supervisor:
         )
 
         if exit_code == 0:
-            await self._handle_planned_restart(region)
+            await self._schedule_planned_restart(region)
             return
 
         if exit_code in _ROLLBACK_EXIT_CODES:
+            # Exit 2/3 paths delegate to rollback and deliberately skip _register_crash.
+            # A rollback-worthy crash is a spec-distinct category from exit-1 runtime
+            # errors; the crash budget covers the latter.
             kind = (
                 "region_config_error"
                 if exit_code == _EXIT_CODE_CONFIG_ERROR
@@ -312,8 +314,8 @@ class Supervisor:
             await self._invoke_rollback(region, exit_code)
             return
 
-        # Transient — restart with backoff.
-        await self._restart_with_backoff(region, exit_code)
+        # Transient — restart with backoff (fire-and-forget).
+        await self._schedule_restart(region, exit_code)
 
     # ------------------------------------------------------------------
     # Heartbeat-monitor callbacks
@@ -330,7 +332,10 @@ class Supervisor:
             region=region,
             reason=reason,
         )
-        await self._restart_with_backoff(region, exit_code=None)
+        # Spec §E.4 grey area: heartbeat misses count toward the crash budget.
+        # This is conservative — a chronically unresponsive region is arguably
+        # "crashed" regardless of whether docker saw an exit.
+        await self._schedule_restart(region, exit_code=None)
 
     async def _handle_region_healthy(self, region: str) -> None:
         """On recovery clear the circuit breaker (but keep crash count)."""
@@ -341,6 +346,20 @@ class Supervisor:
     # ------------------------------------------------------------------
     # Restart policy internals
     # ------------------------------------------------------------------
+
+    async def _schedule_restart(
+        self, region: str, exit_code: int | None
+    ) -> None:
+        """Fire-and-forget restart; tracked in _pending_tasks for cancellation."""
+        task = asyncio.create_task(self._restart_with_backoff(region, exit_code))
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+
+    async def _schedule_planned_restart(self, region: str) -> None:
+        """Fire-and-forget planned restart; tracked in _pending_tasks."""
+        task = asyncio.create_task(self._handle_planned_restart(region))
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
 
     async def _handle_planned_restart(self, region: str) -> None:
         """Exit 0 path: pause, then relaunch. Crash counter untouched."""
@@ -466,6 +485,7 @@ class Supervisor:
         if crash_count <= 0:
             return 0.0
         idx = min(crash_count - 1, len(self._backoff_schedule) - 1)
+        # cap differs from schedule[-1] (180); must return cap explicitly.
         if crash_count > len(self._backoff_schedule):
             return self._backoff_cap_s
         return self._backoff_schedule[idx]
