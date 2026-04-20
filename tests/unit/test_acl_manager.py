@@ -24,7 +24,7 @@ from docker.errors import (  # type: ignore[import-untyped]
     NotFound,
 )
 
-from glia.acl_manager import ACL_PATH, AclManager, ApplyResult
+from glia.acl_manager import AclManager, ApplyResult
 from glia.launcher import GliaError
 from glia.registry import RegionRegistry
 
@@ -130,6 +130,7 @@ def test_render_all_inlines_region_specific_rules(
     acl_manager: AclManager,
 ) -> None:
     rendered = acl_manager.render_all()
+    # Coupled to bus/acl_templates/amygdala.j2 and hippocampus.j2 contents.
     # amygdala's per-region rule
     assert "topic write hive/modulator/cortisol" in rendered
     # hippocampus-specific rule from hippocampus.j2 (amygdala writes this)
@@ -331,10 +332,20 @@ async def test_reload_broker_api_error_wrapped(
 
 
 # ---------------------------------------------------------------------------
-# ACL_PATH constant (sanity)
+# _atomic_write byte-level correctness
 # ---------------------------------------------------------------------------
 
 
-def test_module_constants_point_at_repo_bus_dir() -> None:
-    assert ACL_PATH.name == "acl.conf"
-    assert ACL_PATH.parent.name == "bus"
+@pytest.mark.asyncio
+async def test_atomic_write_preserves_lf_line_endings(
+    acl_manager: AclManager,
+    tmp_path: Path,
+) -> None:
+    """acl.conf must contain only LF line endings — no CRLF (Windows guard)."""
+    result = await acl_manager.render_and_apply()
+    assert result.ok is True
+
+    raw = (tmp_path / "acl.conf").read_bytes()
+    assert b"\r\n" not in raw, (
+        "acl.conf contains CRLF — _atomic_write must use O_BINARY on Windows"
+    )

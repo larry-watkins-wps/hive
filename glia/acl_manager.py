@@ -27,6 +27,7 @@ call in ``asyncio.to_thread`` where appropriate.
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -45,8 +46,6 @@ log = structlog.get_logger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BUS_DIR = REPO_ROOT / "bus"
 TEMPLATE_DIR = BUS_DIR / "acl_templates"
-ACL_PATH = BUS_DIR / "acl.conf"
-ACL_TMP_PATH = BUS_DIR / "acl.conf.tmp"
 BROKER_CONTAINER = "mosquitto"
 
 _BASE_TEMPLATE_NAME = "_base.j2"
@@ -165,6 +164,7 @@ class AclManager:
                     f"failed to initialise docker client: {exc}"
                 ) from exc
 
+        # Note: supervisor wraps calls in asyncio.to_thread as needed.
         try:
             container = client.containers.get(BROKER_CONTAINER)
         except NotFound as exc:
@@ -230,9 +230,18 @@ class AclManager:
         return None
 
     def _atomic_write(self, body: str) -> None:
-        """Write ``body`` to ``acl.conf`` atomically via a tmp file + rename."""
+        """Write ``body`` to ``acl.conf`` atomically via a tmp file + rename.
+
+        # O_BINARY on Windows avoids LF->CRLF translation (mirrors region_template/self_modify.py).
+        """
         self._bus_dir.mkdir(parents=True, exist_ok=True)
         tmp = self._bus_dir / "acl.conf.tmp"
         final = self._bus_dir / "acl.conf"
-        tmp.write_text(body, encoding="utf-8")
-        tmp.replace(final)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
+        encoded = body.encode("utf-8")
+        fd = os.open(str(tmp), flags, 0o644)
+        try:
+            os.write(fd, encoded)
+        finally:
+            os.close(fd)
+        os.replace(str(tmp), str(final))
