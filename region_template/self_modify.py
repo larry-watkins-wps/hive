@@ -40,7 +40,6 @@ import io
 import os
 import re
 import uuid
-from collections.abc import Awaitable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Protocol
@@ -163,7 +162,7 @@ class _RuntimeLike(Protocol):
         self,
         proposal: SpawnProposal,
         correlation_id: str,
-    ) -> Awaitable[SpawnResult]: ...
+    ) -> asyncio.Future[SpawnResult]: ...
 
     async def shutdown(self, reason: str) -> None: ...
 
@@ -690,6 +689,12 @@ def _atomic_write_text(target: Path, content: str) -> tuple[int, int]:
     before rename so the content is durable before the directory
     entry flips.
 
+    The temp fd is opened with ``O_BINARY`` (a no-op on POSIX via the
+    ``getattr(os, "O_BINARY", 0)`` idiom) so Windows does not silently
+    translate ``LF`` to ``CRLF``. That keeps ``bytes_written`` honest
+    (matches ``stat().st_size``) and preserves cross-platform byte
+    parity for files previously written with LF endings.
+
     Returns ``(bytes_written, diff_lines)`` where ``diff_lines`` is
     the absolute difference between the new line count and the
     previous one (0 if the file didn't exist).
@@ -697,8 +702,11 @@ def _atomic_write_text(target: Path, content: str) -> tuple[int, int]:
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")
     encoded = content.encode("utf-8")
-    # Write + fsync + replace.
-    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    # Write + fsync + replace. O_BINARY prevents Windows LF→CRLF
+    # translation; it's absent on POSIX, so getattr(..., 0) makes it
+    # a safe no-op there.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
+    fd = os.open(str(tmp), flags, 0o644)
     try:
         os.write(fd, encoded)
         os.fsync(fd)
@@ -709,7 +717,14 @@ def _atomic_write_text(target: Path, content: str) -> tuple[int, int]:
     if target.exists():
         with target.open("r", encoding="utf-8") as fh:
             old_lines = sum(1 for _ in fh)
-    os.replace(str(tmp), str(target))
+    try:
+        os.replace(str(tmp), str(target))
+    except OSError:
+        # On replace failure (e.g. target held by another process on
+        # Windows) clean up the .tmp file so it doesn't accumulate.
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(str(tmp))
+        raise
     new_lines = content.count("\n") + (
         0 if content.endswith("\n") or not content else 1
     )

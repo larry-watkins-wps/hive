@@ -164,6 +164,9 @@ async def test_edit_prompt_happy_path(tmp_path: Path) -> None:
     assert result.ok
     assert result.path == root / "prompt.md"
     assert result.bytes_written == len(_PROMPT_FIXTURE.encode("utf-8"))
+    # With the O_BINARY fix, bytes_written must match the file's actual
+    # on-disk size on every platform (no LF→CRLF translation on Windows).
+    assert result.bytes_written == (root / "prompt.md").stat().st_size
     assert result.diff_lines >= 1
     assert (root / "prompt.md").read_text(encoding="utf-8") == _PROMPT_FIXTURE
 
@@ -222,6 +225,8 @@ async def test_edit_subscriptions_happy_path(tmp_path: Path) -> None:
     result = await tools.edit_subscriptions(entries, "add subs")
     assert result.ok
     assert result.path == root / "subscriptions.yaml"
+    # bytes_written must match on-disk size (no LF→CRLF on Windows).
+    assert result.bytes_written == (root / "subscriptions.yaml").stat().st_size
     text = (root / "subscriptions.yaml").read_text(encoding="utf-8")
     assert "hive/a/b" in text
     assert "hive/x/+/y" in text
@@ -449,6 +454,8 @@ async def test_write_ltm_happy_path(tmp_path: Path) -> None:
     assert result.ok
     target = root / "memory" / "ltm" / "core" / "identity.md"
     assert target.exists()
+    # Pin the invariant: reported bytes_written matches on-disk size.
+    assert result.bytes_written == target.stat().st_size
     assert "I am the test region." in target.read_text(encoding="utf-8")
 
 
