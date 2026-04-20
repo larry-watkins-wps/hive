@@ -249,15 +249,12 @@ class HeartbeatMonitor:
     # ------------------------------------------------------------------
 
     async def _sweep_loop(self) -> None:
-        try:
-            while not self._stopping:
-                await self._sweep_once()
-                try:
-                    await asyncio.sleep(self._interval_s)
-                except asyncio.CancelledError:
-                    break
-        except asyncio.CancelledError:
-            pass
+        while not self._stopping:
+            await self._sweep_once()
+            try:
+                await asyncio.sleep(self._interval_s)
+            except asyncio.CancelledError:
+                break
 
     async def _sweep_once(self) -> None:
         """One sweep pass: increment miss counters; fire callbacks."""
@@ -269,6 +266,7 @@ class HeartbeatMonitor:
             gap = now - rec.last_heartbeat_ts
             if gap > self._miss_threshold_s:
                 rec.consecutive_misses += 1
+                # Spec §E.3: fire when STRICTLY > max_misses (default 3 → fires on 4th miss, ~90s).
                 if rec.consecutive_misses > self._max_misses:
                     rec.dead = True
                     log.warning(

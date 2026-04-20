@@ -6,7 +6,6 @@ exceedance both fire on_unhealthy. Recovery fires on_healthy.
 """
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import pytest
@@ -344,30 +343,60 @@ async def test_heartbeat_with_invalid_payload_does_not_crash() -> None:
     assert mon.all_liveness() == {}
 
 
+
 @pytest.mark.asyncio
-async def test_sweep_loop_runs_and_increments_misses() -> None:
-    """Integration-lite: the real sweep loop increments misses over wall time."""
+async def test_on_unhealthy_callback_exception_does_not_kill_sweep() -> None:
+    """A raising on_unhealthy callback must not propagate out of _sweep_once."""
+
+    async def boom(region: str, reason: str) -> None:
+        raise RuntimeError("boom")
+
     clock = _Clock(0.0)
-    on_unhealthy = _RecordingUnhealthy()
     mon = HeartbeatMonitor(
         clock=clock,
-        on_unhealthy=on_unhealthy,
-        interval_s=0.01,
-        miss_threshold_s=0.0,  # any gap counts as a miss
+        on_unhealthy=boom,
+        miss_threshold_s=10.0,
         max_misses=1,
     )
     await mon.on_heartbeat(_hb_envelope("amygdala"))
+    # Pre-seed misses so next sweep crosses the threshold.
+    mon._liveness["amygdala"].consecutive_misses = 1
+    clock.advance(15.0)
+
+    # _sweep_once must not raise even though the callback does.
+    await mon._sweep_once()
+    rec = mon.liveness("amygdala")
+    assert rec is not None
+    assert rec.dead is True
+
+    # Second sweep: already dead, callback must not be called again.
+    clock.advance(15.0)
+    await mon._sweep_once()  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_on_healthy_callback_exception_does_not_kill_sweep() -> None:
+    """A raising on_healthy callback must not propagate out of on_heartbeat."""
+
+    async def boom(region: str) -> None:
+        raise RuntimeError("boom")
+
+    clock = _Clock(0.0)
+    mon = HeartbeatMonitor(clock=clock, on_healthy=boom)
+    # Mark the region as previously dead so on_healthy will be fired.
+    mon._liveness["amygdala"] = RegionLiveness(
+        region="amygdala",
+        last_heartbeat_ts=0.0,
+        last_status="dead",
+        dead=True,
+    )
+
     clock.advance(1.0)
-
-    await mon.start()
-    # Let the sweep loop run a few iterations.
-    for _ in range(20):
-        if on_unhealthy.calls:
-            break
-        await asyncio.sleep(0.02)
-    await mon.stop()
-
-    assert on_unhealthy.calls and on_unhealthy.calls[0][0] == "amygdala"
+    # on_heartbeat must not raise even though on_healthy does.
+    await mon.on_heartbeat(_hb_envelope("amygdala"))
+    rec = mon.liveness("amygdala")
+    assert rec is not None
+    assert rec.dead is False
 
 
 @pytest.mark.asyncio
