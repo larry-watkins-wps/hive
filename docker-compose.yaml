@@ -1,0 +1,59 @@
+# docker-compose.yaml
+version: "3.9"
+name: hive
+
+networks:
+  hive_net:
+    driver: bridge
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+
+services:
+  broker:
+    image: eclipse-mosquitto:2.0.20
+    container_name: mosquitto
+    ports:
+      - "127.0.0.1:1883:1883"  # dev inspection only
+    volumes:
+      - ./bus/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./bus/acl.conf:/mosquitto/config/acl.conf:ro
+      - ./bus/passwd:/mosquitto/config/passwd:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks: [hive_net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-W", "5"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  glia:
+    build:
+      context: .
+      dockerfile: glia/Dockerfile
+    image: hive-glia:v0
+    container_name: glia
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      - HIVE_ENV=${HIVE_ENV:-dev}
+      - MQTT_HOST=broker
+      - MQTT_PORT=1883
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    env_file:
+      - .env
+    volumes:
+      - ./regions:/hive/regions:rw
+      - ./region_template:/hive/region_template:ro
+      - ./shared:/hive/shared:ro
+      - ./bus:/hive/bus:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [hive_net]
+    restart: unless-stopped
+
+  # NOTE: region containers are launched by glia at runtime, NOT by compose.
+  # Compose only provides the broker and the supervisor.
