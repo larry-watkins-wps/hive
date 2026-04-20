@@ -1,7 +1,7 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-20 (Phase 3 COMPLETE — all 17 tasks done)
-**Current phase:** Phase 4 (Implementation) — Phase 3 (Runtime DNA) ✅; Phase 4 (Docker image), Phase 5 (Glia), or Phase 8 (14 regions) next
+**Last updated:** 2026-04-20 (Phase 4 COMPLETE — Dockerfile + smoke-run)
+**Current phase:** Phase 4 (Runtime Docker image) ✅; Phase 5 (Glia) or Phase 8 (14 regions) next
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
@@ -378,7 +378,7 @@ The plan should:
 | 1. Shared library (5 tasks) | ✅ | `shared/envelope_schema.json`, `shared/message_envelope.py` (39 tests), `shared/topics.py` (55 tests), `shared/metric_schemas.json` |
 | 2. MQTT layer / bus (4 tasks) | ✅ | `bus/topic_schema.md`, `bus/mosquitto.conf`, `bus/acl_templates/_base.j2` + 14 per-region + `_new_region_stub.j2` |
 | 3. Runtime DNA (17 tasks) | ✅ **Complete (17/17)** | All waves done. 508 unit tests + 6 component tests (real mosquitto via testcontainers). Ruff clean. |
-| 4. Region Docker image | ⏳ | |
+| 4. Region Docker image | ✅ | `region_template/Dockerfile` (commit `f79c91a`). Builds `hive-region:v0` from `python:3.11-slim-bookworm@sha256:9c6f908…`. `docker run --rm hive-region:v0 --help` prints usage. |
 | 5. Glia (12 tasks) | ⏳ | |
 | 6. Bootstrap CLI (2 tasks) | ⏳ | |
 | 7. Observability tools (4 tasks) | ⏳ | |
@@ -451,6 +451,8 @@ The plan should:
 - `region_template/__main__.py` on Windows uses `signal.signal(SIGBREAK, …)` + `CREATE_NEW_PROCESS_GROUP` + `CTRL_BREAK_EVENT` for graceful shutdown; POSIX uses `SIGTERM`/`SIGINT` via `loop.add_signal_handler`.
 - `compileall` writes `__pycache__/` into region git repo; sleep sets `PYTHONDONTWRITEBYTECODE=1` AND cleans up pyc files post-check AND `GitTools._ensure_repo` bootstraps a `.gitignore` with `__pycache__/` + `*.pyc`.
 - Two stray files at repo root (`=2.6`, `=24`) are pip-install typos — leave them alone.
+- **Flat layout ≠ flit:** `shared/pyproject.toml` and `region_template/pyproject.toml` use `flit_core` but the flat layout (`__init__.py` directly beside `pyproject.toml`, no nested module directory) fails flit's module-discovery check. `pip install -e ./shared` raises `ValueError: No file/folder found for module shared`. The Dockerfile (task 4.1) works around this via `PYTHONPATH=/hive` + explicit dep list; `scripts/setup.sh` does the same. A proper installable layout (either subdir reorg or `setuptools` with `package-dir`) is still a future cleanup.
+- **Dockerfile (`region_template/Dockerfile`, task 4.1):** base is `python:3.11-slim-bookworm@sha256:9c6f908…`. Adds `git` (required by `git_tools.py` subprocess) and `tini` (signal forwarding + zombie reaping for sleep `compileall` subprocess). Non-root user `hive:1000`. Entry: `tini -- python -m region_template`.
 
 **Execution model:** `superpowers:subagent-driven-development` — fresh implementer subagent per task; spec review (always) + code quality review (for real code; skip for config-only); commit-per-task; checkpoint with user every ~10-15 tasks or at wave boundaries.
 
@@ -458,36 +460,34 @@ The plan should:
 
 Implement Hive v0 per the plan. Multi-session; use parallel dispatched agents for the 14-region scaffolding work in Phase 8.
 
-### Prompt for next Phase-4 session (Phase 3 DONE — pivot to Phase 4/5/8)
+### Prompt for next Phase-5/8 session (Phases 3 & 4 DONE)
 
 Paste the following into a new Claude Code session:
 
 ---
 
 ```
-You are continuing Hive v0 at C:/repos/hive/ on branch `impl/v0`.
-Phase 3 (Runtime DNA) is COMPLETE — all 17 tasks done, 508 unit
-tests + 6 component tests passing, ruff clean, 48 commits ahead of
-origin. Next: Phase 4 (Region Docker image), Phase 5 (Glia), or
-Phase 8 (14-region scaffolding). Larry picks.
+You are continuing Hive v0 at C:/repos/hive/ on branch `main`.
+Phase 3 (Runtime DNA) and Phase 4 (Region Docker image) are COMPLETE.
+`hive-region:v0` builds from `python:3.11-slim-bookworm@sha256:9c6f908…`
+and `docker run --rm hive-region:v0 --help` prints runtime usage.
+Next: Phase 5 (Glia) or Phase 8 (14-region scaffolding). Larry picks.
 
 ## Start here
 
-1. Read `docs/HANDOFF.md` in full. The Phase-3 progress table is the
-   authoritative state snapshot for Wave C completion. The "Follow-up
-   items worth tracking" section lists non-blocking cleanup candidates
-   you can optionally address.
+1. Read `docs/HANDOFF.md` in full. The Phase-3/4 progress table is the
+   authoritative state snapshot. The "Follow-up items worth tracking"
+   section lists non-blocking cleanup candidates.
 2. Confirm git state:
-     git fetch origin && git checkout impl/v0 && git log --oneline -20
-   Expected HEAD is `782e354 runtime: defaults + litellm config (3.17)`
-   or newer. Push to origin early in the session: 48 commits ahead.
-3. Confirm environment:
-     cd C:/repos/hive && python -m pytest tests/unit/ -q       # 508 passed
-     python -m pytest tests/component/ -m component -v          # 6 passed
-     python -m ruff check region_template/ tests/               # clean
+     git fetch origin && git checkout main && git log --oneline -10
+   Expected HEAD is `f79c91a runtime: Dockerfile (task 4.1)` or newer.
+3. Confirm environment (assumes `.venv` on Python 3.12 from scripts/setup.sh):
+     cd C:/repos/hive && source .venv/Scripts/activate
+     python -m pytest tests/unit/ -q       # 502 passed (README says 508 — 6-test drift to reconcile)
+     python -m ruff check region_template/ tests/
+     docker build -t hive-region:v0 -f region_template/Dockerfile .  # optional re-verify
 4. Pick the next phase and read its plan section:
      docs/superpowers/plans/2026-04-19-hive-v0-plan.md
-   - Phase 4 (Task 4.1-4.2): Region Docker image. Builds on Phase 3.
    - Phase 5 (Tasks 5.1-5.12): Glia (infrastructure, no LLM). Launcher,
      heartbeat monitor, ACL manager, rollback, registry. Sequential
      through 5.1-5.10; `bridges/` (5.11) is parallelizable.
@@ -497,17 +497,11 @@ Phase 8 (14-region scaffolding). Larry picks.
 
 ## Suggested order (Larry's call)
 
-- **Phase 4 first** if you want a working container to smoke-test.
-- **Phase 5 first** if you want the whole infrastructure stack before
-  regions. Larger scope; tighter feedback loop for integration bugs.
-- **Phase 8 first** if you want to stress-test the region template
-  against 14 real configs before building glia — surfaces config
-  schema gaps early.
-
-My recommendation: Phase 4 → Phase 5 → Phase 8, because Phase 4 is
-tiny (1-2 tasks) and unblocks the end-to-end "can a region actually
-run in a container" check; Phase 5 is the biggest chunk; Phase 8 is
-the parallel-dispatch win.
+- **Phase 5 first** — full infrastructure stack before regions. Larger
+  scope; tighter feedback loop for integration bugs. Recommended.
+- **Phase 8 first** — stress-tests the region template against 14 real
+  configs before building glia; surfaces config schema gaps early, but
+  regions can't actually run end-to-end until glia exists.
 
 ## Execution model — unchanged
 
