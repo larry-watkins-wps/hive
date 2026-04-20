@@ -47,7 +47,7 @@ class MotorBridge:
             await self._publish(envelope, qos=1, retain=True)
 
     async def stop(self) -> None:
-        return None
+        pass
 
     async def handle_message(self, envelope: Envelope) -> None:
         """Log a would-be motor action."""
@@ -58,6 +58,7 @@ class MotorBridge:
         )
 
     async def _publish_unavailable(self, reason: str) -> None:
+        log.warning("motor_bridge_unavailable", reason=reason)
         envelope = Envelope.new(
             source_region="glia",
             topic=METRICS_TOPIC,

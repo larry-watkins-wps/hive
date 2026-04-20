@@ -20,6 +20,7 @@ import sys
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 
 from glia.bridges import (
     CameraBridge,
@@ -69,8 +70,8 @@ class TestRhythmGenerator:
         publish = AsyncMock()
         gen = RhythmGenerator(publish)
         await gen.start()
-        # 120ms ≥ 4× gamma period (25ms); beta (50ms) ticks ≥ 2×; theta
-        # (167ms) may or may not fire on the first pass — give it room.
+        # 250ms ≥ 10× gamma period (25ms); beta (50ms) ticks ≥ 5×; theta
+        # (167ms) ticks ≥ 1×, so all three bands are guaranteed to fire.
         await asyncio.sleep(0.25)
         await gen.stop()
 
@@ -220,6 +221,17 @@ class TestMicBridge:
         assert bridge.available is False
         await bridge.stop()
 
+    async def test_disabled_path_emits_warning(self) -> None:
+        """Spec §E.8: a disabled/unavailable bridge must emit a structlog WARNING."""
+        publish = AsyncMock()
+        bridge = MicBridge(publish, enabled=False)
+        with structlog.testing.capture_logs() as cap:
+            await bridge.start()
+        assert any(
+            e.get("event") == "mic_bridge_unavailable" and e.get("log_level") == "warning"
+            for e in cap
+        ), f"Expected 'mic_bridge_unavailable' warning; got: {cap}"
+
 
 # ---------------------------------------------------------------------------
 # CameraBridge
@@ -306,6 +318,9 @@ class TestMotorBridge:
             content_type="application/hive+motor-intent",
             data={"action": "turn_left", "magnitude": 0.5},
         )
-        # Must not raise, must accept arbitrary payload.
-        await bridge.handle_message(env)
+        with structlog.testing.capture_logs() as cap:
+            await bridge.handle_message(env)
         await bridge.stop()
+
+        # Verify the motor_action log event fired.
+        assert any(e.get("event") == "motor_action" for e in cap)

@@ -70,6 +70,7 @@ class SpeakerBridge:
         log.info("speaker_play", topic=envelope.topic)
 
     async def _publish_unavailable(self, reason: str) -> None:
+        log.warning("speaker_bridge_unavailable", reason=reason)
         envelope = Envelope.new(
             source_region="glia",
             topic=METRICS_TOPIC,
