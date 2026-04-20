@@ -368,67 +368,102 @@ The plan should:
 
 ---
 
-## Phase 4: Implementation — PENDING
+## Phase 4: Implementation — IN PROGRESS (branch `impl/v0`)
+
+### Status as of 2026-04-19
+
+| Phase | Status | Notes |
+|---|---|---|
+| 0. Foundation (3 tasks) | ✅ | `pyproject.toml`, `.gitignore`, `.env.example`, `scripts/bootstrap_env.sh`, `scripts/make_passwd.sh` |
+| 1. Shared library (5 tasks) | ✅ | `shared/envelope_schema.json`, `shared/message_envelope.py` (39 tests), `shared/topics.py` (55 tests), `shared/metric_schemas.json` |
+| 2. MQTT layer / bus (4 tasks) | ✅ | `bus/topic_schema.md`, `bus/mosquitto.conf`, `bus/acl_templates/_base.j2` + 14 per-region + `_new_region_stub.j2` |
+| 3. Runtime DNA (17 tasks) | ⏳ **Next** | `region_template/` — critical path, longest phase |
+| 4. Region Docker image | ⏳ | |
+| 5. Glia (12 tasks) | ⏳ | |
+| 6. Bootstrap CLI (2 tasks) | ⏳ | |
+| 7. Observability tools (4 tasks) | ⏳ | |
+| 8. Region scaffolding × 14 | ⏳ | PARALLEL-OK |
+| 9. Integration + smoke + self-mod tests | ⏳ | |
+| 10. Docs + HANDOFF | ⏳ | |
+
+**Git state:** 12 commits on `impl/v0` (pushed to `origin/impl/v0`). `main` still holds docs + spec + plan only. 94 unit tests passing (envelope + topics).
+
+**Execution model:** `superpowers:subagent-driven-development` — fresh implementer subagent per task; spec review (always) + code quality review (for real code); commit-per-task; checkpoint with user every ~10-15 tasks.
 
 ### Goal
 
-Implement Hive v0 per the plan. This phase is likely multi-session and should use parallel dispatched agents for the 14-region scaffolding work.
+Implement Hive v0 per the plan. Multi-session; use parallel dispatched agents for the 14-region scaffolding work in Phase 8.
 
-### Prompt for Phase 4 (main session)
+### Prompt for next Phase-4 session (resume in-progress work)
 
-Paste the following into a new Claude Code session (after Phase 3 is complete):
+Paste the following into a new Claude Code session:
 
 ---
 
 ```
-You are continuing work on the Hive project at C:/repos/hive/.
-
-The spec and implementation plan are complete. Your task this session:
-execute the plan.
+You are continuing Hive v0 Phase 4 implementation at C:/repos/hive/ on
+branch `impl/v0`.
 
 ## Start here
 
-Read these files in order:
+1. Read `docs/HANDOFF.md` in full — it has authoritative phase status.
+2. Confirm git state:
+     git fetch origin && git checkout impl/v0 && git log origin/impl/v0 --oneline -15
+   You should see ~12+ commits from Phases 0-2.
+3. Read the next phase's section of the plan:
+     docs/superpowers/plans/2026-04-19-hive-v0-plan.md
+   Use the Phase-level task list in HANDOFF.md's status table to find where
+   to resume.
+4. Spot-read the relevant spec section before starting any real-code task
+   (e.g., for Phase 3 runtime, read §A of
+   docs/superpowers/specs/2026-04-19-hive-v0-design.md).
 
-1. docs/HANDOFF.md — full context
-2. docs/superpowers/plans/2026-04-19-hive-v0-plan.md — the execution plan
-3. docs/superpowers/specs/2026-04-19-hive-v0-design.md — for detail reference
-4. docs/principles.md, docs/architecture.md — compliance
+## Execution model
 
-## Your task
+Use `superpowers:subagent-driven-development`:
+- Fresh implementer subagent per task — never re-use context across tasks.
+- Spec review after every task (dispatch plan-document-reviewer template
+  adapted, or general-purpose + focused prompt).
+- Code quality review for any task producing real code (skip for
+  config-only/data-only tasks).
+- One commit per plan task. Don't batch multiple tasks into one commit —
+  granular history is a project constraint (Principle XII).
+- Use HEREDOC commit messages with Co-Authored-By trailer:
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
-Use superpowers:executing-plans (or subagent-driven-development for
-parallel tasks). Follow the plan.
+## Chunking
 
-For the 14-region scaffolding step: dispatch 14 parallel subagents,
-one per region, each given the region's starter prompt file path, the
-config.yaml schema, and the scaffolding checklist from the plan.
+Work manageable chunks. Checkpoint with Larry (user) every ~10-15 tasks
+or at phase boundaries, whichever is sooner. Don't push silently through
+a full phase of 17 tasks.
 
-For infrastructure work: proceed sequentially in the main session.
+## When you hit a spec issue
 
-## Process
+Flag it — do not silently improvise. Spec is 4,792 lines and has been
+review-iterated three times; if something looks wrong, surface it before
+coding around it.
 
-1. Check off tasks as you complete them.
-2. Run tests at each verification checkpoint.
-3. Commit progress with clear messages (one commit per meaningful unit
-   of work; e.g., "Implement region_template/runtime.py + tests").
-4. Update docs/HANDOFF.md as you complete each phase-3 task group.
-5. If a task reveals a spec issue, flag it — do not silently improvise.
-6. Surface blockers to the user; do not force through ambiguity.
+## Next work
 
-## Deliverables per session
+Phase 3 (Runtime DNA) — 17 tasks in `region_template/`. Follow the
+dependency waves in the plan:
+  - Wave A (sequential): 3.1-3.4 (pyproject, types, errors, logging)
+  - Wave B (parallel after A): 3.5, 3.6, 3.9, 3.10, 3.13
+  - Wave C (sequential, composes B): 3.7, 3.8, 3.11, 3.12, 3.14, 3.15, 3.16, 3.17
 
-Each implementation session should produce:
-- Working code for one or more plan tasks
-- Passing tests
-- Commits with descriptive messages
-- Updated HANDOFF.md
+Complete-session deliverables for Phase 3:
+- `region_template/` with all 17 modules, each with passing unit tests
+- Component tests for mqtt_client (testcontainers mosquitto) passing
+- RegionRuntime boots in-process against a mock broker
+- HANDOFF.md updated to mark Phase 3 ✅ and move "Next" flag to Phase 4
 
-Complete-session deliverables (by end of implementation):
-- All 14 regions bootable and passing heartbeat
-- Infrastructure functional (glia, broker, message envelope)
-- At least one self-modification cycle demonstrated end-to-end
-- Smoke test + basic integration test passing
+## Reminders (from memory)
+
+- Larry designs before coding; the spec + plan are authoritative.
+- Biology is the tiebreaker (P-I). If you feel a Python idiom tugging
+  against the biological metaphor, the biology wins.
+- Infrastructure (glia) does not deliberate; cognition (regions) does not
+  execute infrastructure. Don't cross this line in the implementation.
 ```
 
 ---
