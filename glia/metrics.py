@@ -114,7 +114,10 @@ class MetricsAggregator:
         """Update snapshot for a region from a region_stats envelope.
 
         Malformed envelopes (non-dict data, missing ``region``) are logged
-        and skipped; missing ``llm`` fields default to zero tokens.
+        and skipped. Envelopes missing the ``llm`` sub-dict are skipped
+        (logged at debug level) — the region is not added to the internal
+        snapshot map. A region that never published with an ``llm`` field
+        will not appear in the tokens payload.
         """
         data = envelope.payload.data
         if not isinstance(data, dict):
@@ -361,8 +364,17 @@ def _compute_cpu_pct(stats: dict[str, Any]) -> float:
 
 
 def _compute_mem_mb(stats: dict[str, Any]) -> float:
-    """Container memory in MiB. Returns 0.0 on missing fields."""
+    """Container memory in MiB, with page cache subtracted.
+
+    Docker's ``memory_stats.usage`` includes the page cache, which overstates
+    actual memory pressure. cgroups v2 exposes ``inactive_file``; v1 exposes
+    ``cache``. We prefer v2 and fall back to v1. Returns 0.0 on missing fields.
+    """
     try:
-        return round(stats["memory_stats"]["usage"] / (1024 * 1024), 2)
+        usage = stats["memory_stats"]["usage"]
+        sub_stats = stats["memory_stats"].get("stats", {}) or {}
+        # cgroups v2 exposes inactive_file; v1 exposes cache. Prefer v2.
+        cache = sub_stats.get("inactive_file", sub_stats.get("cache", 0))
+        return round(max(usage - cache, 0) / (1024 * 1024), 2)
     except (KeyError, TypeError):
         return 0.0

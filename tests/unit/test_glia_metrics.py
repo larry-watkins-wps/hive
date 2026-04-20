@@ -66,6 +66,11 @@ _SYS_TOTAL_PREV = 10_000_000
 _NUM_CPUS = 2
 _MEM_BYTES = 10 * 1024 * 1024
 
+# Memory cache-subtraction test constants
+_MEM_USAGE_1GIB = 1_073_741_824   # 1 GiB
+_MEM_CACHE_512MIB = 536_870_912   # 512 MiB
+_MEM_NET_MB = 512.0                # expected: 1024 - 512 = 512 MiB
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -150,7 +155,11 @@ def _fake_docker_stats(
     pre_system_total: int = _SYS_TOTAL_PREV,
     num_cpus: int = _NUM_CPUS,
     mem_usage_bytes: int = _MEM_BYTES,
+    mem_inactive_file: int | None = None,
 ) -> dict[str, Any]:
+    mem_stats: dict[str, Any] = {"usage": mem_usage_bytes}
+    if mem_inactive_file is not None:
+        mem_stats["stats"] = {"inactive_file": mem_inactive_file}
     return {
         "cpu_stats": {
             "cpu_usage": {"total_usage": cpu_total},
@@ -161,7 +170,7 @@ def _fake_docker_stats(
             "cpu_usage": {"total_usage": pre_cpu_total},
             "system_cpu_usage": pre_system_total,
         },
-        "memory_stats": {"usage": mem_usage_bytes},
+        "memory_stats": mem_stats,
     }
 
 
@@ -495,6 +504,37 @@ def test_build_compute_payload_missing_stats_fields_zero(
     assert len(payload["per_region"]) == len(registry.active())
 
 
+def test_build_compute_payload_subtracts_cache(
+    registry: RegionRegistry,
+    heartbeat_monitor: HeartbeatMonitor,
+    publish: AsyncMock,
+) -> None:
+    """_compute_mem_mb must subtract page cache (inactive_file) from usage."""
+    docker_client = MagicMock()
+
+    def _container_get(_name: str) -> MagicMock:
+        container = MagicMock()
+        container.stats.return_value = _fake_docker_stats(
+            mem_usage_bytes=_MEM_USAGE_1GIB,
+            mem_inactive_file=_MEM_CACHE_512MIB,
+        )
+        return container
+
+    docker_client.containers.get.side_effect = _container_get
+
+    agg = MetricsAggregator(
+        registry,
+        heartbeat_monitor,
+        publish=publish,
+        docker_client=docker_client,
+    )
+    payload = agg.build_compute_payload()
+    for entry_name, entry_data in payload["per_region"].items():
+        assert entry_data["mem_mb"] == _MEM_NET_MB, (
+            f"Expected {_MEM_NET_MB} MiB for {entry_name}, got {entry_data['mem_mb']}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Publish
 # ---------------------------------------------------------------------------
@@ -584,3 +624,15 @@ async def test_stop_cancels_inflight_publish(
 
 def test_default_cadence_is_30s() -> None:
     assert DEFAULT_CADENCE_S == _DEFAULT_CADENCE
+
+
+async def test_publish_failure_does_not_kill_loop(
+    aggregator: MetricsAggregator, publish: AsyncMock
+) -> None:
+    """A RuntimeError from publish must not propagate out of publish_once.
+
+    All three topics must still be attempted (_emit catches per-call).
+    """
+    publish.side_effect = RuntimeError("broker gone")
+    await aggregator.publish_once()  # must not raise
+    assert publish.call_count == _PUBLISHES_PER_CYCLE  # tried all three
