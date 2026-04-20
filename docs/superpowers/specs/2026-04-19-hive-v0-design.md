@@ -2745,7 +2745,7 @@ class GitTools:
 
     def commit_all(self, message: str) -> CommitResult:
         run(["git", "add", "-A"], cwd=self._root)
-        run(["git", "commit", "-m", message, "--allow-empty=never"], cwd=self._root)
+        run(["git", "commit", "-m", message], cwd=self._root)
         sha = run(["git", "rev-parse", "HEAD"], cwd=self._root).stdout.strip()
         return CommitResult(sha=sha, ...)
 
@@ -2886,7 +2886,7 @@ Corrupt git repo is treated as fatal (exit 3; manual recovery required).
 | Index rebuild failure | parse error in ltm/ file | Log WARN, skip file; retry next sleep |
 | Query timeout | querier handler | Proceed without memory; metacog error |
 | Memory-response schema violation | consumer validator | Drop + metacog `poison_message` |
-| Git commit empty | `--allow-empty=never` | Sleep logs "no changes" and exits sleep cleanly |
+| Git commit empty | `git commit` default refuses empty commits → non-zero exit → `GitError` | Sleep logs "no changes" and exits sleep cleanly |
 | Git lock contention | concurrent writes (impossible within one region) | N/A by design |
 | Handler edit ast.parse fails | sleep pipeline | Revert; next sleep retries |
 
@@ -3742,7 +3742,7 @@ The runtime uses this at bootstrap step 6. The region MAY self-edit this file du
 | Env var missing | loader | Exit 2 |
 | Registry name mismatch | glia at bootstrap | Refuse to launch region; metacog `unknown_region_type` |
 | Singleton violation | glia launcher | Refuse second launch; metacog `singleton_violation` |
-| Default/override deep-merge ambiguity | loader | Config's nested dicts fully replace defaults' nested dicts (no partial merge at leaf level, see F.5 implementation note) |
+| Default/override deep-merge ambiguity | loader | `_deep_merge` recurses into nested dicts; region scalars/lists fully replace defaults at the leaf (see §F.5) |
 
 ---
 
