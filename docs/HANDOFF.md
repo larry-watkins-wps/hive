@@ -1,7 +1,7 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-19 (Phase 3 Wave B complete)
-**Current phase:** Phase 4 (Implementation) — Phase 3 (Runtime DNA) Waves A+B done, Wave C next
+**Last updated:** 2026-04-20 (Phase 3 COMPLETE — all 17 tasks done)
+**Current phase:** Phase 4 (Implementation) — Phase 3 (Runtime DNA) ✅; Phase 4 (Docker image), Phase 5 (Glia), or Phase 8 (14 regions) next
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
@@ -377,7 +377,7 @@ The plan should:
 | 0. Foundation (3 tasks) | ✅ | `pyproject.toml`, `.gitignore`, `.env.example`, `scripts/bootstrap_env.sh`, `scripts/make_passwd.sh` |
 | 1. Shared library (5 tasks) | ✅ | `shared/envelope_schema.json`, `shared/message_envelope.py` (39 tests), `shared/topics.py` (55 tests), `shared/metric_schemas.json` |
 | 2. MQTT layer / bus (4 tasks) | ✅ | `bus/topic_schema.md`, `bus/mosquitto.conf`, `bus/acl_templates/_base.j2` + 14 per-region + `_new_region_stub.j2` |
-| 3. Runtime DNA (17 tasks) | 🟡 **In progress (9/17)** | Waves A+B ✅ (3.1-3.6, 3.9, 3.10, 3.13), Wave C next (3.7 mqtt_client, 3.8 LLM stack, 3.11 self_modify, 3.12 handlers_loader, 3.14 sleep, 3.15 runtime, 3.16 __main__), 3.17 config-only |
+| 3. Runtime DNA (17 tasks) | ✅ **Complete (17/17)** | All waves done. 508 unit tests + 6 component tests (real mosquitto via testcontainers). Ruff clean. |
 | 4. Region Docker image | ⏳ | |
 | 5. Glia (12 tasks) | ⏳ | |
 | 6. Bootstrap CLI (2 tasks) | ⏳ | |
@@ -386,52 +386,71 @@ The plan should:
 | 9. Integration + smoke + self-mod tests | ⏳ | |
 | 10. Docs + HANDOFF | ⏳ | |
 
-**Phase 3 progress (9/17 tasks done, Waves A+B):**
+**Phase 3 progress (17/17 tasks done — all waves):**
 
 | Task | File | Status | Commits |
 |---|---|---|---|
 | 3.1 | `region_template/pyproject.toml` + `__init__.py` | ✅ A | `924b289` |
 | 3.2 | `region_template/types.py` (+ tests) | ✅ A | `acdcfd6` impl, `3079852` lint fix, `bd77a61` spec §A.4.1 StrEnum update |
-| 3.3 | `region_template/errors.py` (+ tests) | ✅ A | `1ec03d9` impl, `f57cd8b` review fixes (raise/catch round-trip, `*args: Any`) |
-| 3.4 | `region_template/logging_setup.py` (+ tests) | ✅ A | `f218d1f` impl, `1d664e3` review fixes (ProcessorFormatter for stdlib, honest docstring) |
-| 3.5 | `region_template/config_loader.py` + `config_schema.json` + `defaults.yaml` | ✅ B | `7db78ae` impl, `a1680c3` review fixes (JSON-path + file-path in ConfigError) |
+| 3.3 | `region_template/errors.py` (+ tests) | ✅ A | `1ec03d9` impl, `f57cd8b` review fixes |
+| 3.4 | `region_template/logging_setup.py` (+ tests) | ✅ A | `f218d1f` impl, `1d664e3` review fixes |
+| 3.5 | `region_template/config_loader.py` + schema + defaults | ✅ B | `7db78ae` impl, `a1680c3` review fixes |
 | 3.6 | `region_template/capability.py` (+ tests) | ✅ B | `d008cc0` |
-| 3.7 | `region_template/mqtt_client.py` | ⏳ Wave C | — |
-| 3.8 | LLM adapter stack (5 files) | ⏳ Wave C | — |
-| 3.9 | `region_template/memory.py` (+ tests) | ✅ B | `0363189` impl, `6d6b752` review fixes (LTM `self._lock` serialization + Windows path guard) |
-| 3.10 | `region_template/git_tools.py` (+ tests) | ✅ B | `0907408` (3 spec-vs-plan deviations flagged — see below) |
-| 3.11 | `region_template/self_modify.py` | ⏳ Wave C | — |
-| 3.12 | `region_template/handlers_loader.py` | ⏳ Wave C | — |
+| 3.7 | `region_template/mqtt_client.py` + fake + component tests | ✅ C | `7779a1e` impl, `159abbc` review fixes (2 Critical + 6 Important) |
+| 3.8 | LLM adapter stack (5 files) | ✅ C | `d416e06` impl, `2292df8` spec fixes (budget order + stream cost), `15abb86` quality fixes (LlmError.kind + litellm pin + zero-budget guard) |
+| 3.9 | `region_template/memory.py` (+ tests) | ✅ B | `0363189` impl, `6d6b752` review fixes |
+| 3.10 | `region_template/git_tools.py` (+ tests) | ✅ B | `0907408` |
+| 3.11 | `region_template/self_modify.py` | ✅ C | `99e347e` impl, `a8759fe` LTM metadata kwargs, `7aeff26` Windows CRLF + tmp leak + protocol type |
+| 3.12 | `region_template/handlers_loader.py` | ✅ C | `ea5527b` |
 | 3.13 | `region_template/heartbeat.py` (+ tests) | ✅ B | `cdf9e08` |
-| 3.14 | `region_template/sleep.py` | ⏳ Wave C | — |
-| 3.15 | `region_template/runtime.py` | ⏳ Wave C | — |
-| 3.16 | `region_template/__main__.py` | ⏳ Wave C | — |
-| 3.17 | `defaults.yaml` + `litellm.config.yaml` | 🟡 Partial — `defaults.yaml` landed early in 3.5; `litellm.config.yaml` deferred to Wave C | — |
+| 3.14 | `region_template/sleep.py` + review prompt | ✅ C | `f94d365` impl, `718d664` short-reason fallback, `2130fd4` dirty-tree + schema braces + pycache |
+| 3.15 | `region_template/runtime.py` (integrator) | ✅ C | `c4eab08` impl, `a0e03d2` ON_HEARTBEAT + SLEEP unsub + triggers, `33e8a47` broadcast/shutdown WAKE + error-path tests |
+| 3.16 | `region_template/__main__.py` + entry component test | ✅ C | `c9365ec` |
+| 3.17 | `region_template/litellm.config.yaml` (defaults.yaml landed in 3.5) | ✅ C | `782e354` |
 
-Plus one side-commit (Wave A): `2af2df0 tests: ruff lint cleanup for shared-phase tests`.
+**Plus** `35b2863 spec: §D.5.7/§D.10/§F.10 align with implementation` — the Wave-B-flagged spec deviations patched at start of Wave C. And `2af2df0 tests: ruff lint cleanup for shared-phase tests` from Wave A.
 
-**Git state:** 30 commits on `impl/v0` (ahead of origin). **304 unit tests passing** (envelope + topics + types + errors + logging_setup + capability + git_tools + heartbeat + config_loader + memory). `ruff check region_template/ tests/unit/` is clean. Push to origin on next handoff.
+**Git state:** `impl/v0` has 48 commits total ahead of origin (18 new in Wave C, 30 from Waves A+B). **508 unit tests + 6 component tests passing** (full region_template + 3 MQTT component tests + 3 region-entry component tests against real eclipse-mosquitto:2 via testcontainers). `ruff check region_template/ tests/` clean. **Push to origin on next handoff.**
 
 **Spec updates during Phase 3:**
-- §A.4.1 — `LifecyclePhase(str, Enum)` → `LifecyclePhase(StrEnum)` (commit `bd77a61`, approved by Larry). StrEnum behavior is identical for `.value`, `isinstance`, and JSON serialization; changes `str(phase)` from `"LifecyclePhase.WAKE"` to `"wake"` (safer for MQTT topic f-strings).
+- §A.4.1 — `LifecyclePhase(str, Enum)` → `LifecyclePhase(StrEnum)` (commit `bd77a61`, Larry-approved).
+- §D.5.7 / §D.10 — dropped invalid `--allow-empty=never` git flag; git's default behavior matches intent (commit `35b2863`, Larry-approved at start of Wave C).
+- §F.10 — merge-ambiguity row rewritten to match §F.5's recursive `_deep_merge` semantics (commit `35b2863`).
 
-**Spec deviations flagged during Wave B (require Larry's review before Wave C):**
+**Spec-vs-plan deviations resolved during Wave C (implementation follows spec):**
 
-1. **§D.5.7 `revert_to()` uses `git reset --hard`, not a revert commit** — spec code block and §D.8 both specify `reset --hard`; plan's Step-1 prose ("creates a revert commit (not `reset`)") was wrong. Implementation follows spec. Method name `revert_to` is a slight misnomer but behavior is unambiguous. No spec change needed; flagging only because the plan prose conflicts with the spec.
-2. **§D.5.7 `last_good_sha()` returns `HEAD^`** — spec docstring says so; plan's prose ("HEAD of the last boot-successful commit") implied more state than this module owns. Implementation follows spec.
-3. **§D.5.7 / §D.10 `--allow-empty=never` is not a valid git CLI flag** — would cause `git commit` to fail with "unknown option". Intended semantic (reject empty commits) is git's default behavior. Implementation drops the flag; empty-commit attempts → non-zero exit → `GitError`. **Recommend spec edit** to remove the invalid flag from both §D.5.7's code block and the §D.10 failure-modes row.
-4. **§F.10 contradicts §F.5 on default/override merge** — §F.10 says "default/override fully replaces nested dicts (no partial merge at leaf level, see §F.5)", but §F.5's `_deep_merge` wording, the §F.1 example, and implementation intent all use recursive deep-merge (region leaves win). **Recommend spec edit** to rewrite §F.10's row as "merge is recursive on dicts; region lists/scalars fully replace defaults at the leaf."
-5. **§D.3.3 LTM API** — spec is authoritative (`write_ltm(path, content, metadata, reason) -> LtmWriteResult`, `query_ltm(q: MemoryQuery) -> list[MemoryHit]`); plan's Step-1 prose was abbreviated (`read_ltm(glob)` / `write_ltm(note_id, markdown)` / `index()`). Implementation follows spec. Plan prose should be tightened for Wave C tasks that consume this API.
+1. **§A.7.4 `write_memory` split**: plan called it one tool; spec has `write_stm` + `write_ltm`. Impl follows spec. Plan prose should be tightened if/when someone re-reads.
+2. **§C.6 caching model**: plan Step-4 prose said "prompt prefix cache, LRU, 10k entries"; spec describes **provider-side** caching via Anthropic `cache_control` markers. `llm_cache.py` injects markers (§C.6), doesn't maintain a local LRU. Document mismatch, follow spec.
+3. **§B.9 MQTT v5 session**: spec code block says `clean_session=False` + `ProtocolVersion.V5`; paho-mqtt rejects that combo. Impl uses MQTT v5 equivalent: `clean_start=False` + `SessionExpiryInterval=3600`, matching §B.11's "1 hour" policy. Worth a future spec-edit to §B.9 code block.
+4. **§D.5.2 `needs_restart` narrowing**: spec pseudocode returns `committed_restart` whenever `needs_restart=True`; plan Step-1 says "restart only when handlers or subscriptions changed". Impl combines both: `needs_restart AND (handlers_changed OR prompt_changed)`. Acceptable narrowing — an LLM returning needs_restart without concrete changes would be nonsense.
+5. **LtmMetadata synthesis in `write_ltm`**: spec §A.7.4 lists minimal signature `(filename, content, reason)`; §D.3.3 requires metadata for indexing. Impl added optional kwargs `topic/importance/tags/emotional_tag` with low-signal defaults; ACC/mPFC can override. Spec §A.7.4 worth updating to show these kwargs.
+6. **REQUIRES_CAPABILITY permissiveness** (`handlers_loader`): plan prose said `str`; spec §A.6.1 says `list[str]`. Impl accepts both and coerces bare string → single-element tuple. Superset of spec.
+7. **§D.5.6 commit message fields**: spec `CommitResult` shows `files_changed/lines_added/lines_removed`; `GitTools.commit_all` returns only `sha` (minimal v0 surface from Task 3.10). Spec §A.7.5 / §D.5.7 lists the additional fields but they're not wired.
+8. **§B.5 retained-flag preservation across MQTT disconnect**: initial impl lost retain intent in the out-queue (reviewer found); fix preserves `(envelope, qos, retain)` tuples through the drain loop.
+
+**Follow-up items worth tracking (non-blocking):**
+- `MqttClient` outbound `_out_queue` drain: on in-flight disconnect mid-drain, appendleft works but no outer re-trigger loop (`_reconnect_loop` has already returned). Documented in code.
+- `LlmError.cause` — spec §C.8 shows `LlmError(..., cause=e)` but the class doesn't accept `cause=`. Used `raise ... from exc`. Works, but spec code block is misleading.
+- Runtime shutdown path has no overall timeout — slow task cancellation during `runtime.shutdown()` could hang the process. Spec §A.4.6 mandates `shutdown_timeout_s` (30s default) with exit 137; not wired through `_main`/`shutdown`.
+- `region_template/__main__.py` — Windows platform glue (SelectorEventLoop policy + SIGBREAK handler). Works; adds ~40 lines to keep cross-platform parity.
+- Stream-cost via `litellm.cost_per_token` on pinned `litellm==1.54.x`. If version drifts to 1.60+, the signature may change; `>=1.54,<2` pin mitigates.
+- Test coverage gaps noted during reviews (all non-blocking): multi-tool streaming delta accumulation, edge-case sandbox paths with null bytes, `_sleep_grant_event` staleness across sleep cycles, `_subscribed_handler_filters` tracking when `subscribe()` itself raises.
 
 **Known gotchas for future sessions (cumulative):**
-- Host Python env lacks `pydantic`, `structlog`, `ruff`, `ruamel.yaml`, `jsonschema`, `pytest-asyncio`, `testcontainers`, `GitPython` on fresh shells. Implementers pip-install on demand. `scripts/bootstrap_env.sh` exists — still unused.
+- Host Python env lacks `pydantic`, `structlog`, `ruff`, `ruamel.yaml`, `jsonschema`, `pytest-asyncio`, `testcontainers`, `GitPython`, `aiomqtt`, `litellm` on fresh shells. Implementers pip-install on demand. `scripts/bootstrap_env.sh` exists — still unused.
 - structlog 25.x hardcodes `warn` → `warning` internally; `region_template/logging_setup.py` installs `_remap_warning_to_warn` processor to satisfy spec §H.1.2's lowercase-`warn` requirement.
-- `ConnectionError` in `region_template/errors.py` intentionally shadows the stdlib — always reference fully-qualified or import-alias to avoid ambiguity.
-- `LifecyclePhase` is `StrEnum` (Python 3.11+); `str(phase)` returns lowercase ("wake", not "LifecyclePhase.WAKE").
-- `tool_use: "wizard"` must raise `ConfigError` — JSON schema and Pydantic both enforce via `Literal["none","basic","advanced"]`.
+- `ConnectionError` in `region_template/errors.py` intentionally shadows the stdlib — always reference fully-qualified or import-alias.
+- `LifecyclePhase` is `StrEnum` (Python 3.11+); `str(phase)` returns lowercase.
+- `tool_use: "wizard"` must raise `ConfigError` — JSON schema + Pydantic enforce via `Literal["none","basic","advanced"]`.
 - Ruff config lives at `C:/repos/hive/pyproject.toml` — package-specific `region_template/pyproject.toml` MUST NOT re-declare tool blocks.
-- `MemoryStore`'s STM TTL uses `time.monotonic()` → TTL countdown restarts across process restarts. Intentional; spec silent. Documented in module.
-- Two stray files at repo root (`=2.6`, `=24`) are leftovers from `pip install` typos — leave them alone (or let Larry rm when convenient).
+- `MemoryStore`'s STM TTL uses `time.monotonic()` → TTL countdown restarts across process restarts.
+- `LlmError(*args, retryable=bool)` — first positional is the kind string; `.kind` property exposes it (added during Wave C review).
+- `MemoryStore.stm_size_bytes_sync()` is a lock-free sync helper for the runtime's sleep monitor; `stm_size_bytes()` is async.
+- `litellm` pinned to `>=1.54,<2` in `region_template/pyproject.toml` — pre-1.54 has Windows long-path extraction issues; 1.60+ may have `cost_per_token` signature drift.
+- Windows-specific: `_atomic_write_text` in `self_modify.py` uses `O_BINARY` to avoid LF→CRLF translation. Component tests under `tests/component/` force `WindowsSelectorEventLoopPolicy` (aiomqtt needs `add_reader`/`add_writer`) and disable testcontainers Ryuk (port 8080 probe fails on Windows Docker Desktop).
+- `region_template/__main__.py` on Windows uses `signal.signal(SIGBREAK, …)` + `CREATE_NEW_PROCESS_GROUP` + `CTRL_BREAK_EVENT` for graceful shutdown; POSIX uses `SIGTERM`/`SIGINT` via `loop.add_signal_handler`.
+- `compileall` writes `__pycache__/` into region git repo; sleep sets `PYTHONDONTWRITEBYTECODE=1` AND cleans up pyc files post-check AND `GitTools._ensure_repo` bootstraps a `.gitignore` with `__pycache__/` + `*.pyc`.
+- Two stray files at repo root (`=2.6`, `=24`) are pip-install typos — leave them alone.
 
 **Execution model:** `superpowers:subagent-driven-development` — fresh implementer subagent per task; spec review (always) + code quality review (for real code; skip for config-only); commit-per-task; checkpoint with user every ~10-15 tasks or at wave boundaries.
 
@@ -439,155 +458,105 @@ Plus one side-commit (Wave A): `2af2df0 tests: ruff lint cleanup for shared-phas
 
 Implement Hive v0 per the plan. Multi-session; use parallel dispatched agents for the 14-region scaffolding work in Phase 8.
 
-### Prompt for next Phase-4 session (resume in-progress work — Wave C)
+### Prompt for next Phase-4 session (Phase 3 DONE — pivot to Phase 4/5/8)
 
 Paste the following into a new Claude Code session:
 
 ---
 
 ```
-You are continuing Hive v0 Phase 3 implementation at C:/repos/hive/ on
-branch `impl/v0`. Waves A+B (tasks 3.1-3.6, 3.9, 3.10, 3.13) are complete.
-Your job this session is Wave C — the integration-heavy tasks that tie
-the rest of the runtime together. Expect this to be a LONGER session
-than Wave B with more checkpoints.
+You are continuing Hive v0 at C:/repos/hive/ on branch `impl/v0`.
+Phase 3 (Runtime DNA) is COMPLETE — all 17 tasks done, 508 unit
+tests + 6 component tests passing, ruff clean, 48 commits ahead of
+origin. Next: Phase 4 (Region Docker image), Phase 5 (Glia), or
+Phase 8 (14-region scaffolding). Larry picks.
 
 ## Start here
 
 1. Read `docs/HANDOFF.md` in full. The Phase-3 progress table is the
-   authoritative state snapshot. Expect ~30 commits on `impl/v0` and
-   304 unit tests passing.
+   authoritative state snapshot for Wave C completion. The "Follow-up
+   items worth tracking" section lists non-blocking cleanup candidates
+   you can optionally address.
 2. Confirm git state:
-     git fetch origin && git checkout impl/v0 && git log --oneline -15
-   Expected HEAD is the HANDOFF.md commit after Wave B wrap-up.
+     git fetch origin && git checkout impl/v0 && git log --oneline -20
+   Expected HEAD is `782e354 runtime: defaults + litellm config (3.17)`
+   or newer. Push to origin early in the session: 48 commits ahead.
 3. Confirm environment:
-     cd C:/repos/hive && python -m pytest tests/unit/ -q
-   Must show "304 passed" (or more if later work landed).
-     python -m ruff check region_template/ tests/unit/
-   Must show "All checks passed!".
-4. Read the plan's Wave C section:
+     cd C:/repos/hive && python -m pytest tests/unit/ -q       # 508 passed
+     python -m pytest tests/component/ -m component -v          # 6 passed
+     python -m ruff check region_template/ tests/               # clean
+4. Pick the next phase and read its plan section:
      docs/superpowers/plans/2026-04-19-hive-v0-plan.md
-   Tasks 3.7, 3.8, 3.11, 3.12, 3.14, 3.15, 3.16.
-5. Spot-read the relevant spec sections before each implementer dispatch:
-   - 3.7 mqtt_client → spec §B (topic catalog + envelope + LWT + retry)
-   - 3.8 LLM adapter stack → spec §C (provider abstraction, cache, token ledger)
-   - 3.11 self_modify → spec §A.7 (edit_prompt/subscriptions/handlers/write_memory/commit/restart/spawn)
-   - 3.12 handlers_loader → spec §A.6.1 + §A.6.3 (handler contract, discovery, dispatch order)
-   - 3.14 sleep → spec §A.8 + §D.5 (FSM transitions + consolidation protocol)
-   - 3.15 runtime → spec §A.1-A.4 (RegionRuntime, bootstrap, event loop)
-   - 3.16 __main__ → spec §G (hive up bootstrap sequence)
+   - Phase 4 (Task 4.1-4.2): Region Docker image. Builds on Phase 3.
+   - Phase 5 (Tasks 5.1-5.12): Glia (infrastructure, no LLM). Launcher,
+     heartbeat monitor, ACL manager, rollback, registry. Sequential
+     through 5.1-5.10; `bridges/` (5.11) is parallelizable.
+   - Phase 8 (Tasks 8.1-8.14): 14-region scaffolding. **PARALLEL-OK** —
+     each region is independent once Phase 5 is done. Good fit for
+     `superpowers:dispatching-parallel-agents`.
 
-## Execution model — single-track with careful review
+## Suggested order (Larry's call)
 
-Wave C tasks are more integration-heavy and have tighter dependencies
-than Wave B. Default to serial execution with the spec+code-quality
-review pattern from Wave B. Consider small parallel batches only where
-the plan shows clean independence.
+- **Phase 4 first** if you want a working container to smoke-test.
+- **Phase 5 first** if you want the whole infrastructure stack before
+  regions. Larger scope; tighter feedback loop for integration bugs.
+- **Phase 8 first** if you want to stress-test the region template
+  against 14 real configs before building glia — surfaces config
+  schema gaps early.
 
-**Suggested order:**
-1. **3.7 mqtt_client** — foundational; 3.8, 3.11, 3.14, 3.15 all depend on it. Needs `FakeMqttClient` (test fake) + component tests against real mosquitto via testcontainers.
-2. **3.12 handlers_loader** — stand-alone, can go in parallel with 3.8.
-3. **3.8 LLM adapter stack** — 5-file cluster; do as one task per plan.
-4. **3.11 self_modify** — depends on 3.5 + 3.6 + 3.9 + 3.10 (all done).
-5. **3.14 sleep** — depends on 3.11 + 3.12.
-6. **3.15 runtime** — the integrator; depends on everything above.
-7. **3.16 __main__** — entrypoint; thin wrapper around 3.15.
+My recommendation: Phase 4 → Phase 5 → Phase 8, because Phase 4 is
+tiny (1-2 tasks) and unblocks the end-to-end "can a region actually
+run in a container" check; Phase 5 is the biggest chunk; Phase 8 is
+the parallel-dispatch win.
 
-The LLM adapter stack (3.8) is the biggest single task — budget ~30%
-of session time for it alone. 3.15 runtime is second-biggest; it wires
-the full lifecycle together.
+## Execution model — unchanged
 
-### Per-task discipline (unchanged from Wave B):
-- Fresh implementer subagent per task. Never reuse context.
-- Spec compliance review after each implementer returns.
-- Code quality review (via `superpowers:code-reviewer` subagent type)
-  after spec review passes. Skip for config-only tasks.
-- One commit per plan task (+ review-fix commits as needed).
-- HEREDOC commit messages ending with:
+`superpowers:subagent-driven-development`:
+- Fresh implementer subagent per task.
+- Spec-compliance review after each implementer.
+- Code-quality review after spec-review passes (skip for config-only).
+- Fix loop until both reviews approve.
+- One commit per plan task + review-fix commits as needed.
+- HEREDOC commit messages with trailer:
     Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-- Verify `python -m ruff check region_template/ tests/unit/` clean
-  after each task.
+- Verify `python -m ruff check` clean after each task.
 
-## Known gotchas (inherit these from prior sessions)
+For Phase 8's parallel scaffolding: use
+`superpowers:dispatching-parallel-agents` and dispatch 3-4 region
+implementers at a time (not all 14 — too much context to review in
+parallel). Each implementer gets the region's starter prompt +
+capability profile + a minimal test that boots against a fake broker.
 
-1. Spec-vs-plan conflicts: the spec is authoritative. When the spec's
-   code block and the plan's prose differ, follow the spec and flag the
-   discrepancy in your implementer prompt so the subagent doesn't get
-   confused. See the "Spec deviations" section above for the 5 Wave B
-   findings that may affect Wave C work.
+## Known gotchas (inherit cumulatively from Wave C)
 
-2. Host Python env may lack `pydantic`, `structlog`, `ruff`,
-   `ruamel.yaml`, `jsonschema`, `pytest-asyncio`, `testcontainers`,
-   `GitPython`, `aiomqtt`, `litellm`. Implementers pip-install on
-   demand. If you can't `import` something, just `pip install` and
-   continue.
+See HANDOFF.md's "Known gotchas for future sessions" section — 14
+items spanning env setup, Windows platform nuances, library pins,
+and repo hygiene. The `=2.6` / `=24` stray files at repo root are
+still pip-install typos, still left alone.
 
-3. `region_template/errors.py` intentionally shadows stdlib
-   `ConnectionError`. Always reference fully-qualified or use an import
-   alias. Spec §A.9 acknowledges this.
-
-4. `LifecyclePhase` is `StrEnum` (Python 3.11+). `str(phase)` returns
-   the lowercase value (e.g., "wake"), not "LifecyclePhase.WAKE".
-
-5. `tool_use: "wizard"` in a region config raises ConfigError — only
-   `none | basic | advanced` per spec §F.2. `RegionConfig` and
-   `CapabilityProfile` enforce via `Literal`.
-
-6. Ruff config lives at `C:/repos/hive/pyproject.toml` (workspace root,
-   tool config only). Package-specific `region_template/pyproject.toml`
-   MUST NOT re-declare tool blocks.
-
-7. `region_template.capability.sleep_only` and `requires_capability`
-   are available. Apply them to `SelfModifyTools` (Task 3.11) and LTM
-   methods in `MemoryStore` (already done in 3.9).
-
-8. `region_template/defaults.yaml` and `region_template/config_schema.json`
-   already exist from Task 3.5. Task 3.17 is reduced to `litellm.config.yaml`
-   (Wave C config-only).
-
-## When you hit a spec issue
-
-Flag it — don't silently improvise. The spec is 4,792 lines and has
-been review-iterated three times. See "Spec deviations" above for the
-5 Wave B findings. Two of them (§D.5.7 invalid git flag, §F.10 merge
-language contradiction) need spec edits that Larry should approve
-before Wave C code depends on the corrected semantics.
-
-## Chunking & checkpoints
-
-Wave C is 7 tasks. Checkpoint with Larry AT MINIMUM after:
-- 3.7 mqtt_client (foundational; everything depends on it)
-- 3.8 LLM adapter stack (biggest task; impacts cost/perf design)
-- 3.15 runtime (the integrator; its failure modes cascade)
-
-If any Wave C task blocks or surfaces a major spec issue, stop and
-surface it rather than continuing.
+Spec-vs-plan deviations from Wave C are catalogued in
+"Spec-vs-plan deviations resolved during Wave C" — 8 items. Read
+these before the first Phase-4/5/8 implementer dispatch so you can
+flag the relevant ones in prompts that touch §C (LLM), §B (MQTT),
+§A.7 (tools), or §D.5 (sleep).
 
 ## Deliverable at end of session
 
-- 7 more tasks committed on `impl/v0` (total ~37-45 commits depending
-  on review fixes).
-- Unit suite passing (expected ~450-600 tests depending on the LLM
-  adapter + runtime test counts).
-- Component tests passing against a real mosquitto broker via
-  testcontainers (Task 3.7 adds a new `tests/component/` tree).
-- Ruff clean across `region_template/` and `tests/unit/`.
-- HANDOFF.md updated: Wave C row transitions to ✅; Phase 4 (Region
-  Docker image), Phase 5 (Glia), or Phase 8 (14 regions) becomes next.
+- More tasks committed on `impl/v0`.
+- Unit + component suites passing.
+- Ruff clean.
+- HANDOFF.md updated with phase completion.
 - Clear checkpoint summary for Larry.
 
-## Reminders (from memory / project principles)
+## Reminders
 
 - Larry designs before coding; the spec + plan are authoritative.
-- Biology is the tiebreaker (P-I). If you feel a Python idiom tugging
-  against the biological metaphor, the biology wins.
-- Infrastructure (glia) does not deliberate; cognition (regions) does
-  not execute infrastructure. Don't cross this line.
-- Commit-per-task is mandated by Principle XII (Every Change is Committed).
-  Granular history is a feature.
-- Auto mode may be active — if so, execute immediately on routine
-  decisions; only pause for spec conflicts, risky ops, or Larry's
-  explicit checkpoints.
+- Biology is the tiebreaker (P-I).
+- Infrastructure does not deliberate; cognition does not execute
+  infrastructure. Glia is a mechanism; regions are the cognition.
+- Commit-per-task is mandated by Principle XII.
+- Auto mode may be active — execute on routine decisions; pause only
+  for spec conflicts, risky ops, or Larry's explicit checkpoints.
 ```
 
 ---
