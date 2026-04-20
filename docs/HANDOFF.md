@@ -1,7 +1,7 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-19 (Phase 3 Wave A complete)
-**Current phase:** Phase 4 (Implementation) — Phase 3 (Runtime DNA) Wave A done, Wave B next
+**Last updated:** 2026-04-19 (Phase 3 Wave B complete)
+**Current phase:** Phase 4 (Implementation) — Phase 3 (Runtime DNA) Waves A+B done, Wave C next
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
@@ -377,7 +377,7 @@ The plan should:
 | 0. Foundation (3 tasks) | ✅ | `pyproject.toml`, `.gitignore`, `.env.example`, `scripts/bootstrap_env.sh`, `scripts/make_passwd.sh` |
 | 1. Shared library (5 tasks) | ✅ | `shared/envelope_schema.json`, `shared/message_envelope.py` (39 tests), `shared/topics.py` (55 tests), `shared/metric_schemas.json` |
 | 2. MQTT layer / bus (4 tasks) | ✅ | `bus/topic_schema.md`, `bus/mosquitto.conf`, `bus/acl_templates/_base.j2` + 14 per-region + `_new_region_stub.j2` |
-| 3. Runtime DNA (17 tasks) | 🟡 **In progress (4/17)** | Wave A ✅ (3.1-3.4), Wave B next (3.5, 3.6, 3.9, 3.10, 3.13 — parallel-safe), Wave C after |
+| 3. Runtime DNA (17 tasks) | 🟡 **In progress (9/17)** | Waves A+B ✅ (3.1-3.6, 3.9, 3.10, 3.13), Wave C next (3.7 mqtt_client, 3.8 LLM stack, 3.11 self_modify, 3.12 handlers_loader, 3.14 sleep, 3.15 runtime, 3.16 __main__), 3.17 config-only |
 | 4. Region Docker image | ⏳ | |
 | 5. Glia (12 tasks) | ⏳ | |
 | 6. Bootstrap CLI (2 tasks) | ⏳ | |
@@ -386,39 +386,52 @@ The plan should:
 | 9. Integration + smoke + self-mod tests | ⏳ | |
 | 10. Docs + HANDOFF | ⏳ | |
 
-**Phase 3 progress (4/17 tasks done, Wave A):**
+**Phase 3 progress (9/17 tasks done, Waves A+B):**
 
 | Task | File | Status | Commits |
 |---|---|---|---|
-| 3.1 | `region_template/pyproject.toml` + `__init__.py` | ✅ | `924b289` |
-| 3.2 | `region_template/types.py` (+ tests) | ✅ | `acdcfd6` impl, `3079852` lint fix, `bd77a61` spec §A.4.1 StrEnum update |
-| 3.3 | `region_template/errors.py` (+ tests) | ✅ | `1ec03d9` impl, `f57cd8b` review fixes (raise/catch round-trip, `*args: Any`) |
-| 3.4 | `region_template/logging_setup.py` (+ tests) | ✅ | `f218d1f` impl, `1d664e3` review fixes (ProcessorFormatter for stdlib, honest docstring) |
-| 3.5 | `region_template/config_loader.py` | ⏳ Wave B | — |
-| 3.6 | `region_template/capability.py` | ⏳ Wave B | — |
+| 3.1 | `region_template/pyproject.toml` + `__init__.py` | ✅ A | `924b289` |
+| 3.2 | `region_template/types.py` (+ tests) | ✅ A | `acdcfd6` impl, `3079852` lint fix, `bd77a61` spec §A.4.1 StrEnum update |
+| 3.3 | `region_template/errors.py` (+ tests) | ✅ A | `1ec03d9` impl, `f57cd8b` review fixes (raise/catch round-trip, `*args: Any`) |
+| 3.4 | `region_template/logging_setup.py` (+ tests) | ✅ A | `f218d1f` impl, `1d664e3` review fixes (ProcessorFormatter for stdlib, honest docstring) |
+| 3.5 | `region_template/config_loader.py` + `config_schema.json` + `defaults.yaml` | ✅ B | `7db78ae` impl, `a1680c3` review fixes (JSON-path + file-path in ConfigError) |
+| 3.6 | `region_template/capability.py` (+ tests) | ✅ B | `d008cc0` |
 | 3.7 | `region_template/mqtt_client.py` | ⏳ Wave C | — |
 | 3.8 | LLM adapter stack (5 files) | ⏳ Wave C | — |
-| 3.9 | `region_template/memory.py` | ⏳ Wave B | — |
-| 3.10 | `region_template/git_tools.py` | ⏳ Wave B | — |
+| 3.9 | `region_template/memory.py` (+ tests) | ✅ B | `0363189` impl, `6d6b752` review fixes (LTM `self._lock` serialization + Windows path guard) |
+| 3.10 | `region_template/git_tools.py` (+ tests) | ✅ B | `0907408` (3 spec-vs-plan deviations flagged — see below) |
 | 3.11 | `region_template/self_modify.py` | ⏳ Wave C | — |
 | 3.12 | `region_template/handlers_loader.py` | ⏳ Wave C | — |
-| 3.13 | `region_template/heartbeat.py` | ⏳ Wave B | — |
+| 3.13 | `region_template/heartbeat.py` (+ tests) | ✅ B | `cdf9e08` |
 | 3.14 | `region_template/sleep.py` | ⏳ Wave C | — |
 | 3.15 | `region_template/runtime.py` | ⏳ Wave C | — |
 | 3.16 | `region_template/__main__.py` | ⏳ Wave C | — |
-| 3.17 | `defaults.yaml` + `litellm.config.yaml` | ⏳ Config-only | — |
+| 3.17 | `defaults.yaml` + `litellm.config.yaml` | 🟡 Partial — `defaults.yaml` landed early in 3.5; `litellm.config.yaml` deferred to Wave C | — |
 
-Plus one side-commit: `2af2df0 tests: ruff lint cleanup for shared-phase tests` (cleaned up 7 ruff findings in Phase 1 test files that predated ruff config enforcement).
+Plus one side-commit (Wave A): `2af2df0 tests: ruff lint cleanup for shared-phase tests`.
 
-**Git state:** 22 commits on `impl/v0`. 190 unit tests passing (envelope + topics + types + errors + logging_setup). `ruff check region_template/ tests/unit/` is clean. Push to origin on next handoff update.
+**Git state:** 30 commits on `impl/v0` (ahead of origin). **304 unit tests passing** (envelope + topics + types + errors + logging_setup + capability + git_tools + heartbeat + config_loader + memory). `ruff check region_template/ tests/unit/` is clean. Push to origin on next handoff.
 
-**Spec updates during Phase 3 so far:**
+**Spec updates during Phase 3:**
 - §A.4.1 — `LifecyclePhase(str, Enum)` → `LifecyclePhase(StrEnum)` (commit `bd77a61`, approved by Larry). StrEnum behavior is identical for `.value`, `isinstance`, and JSON serialization; changes `str(phase)` from `"LifecyclePhase.WAKE"` to `"wake"` (safer for MQTT topic f-strings).
 
-**Noted known gotchas for future sessions:**
-- The host Python env lacks `pydantic`, `structlog`, `ruff`, `testcontainers` by default on fresh shells. Implementers have pip-installed these on demand. `scripts/bootstrap_env.sh` exists from Phase 0 — consider using it to create a proper venv.
+**Spec deviations flagged during Wave B (require Larry's review before Wave C):**
+
+1. **§D.5.7 `revert_to()` uses `git reset --hard`, not a revert commit** — spec code block and §D.8 both specify `reset --hard`; plan's Step-1 prose ("creates a revert commit (not `reset`)") was wrong. Implementation follows spec. Method name `revert_to` is a slight misnomer but behavior is unambiguous. No spec change needed; flagging only because the plan prose conflicts with the spec.
+2. **§D.5.7 `last_good_sha()` returns `HEAD^`** — spec docstring says so; plan's prose ("HEAD of the last boot-successful commit") implied more state than this module owns. Implementation follows spec.
+3. **§D.5.7 / §D.10 `--allow-empty=never` is not a valid git CLI flag** — would cause `git commit` to fail with "unknown option". Intended semantic (reject empty commits) is git's default behavior. Implementation drops the flag; empty-commit attempts → non-zero exit → `GitError`. **Recommend spec edit** to remove the invalid flag from both §D.5.7's code block and the §D.10 failure-modes row.
+4. **§F.10 contradicts §F.5 on default/override merge** — §F.10 says "default/override fully replaces nested dicts (no partial merge at leaf level, see §F.5)", but §F.5's `_deep_merge` wording, the §F.1 example, and implementation intent all use recursive deep-merge (region leaves win). **Recommend spec edit** to rewrite §F.10's row as "merge is recursive on dicts; region lists/scalars fully replace defaults at the leaf."
+5. **§D.3.3 LTM API** — spec is authoritative (`write_ltm(path, content, metadata, reason) -> LtmWriteResult`, `query_ltm(q: MemoryQuery) -> list[MemoryHit]`); plan's Step-1 prose was abbreviated (`read_ltm(glob)` / `write_ltm(note_id, markdown)` / `index()`). Implementation follows spec. Plan prose should be tightened for Wave C tasks that consume this API.
+
+**Known gotchas for future sessions (cumulative):**
+- Host Python env lacks `pydantic`, `structlog`, `ruff`, `ruamel.yaml`, `jsonschema`, `pytest-asyncio`, `testcontainers`, `GitPython` on fresh shells. Implementers pip-install on demand. `scripts/bootstrap_env.sh` exists — still unused.
 - structlog 25.x hardcodes `warn` → `warning` internally; `region_template/logging_setup.py` installs `_remap_warning_to_warn` processor to satisfy spec §H.1.2's lowercase-`warn` requirement.
-- `ConnectionError` in `region_template/errors.py` intentionally shadows the stdlib — always reference fully-qualified (`region_template.errors.ConnectionError`) or import-alias to avoid ambiguity.
+- `ConnectionError` in `region_template/errors.py` intentionally shadows the stdlib — always reference fully-qualified or import-alias to avoid ambiguity.
+- `LifecyclePhase` is `StrEnum` (Python 3.11+); `str(phase)` returns lowercase ("wake", not "LifecyclePhase.WAKE").
+- `tool_use: "wizard"` must raise `ConfigError` — JSON schema and Pydantic both enforce via `Literal["none","basic","advanced"]`.
+- Ruff config lives at `C:/repos/hive/pyproject.toml` — package-specific `region_template/pyproject.toml` MUST NOT re-declare tool blocks.
+- `MemoryStore`'s STM TTL uses `time.monotonic()` → TTL countdown restarts across process restarts. Intentional; spec silent. Documented in module.
+- Two stray files at repo root (`=2.6`, `=24`) are leftovers from `pip install` typos — leave them alone (or let Larry rm when convenient).
 
 **Execution model:** `superpowers:subagent-driven-development` — fresh implementer subagent per task; spec review (always) + code quality review (for real code; skip for config-only); commit-per-task; checkpoint with user every ~10-15 tasks or at wave boundaries.
 
@@ -426,7 +439,7 @@ Plus one side-commit: `2af2df0 tests: ruff lint cleanup for shared-phase tests` 
 
 Implement Hive v0 per the plan. Multi-session; use parallel dispatched agents for the 14-region scaffolding work in Phase 8.
 
-### Prompt for next Phase-4 session (resume in-progress work — Wave B)
+### Prompt for next Phase-4 session (resume in-progress work — Wave C)
 
 Paste the following into a new Claude Code session:
 
@@ -434,62 +447,62 @@ Paste the following into a new Claude Code session:
 
 ```
 You are continuing Hive v0 Phase 3 implementation at C:/repos/hive/ on
-branch `impl/v0`. Wave A (tasks 3.1-3.4) is complete. Your job this
-session is Wave B (5 parallel-safe tasks), then checkpoint with Larry
-before Wave C.
+branch `impl/v0`. Waves A+B (tasks 3.1-3.6, 3.9, 3.10, 3.13) are complete.
+Your job this session is Wave C — the integration-heavy tasks that tie
+the rest of the runtime together. Expect this to be a LONGER session
+than Wave B with more checkpoints.
 
 ## Start here
 
 1. Read `docs/HANDOFF.md` in full. The Phase-3 progress table is the
-   authoritative state snapshot. Expect to see 22 commits on `impl/v0`
-   and 190 unit tests passing.
+   authoritative state snapshot. Expect ~30 commits on `impl/v0` and
+   304 unit tests passing.
 2. Confirm git state:
      git fetch origin && git checkout impl/v0 && git log --oneline -15
-   Expected HEAD: `1d664e3 runtime: logging_setup review fixes
-   (ProcessorFormatter + docstring)` OR the HANDOFF.md commit after it
-   (whichever is newest).
+   Expected HEAD is the HANDOFF.md commit after Wave B wrap-up.
 3. Confirm environment:
      cd C:/repos/hive && python -m pytest tests/unit/ -q
-   Must show "190 passed" (or 190+N if later work landed).
+   Must show "304 passed" (or more if later work landed).
      python -m ruff check region_template/ tests/unit/
    Must show "All checks passed!".
-4. Read the plan's Wave B section:
+4. Read the plan's Wave C section:
      docs/superpowers/plans/2026-04-19-hive-v0-plan.md
-   Tasks 3.5, 3.6, 3.9, 3.10, 3.13 (lines 381-520 in the plan).
+   Tasks 3.7, 3.8, 3.11, 3.12, 3.14, 3.15, 3.16.
 5. Spot-read the relevant spec sections before each implementer dispatch:
-   - 3.5 config_loader → spec §F (config schema + loader)
-   - 3.6 capability → spec §A.7.8 (decorators)
-   - 3.9 memory → spec §D.2-D.4 (STM/LTM schemas)
-   - 3.10 git_tools → spec §D.5.7 + §D.8
-   - 3.13 heartbeat → spec §A.5
+   - 3.7 mqtt_client → spec §B (topic catalog + envelope + LWT + retry)
+   - 3.8 LLM adapter stack → spec §C (provider abstraction, cache, token ledger)
+   - 3.11 self_modify → spec §A.7 (edit_prompt/subscriptions/handlers/write_memory/commit/restart/spawn)
+   - 3.12 handlers_loader → spec §A.6.1 + §A.6.3 (handler contract, discovery, dispatch order)
+   - 3.14 sleep → spec §A.8 + §D.5 (FSM transitions + consolidation protocol)
+   - 3.15 runtime → spec §A.1-A.4 (RegionRuntime, bootstrap, event loop)
+   - 3.16 __main__ → spec §G (hive up bootstrap sequence)
 
-## Execution model — approach C (batched parallel)
+## Execution model — single-track with careful review
 
-Use `superpowers:subagent-driven-development` but batch Wave B into two
-parallel groups instead of running all 5 serially:
+Wave C tasks are more integration-heavy and have tighter dependencies
+than Wave B. Default to serial execution with the spec+code-quality
+review pattern from Wave B. Consider small parallel batches only where
+the plan shows clean independence.
 
-### Batch 1 — dispatch in parallel:
-  - 3.6 `capability.py` (smaller, self-contained, decorators only)
-  - 3.10 `git_tools.py` (subprocess wrapper, self-contained)
-  - 3.13 `heartbeat.py` (asyncio ticker, self-contained)
+**Suggested order:**
+1. **3.7 mqtt_client** — foundational; 3.8, 3.11, 3.14, 3.15 all depend on it. Needs `FakeMqttClient` (test fake) + component tests against real mosquitto via testcontainers.
+2. **3.12 handlers_loader** — stand-alone, can go in parallel with 3.8.
+3. **3.8 LLM adapter stack** — 5-file cluster; do as one task per plan.
+4. **3.11 self_modify** — depends on 3.5 + 3.6 + 3.9 + 3.10 (all done).
+5. **3.14 sleep** — depends on 3.11 + 3.12.
+6. **3.15 runtime** — the integrator; depends on everything above.
+7. **3.16 __main__** — entrypoint; thin wrapper around 3.15.
 
-  Fire all three implementer subagents in a SINGLE message (multi-tool
-  call). Wait for all three to return. Then run spec + code-quality
-  reviews sequentially per task (per skill's standard pattern).
+The LLM adapter stack (3.8) is the biggest single task — budget ~30%
+of session time for it alone. 3.15 runtime is second-biggest; it wires
+the full lifecycle together.
 
-### Batch 2 — dispatch in parallel after batch 1 reviews pass:
-  - 3.5 `config_loader.py` (bigger — Pydantic RegionConfig + YAML merge)
-  - 3.9 `memory.py` (bigger — STM atomic writes, TTL, ring buffer, LTM)
-
-  Same pattern: parallel implementers, sequential reviews.
-
-### Per-task discipline (unchanged):
+### Per-task discipline (unchanged from Wave B):
 - Fresh implementer subagent per task. Never reuse context.
 - Spec compliance review after each implementer returns.
 - Code quality review (via `superpowers:code-reviewer` subagent type)
   after spec review passes. Skip for config-only tasks.
-- One commit per plan task (may end up 2+ commits if review finds fixes
-  — that's fine, still one logical task).
+- One commit per plan task (+ review-fix commits as needed).
 - HEREDOC commit messages ending with:
     Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 - Verify `python -m ruff check region_template/ tests/unit/` clean
@@ -497,65 +510,70 @@ parallel groups instead of running all 5 serially:
 
 ## Known gotchas (inherit these from prior sessions)
 
-1. Spec-vs-plan conflicts: the spec is authoritative. The plan's plain-
-   prose descriptions sometimes paraphrase loosely (e.g., HandlerContext
-   field list, key names in log output). When the spec's code block and
-   the plan's prose differ, follow the spec, and flag the discrepancy
-   in your implementer prompt so the subagent doesn't get confused.
+1. Spec-vs-plan conflicts: the spec is authoritative. When the spec's
+   code block and the plan's prose differ, follow the spec and flag the
+   discrepancy in your implementer prompt so the subagent doesn't get
+   confused. See the "Spec deviations" section above for the 5 Wave B
+   findings that may affect Wave C work.
 
-2. Host Python env may lack `pydantic`, `structlog`, `ruff`, `GitPython`,
-   `testcontainers`. Implementers have been pip-installing on demand.
-   No venv has been set up yet; `scripts/bootstrap_env.sh` exists but
-   hasn't been used. If an implementer can't `import` something, tell
-   them to pip install and continue.
+2. Host Python env may lack `pydantic`, `structlog`, `ruff`,
+   `ruamel.yaml`, `jsonschema`, `pytest-asyncio`, `testcontainers`,
+   `GitPython`, `aiomqtt`, `litellm`. Implementers pip-install on
+   demand. If you can't `import` something, just `pip install` and
+   continue.
 
 3. `region_template/errors.py` intentionally shadows stdlib
    `ConnectionError`. Always reference fully-qualified or use an import
    alias. Spec §A.9 acknowledges this.
 
-4. `LifecyclePhase` is `StrEnum` (Python 3.11+), NOT `(str, Enum)`.
-   Spec §A.4.1 was updated in commit `bd77a61`. `str(phase)` returns
+4. `LifecyclePhase` is `StrEnum` (Python 3.11+). `str(phase)` returns
    the lowercase value (e.g., "wake"), not "LifecyclePhase.WAKE".
 
-5. `tool_use: "wizard"` in a region config must raise ConfigError —
-   only `none | basic | advanced` are valid per spec §F.2. `CapabilityProfile`
-   is already implemented in `region_template/types.py` with a Literal
-   type — config_loader composes it.
+5. `tool_use: "wizard"` in a region config raises ConfigError — only
+   `none | basic | advanced` per spec §F.2. `RegionConfig` and
+   `CapabilityProfile` enforce via `Literal`.
 
 6. Ruff config lives at `C:/repos/hive/pyproject.toml` (workspace root,
    tool config only). Package-specific `region_template/pyproject.toml`
    MUST NOT re-declare tool blocks.
 
+7. `region_template.capability.sleep_only` and `requires_capability`
+   are available. Apply them to `SelfModifyTools` (Task 3.11) and LTM
+   methods in `MemoryStore` (already done in 3.9).
+
+8. `region_template/defaults.yaml` and `region_template/config_schema.json`
+   already exist from Task 3.5. Task 3.17 is reduced to `litellm.config.yaml`
+   (Wave C config-only).
+
 ## When you hit a spec issue
 
 Flag it — don't silently improvise. The spec is 4,792 lines and has
-been review-iterated three times. If something looks wrong or genuinely
-conflicts with lint rules, bring it to Larry before deciding. Example
-from prior session: UP042 flagged `(str, Enum)` → Larry approved
-switching to StrEnum AND updating the spec section to match.
+been review-iterated three times. See "Spec deviations" above for the
+5 Wave B findings. Two of them (§D.5.7 invalid git flag, §F.10 merge
+language contradiction) need spec edits that Larry should approve
+before Wave C code depends on the corrected semantics.
 
 ## Chunking & checkpoints
 
-After all 5 Wave B tasks complete with reviews passing, CHECKPOINT with
-Larry. Do NOT start Wave C silently. State of play to report:
-  - Wave B complete (5/5 tasks)
-  - Total Phase 3: 9/17 tasks done
-  - Test count and ruff status
-  - Any spec deviations or open questions
-  - Summary of what Wave C needs (reviewing the bigger pieces —
-    mqtt_client + LLM adapter stack + runtime.py integrator)
+Wave C is 7 tasks. Checkpoint with Larry AT MINIMUM after:
+- 3.7 mqtt_client (foundational; everything depends on it)
+- 3.8 LLM adapter stack (biggest task; impacts cost/perf design)
+- 3.15 runtime (the integrator; its failure modes cascade)
 
-If any Wave B task blocks or surfaces a major spec issue, stop and
-surface it rather than continuing through the batch.
+If any Wave C task blocks or surfaces a major spec issue, stop and
+surface it rather than continuing.
 
 ## Deliverable at end of session
 
-- 5 more tasks committed on `impl/v0` (total 22 + N commits).
-- Unit suite passing (expected ~230-260 tests depending on how many
-  each Wave B module adds).
+- 7 more tasks committed on `impl/v0` (total ~37-45 commits depending
+  on review fixes).
+- Unit suite passing (expected ~450-600 tests depending on the LLM
+  adapter + runtime test counts).
+- Component tests passing against a real mosquitto broker via
+  testcontainers (Task 3.7 adds a new `tests/component/` tree).
 - Ruff clean across `region_template/` and `tests/unit/`.
-- HANDOFF.md updated: Wave B row transitions to ✅ in the phase-3
-  progress table; the "Next work" section pivots to Wave C.
+- HANDOFF.md updated: Wave C row transitions to ✅; Phase 4 (Region
+  Docker image), Phase 5 (Glia), or Phase 8 (14 regions) becomes next.
 - Clear checkpoint summary for Larry.
 
 ## Reminders (from memory / project principles)
