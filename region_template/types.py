@@ -13,8 +13,9 @@ importable standalone. The concrete classes land in Tasks 3.8, 3.9, 3.11.
 from __future__ import annotations
 
 import dataclasses
-from enum import Enum
-from typing import TYPE_CHECKING, Awaitable, Callable, Literal
+from collections.abc import Awaitable, Callable
+from enum import StrEnum
+from typing import TYPE_CHECKING, Literal
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
 # LifecyclePhase — §A.4.1
 # ---------------------------------------------------------------------------
 
-class LifecyclePhase(str, Enum):
+class LifecyclePhase(StrEnum):
     """Four-phase FSM for the region runtime.
 
     Restart is modelled via SHUTDOWN with exit-code 0 (§A.4.4); there is no
@@ -85,8 +86,8 @@ class HandlerContext:
     region_name: str
     phase: LifecyclePhase
     publish: Callable[..., Awaitable[None]]
-    llm: "LlmAdapter"
-    memory: "MemoryStore"
-    tools: "SelfModifyTools"  # present but gated by capability + phase
+    llm: LlmAdapter
+    memory: MemoryStore
+    tools: SelfModifyTools  # present but gated by capability + phase
     request_sleep: Callable[[str], None]
     log: structlog.BoundLogger

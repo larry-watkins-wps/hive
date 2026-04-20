@@ -2,20 +2,22 @@
 
 Covers:
   1. Import smoke: LifecyclePhase, CapabilityProfile, HandlerContext importable.
-  2. LifecyclePhase shape: exactly 4 members with lowercase str values; str-Enum; no RESTARTING.
+  2. LifecyclePhase shape: exactly 4 members with lowercase str values;
+     str-Enum; no RESTARTING.
   3. CapabilityProfile happy-path construction and default values.
-  4. CapabilityProfile validation: missing required field, bad enum literal, extra field, modalities.
-  5. HandlerContext shape: is_dataclass; field names; frozen (FrozenInstanceError on mutation).
+  4. CapabilityProfile validation: missing required field, bad enum literal,
+     extra field, modalities.
+  5. HandlerContext shape: is_dataclass; field names; frozen (FrozenInstanceError
+     on mutation).
 """
 from __future__ import annotations
 
 import dataclasses
 
-import pytest
 import pydantic
+import pytest
 
-from region_template.types import LifecyclePhase, CapabilityProfile, HandlerContext
-
+from region_template.types import CapabilityProfile, HandlerContext, LifecyclePhase
 
 # ---------------------------------------------------------------------------
 # 1. Import smoke test (no explicit assertion — collection failure = fail)
@@ -92,6 +94,7 @@ def test_capability_profile_modalities_valid():
 
 
 def test_capability_profile_all_optional_fields():
+    expected_modalities = ["text", "vision", "audio", "motor", "smell", "haptic"]
     cap = CapabilityProfile(
         self_modify=True,
         tool_use="advanced",
@@ -99,11 +102,11 @@ def test_capability_profile_all_optional_fields():
         audio=True,
         stream=True,
         can_spawn=True,
-        modalities=["text", "vision", "audio", "motor", "smell", "haptic"],
+        modalities=expected_modalities,
     )
     assert cap.stream is True
     assert cap.can_spawn is True
-    assert len(cap.modalities) == 6
+    assert cap.modalities == expected_modalities
 
 
 # ---------------------------------------------------------------------------
