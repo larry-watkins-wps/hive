@@ -356,10 +356,10 @@ The runtime is a finite-state machine with four phases.
 
 ```python
 # region_template/types.py
-from enum import Enum
+from enum import StrEnum
 
 
-class LifecyclePhase(str, Enum):
+class LifecyclePhase(StrEnum):
     BOOTSTRAP = "bootstrap"
     WAKE = "wake"
     SLEEP = "sleep"
