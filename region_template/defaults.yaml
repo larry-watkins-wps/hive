@@ -1,0 +1,73 @@
+# Hive region framework defaults — spec §F.6.
+#
+# These defaults are deep-merged UNDER each region's config.yaml. Region values
+# win at the leaf level. Keys NOT provided here are intentionally omitted:
+#
+#   - ``name``: required from each region's config.yaml (§F.2).
+#   - ``llm.provider`` / ``llm.model``: required, no universal default.
+#   - ``capabilities``: deny-by-default per-region declaration required (P-X).
+#
+# ``role`` has a placeholder default so this file is standalone-loadable;
+# the JSON schema (§F.2) rejects it via minLength: 10 if the region forgets
+# to override it. The placeholder string below is 15 chars — valid but useless
+# to any real region.
+
+schema_version: 1
+role: "unnamed region"
+
+llm:
+  params:
+    temperature: 0.7
+    max_tokens: 2048
+  budgets:
+    per_call_max_tokens: 2048
+    per_hour_input_tokens: 500000
+    per_hour_output_tokens: 100000
+    per_day_cost_usd: 10
+  retry:
+    max_attempts: 3
+    initial_backoff_s: 1
+    max_backoff_s: 10
+  caching:
+    strategy: system
+    ttl_hint_s: 300
+
+capabilities:
+  self_modify: false
+  tool_use: none
+  vision: false
+  audio: false
+  stream: false
+  can_spawn: false
+  modalities: [text]
+
+lifecycle:
+  heartbeat_interval_s: 5
+  sleep_quiet_window_s: 300
+  sleep_max_wake_s: 3600
+  sleep_max_queue_depth: 5
+  sleep_abort_cortisol_threshold: 0.85
+  shutdown_timeout_s: 30
+
+memory:
+  stm_max_bytes: 262144
+  recent_events_max: 200
+  ltm_query_default_k: 5
+  index_rebuild_interval_sleeps: 10
+
+dispatch:
+  handler_concurrency_limit: 8
+  handler_default_timeout_s: 30
+  backpressure_warn_s: 10
+
+mqtt:
+  broker_host: broker
+  broker_port: 1883
+  keepalive_s: 30
+  max_connect_attempts: 10
+  reconnect_give_up_s: 120
+
+logging:
+  level: info
+  structured: true
+  include_envelope_ids: true

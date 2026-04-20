@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hive.local/schemas/region-config/v1.json",
+  "title": "Hive Region Config",
+  "type": "object",
+  "required": ["name", "role", "schema_version", "llm", "capabilities"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{2,30}$"},
+    "role": {"type": "string", "minLength": 10, "maxLength": 500},
+    "llm": {
+      "type": "object",
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": {"type": "string"},
+        "model": {"type": "string"},
+        "params": {"type": "object"},
+        "budgets": {
+          "type": "object",
+          "properties": {
+            "per_call_max_tokens": {"type": "integer", "minimum": 128},
+            "per_hour_input_tokens": {"type": "integer", "minimum": 1000},
+            "per_hour_output_tokens": {"type": "integer", "minimum": 1000},
+            "per_day_cost_usd": {"type": "number", "minimum": 0}
+          }
+        },
+        "retry": {
+          "type": "object",
+          "properties": {
+            "max_attempts": {"type": "integer", "minimum": 1, "maximum": 10},
+            "initial_backoff_s": {"type": "number", "minimum": 0.1},
+            "max_backoff_s": {"type": "number", "minimum": 1}
+          }
+        },
+        "caching": {
+          "type": "object",
+          "properties": {
+            "strategy": {"enum": ["none", "system", "system_and_messages"]},
+            "ttl_hint_s": {"type": "integer", "minimum": 10}
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "required": ["self_modify", "tool_use", "vision", "audio"],
+      "additionalProperties": false,
+      "properties": {
+        "self_modify": {"type": "boolean"},
+        "tool_use": {"enum": ["none", "basic", "advanced"]},
+        "vision": {"type": "boolean"},
+        "audio": {"type": "boolean"},
+        "stream": {"type": "boolean"},
+        "can_spawn": {"type": "boolean"},
+        "modalities": {
+          "type": "array",
+          "items": {"enum": ["text", "vision", "audio", "motor", "smell", "haptic"]}
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "properties": {
+        "heartbeat_interval_s": {"type": "integer", "minimum": 1, "maximum": 60},
+        "sleep_quiet_window_s": {"type": "integer", "minimum": 30},
+        "sleep_max_wake_s": {"type": "integer", "minimum": 60},
+        "sleep_max_queue_depth": {"type": "integer", "minimum": 0},
+        "sleep_abort_cortisol_threshold": {"type": "number", "minimum": 0, "maximum": 1},
+        "shutdown_timeout_s": {"type": "integer", "minimum": 5}
+      }
+    },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "stm_max_bytes": {"type": "integer", "minimum": 1024, "maximum": 1048576},
+        "recent_events_max": {"type": "integer", "minimum": 10},
+        "ltm_query_default_k": {"type": "integer", "minimum": 1, "maximum": 50},
+        "index_rebuild_interval_sleeps": {"type": "integer", "minimum": 1}
+      }
+    },
+    "dispatch": {
+      "type": "object",
+      "properties": {
+        "handler_concurrency_limit": {"type": "integer", "minimum": 1, "maximum": 64},
+        "handler_default_timeout_s": {"type": "number", "minimum": 1},
+        "backpressure_warn_s": {"type": "integer", "minimum": 1}
+      }
+    },
+    "mqtt": {
+      "type": "object",
+      "properties": {
+        "broker_host": {"type": "string"},
+        "broker_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "keepalive_s": {"type": "integer", "minimum": 5},
+        "max_connect_attempts": {"type": "integer", "minimum": 1},
+        "reconnect_give_up_s": {"type": "integer", "minimum": 10},
+        "password_env": {"type": "string"}
+      }
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": {"enum": ["debug", "info", "warn", "error"]},
+        "structured": {"type": "boolean"},
+        "include_envelope_ids": {"type": "boolean"}
+      }
+    }
+  },
+  "additionalProperties": false
+}
