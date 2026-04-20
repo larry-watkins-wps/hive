@@ -1,0 +1,1 @@
+"""Hive infrastructure layer."""
