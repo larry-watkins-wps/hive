@@ -1,0 +1,32 @@
+# Minimal RegionConfig used by tests/component/test_region_entry.py.
+#
+# ``broker_host`` / ``broker_port`` are templated at test time (see
+# ``test_region_entry.py::_write_runtime_config``) because the testcontainers
+# Mosquitto instance assigns a dynamic host port. The on-disk defaults here
+# are only for ``python -m region_template --help`` sanity checks and the
+# fixture's own schema validity.
+
+schema_version: 1
+name: test_region
+role: "Minimal test region used only by the component test harness."
+
+llm:
+  provider: anthropic
+  model: claude-opus-4-6-20260401
+
+capabilities:
+  self_modify: false
+  tool_use: none
+  vision: false
+  audio: false
+
+lifecycle:
+  heartbeat_interval_s: 1
+  sleep_quiet_window_s: 600
+  sleep_max_wake_s: 3600
+
+mqtt:
+  broker_host: 127.0.0.1
+  broker_port: 1883
+  max_connect_attempts: 3
+  reconnect_give_up_s: 10
