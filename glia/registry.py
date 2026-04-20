@@ -7,8 +7,10 @@ conventions so the YAML stays clean of deployment concerns.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from ruamel.yaml import YAML
@@ -41,7 +43,7 @@ class RegistryEntry:
     name: str
     layer: str  # cognitive | sensory | motor | modulatory | homeostatic
     required_capabilities: tuple[str, ...]
-    default_capabilities: dict[str, Any]
+    default_capabilities: Mapping[str, Any]
     singleton: bool
     reserved: bool
 
@@ -120,10 +122,9 @@ class RegionRegistry:
         entries: dict[str, RegistryEntry] = {}
 
         for region_name, block in raw_regions.items():
-            if region_name in entries:
-                raise RegistryError(
-                    f"{path}: duplicate region name {region_name!r}"
-                )
+            # Note: ruamel.yaml typ="safe" silently last-wins on duplicate keys
+            # at parse time, so this loop never sees duplicates.  The registry
+            # is hand-maintained (or ACC-generated), so we accept that behaviour.
 
             if not isinstance(block, dict):
                 raise RegistryError(
@@ -174,8 +175,8 @@ class RegionRegistry:
         required_capabilities: tuple[str, ...] = tuple(
             block.get("required_capabilities") or []
         )
-        default_capabilities: dict[str, Any] = dict(
-            block.get("default_capabilities") or {}
+        default_capabilities: Mapping[str, Any] = MappingProxyType(
+            dict(block.get("default_capabilities") or {})
         )
 
         return RegistryEntry(
@@ -245,7 +246,7 @@ class RegionRegistry:
             "name": f"hive-{name}",
             "env": {"HIVE_REGION": name},
             "volumes": {
-                str(Path("./regions") / name): {
+                f"./regions/{name}": {
                     "bind": "/hive/region",
                     "mode": "rw",
                 },

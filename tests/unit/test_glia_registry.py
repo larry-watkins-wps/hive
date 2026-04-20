@@ -142,29 +142,15 @@ def test_docker_spec_active():
     assert spec["detach"] is True
 
     volumes = spec["volumes"]
-    # Must have a volume binding for regions/amygdala → /hive/region:rw
-    region_volume = next(
-        (v for k, v in volumes.items() if "amygdala" in str(k)), None
-    )
-    assert region_volume is not None, "Expected a volume for regions/amygdala"
-    assert region_volume["bind"] == "/hive/region"
-    assert region_volume["mode"] == "rw"
+    # Direct key lookups — all three keys are forward-slash relative paths.
+    assert volumes["./regions/amygdala"]["bind"] == "/hive/region"
+    assert volumes["./regions/amygdala"]["mode"] == "rw"
 
-    # Must have region_template → /hive/region_template:ro
-    template_volume = next(
-        (v for k, v in volumes.items() if "region_template" in str(k)), None
-    )
-    assert template_volume is not None, "Expected a volume for region_template"
-    assert template_volume["bind"] == "/hive/region_template"
-    assert template_volume["mode"] == "ro"
+    assert volumes["./region_template"]["bind"] == "/hive/region_template"
+    assert volumes["./region_template"]["mode"] == "ro"
 
-    # Must have shared → /hive/shared:ro
-    shared_volume = next(
-        (v for k, v in volumes.items() if "shared" in str(k) and "amygdala" not in str(k)), None
-    )
-    assert shared_volume is not None, "Expected a volume for shared"
-    assert shared_volume["bind"] == "/hive/shared"
-    assert shared_volume["mode"] == "ro"
+    assert volumes["./shared"]["bind"] == "/hive/shared"
+    assert volumes["./shared"]["mode"] == "ro"
 
 
 # ---------------------------------------------------------------------------
@@ -261,38 +247,7 @@ def test_contains():
 
 
 # ---------------------------------------------------------------------------
-# 11. Duplicate names (skipped if ruamel silently deduplicates)
+# 11. __contains__ — already tested above; duplicate-detection test removed
 # ---------------------------------------------------------------------------
-
-
-def test_duplicate_names_rejected(tmp_path):
-    """Duplicate region names in YAML raise RegistryError (if detectable)."""
-    # ruamel.yaml in safe mode uses last-wins for duplicate keys by default.
-    # We detect this post-load by comparing count to expected, or by checking
-    # ruamel's CommentedMap duplicate-key support.
-    # This test is best-effort: if ruamel deduplicated silently, skip it.
-    dup_yaml = textwrap.dedent("""\
-        schema_version: 1
-        regions:
-          amygdala:
-            layer: modulatory
-            required_capabilities: []
-            default_capabilities: {self_modify: true}
-            singleton: true
-          amygdala:
-            layer: modulatory
-            required_capabilities: []
-            default_capabilities: {self_modify: true}
-            singleton: true
-    """)
-    p = tmp_path / "dup.yaml"
-    p.write_text(dup_yaml, encoding="utf-8")
-    # With ruamel safe, last-wins means we only see 1 entry — same as the
-    # non-dup case. We can't reliably detect it without rt mode.
-    # Accept either RegistryError OR successful load with 1 entry.
-    try:
-        reg = RegionRegistry.load(p)
-        # If it loaded, confirm deduplicated to a single entry
-        assert len(reg.entries) == 1, "Expected dedup to yield 1 entry"
-    except RegistryError:
-        pass  # Ideal behavior: raise on duplicate
+# ruamel.yaml typ="safe" last-wins on duplicate YAML keys at parse time, so a
+# duplicate-detection guard in registry.py would be dead code.  No test for it.
