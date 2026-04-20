@@ -10,9 +10,10 @@ when a region crosses the miss threshold. LWT envelopes (retained, with
 
 Design notes:
 
-- ``last_heartbeat_ts`` uses an injectable monotonic clock (default
-  ``time.monotonic``) — NOT wall clock. Tests pass a mutable clock to
-  deterministically advance time.
+- ``last_heartbeat_ts`` uses an injectable wall clock (default
+  ``time.time`` per spec §E.3). Tests pass a mutable clock to
+  deterministically advance time. Callers may inject ``time.monotonic``
+  for stronger monotonicity guarantees (e.g., across NTP adjustments).
 - The dead flag is a one-shot latch: ``on_unhealthy`` fires exactly once
   per dead→alive→dead cycle. Recovery clears it; the next miss-threshold
   crossing re-arms it.
@@ -54,7 +55,7 @@ class RegionLiveness:
     """Per-region liveness snapshot. Mutable; updated on each heartbeat."""
 
     region: str
-    last_heartbeat_ts: float  # monotonic() at receipt, not the payload ts
+    last_heartbeat_ts: float  # time.time() at receipt per spec §E.3, not the payload ts
     last_status: str
     consecutive_misses: int = 0
     queue_depth: int = 0
@@ -76,6 +77,10 @@ class HeartbeatMonitor:
 
     Construction does not start the sweep loop — use :meth:`start` /
     :meth:`stop`. Callers feed envelopes via :meth:`on_heartbeat`.
+
+    The ``clock`` parameter defaults to ``time.time()`` per spec §E.3.
+    Callers may inject ``time.monotonic`` for stronger monotonicity
+    guarantees (e.g., across NTP adjustments).
     """
 
     def __init__(
@@ -86,7 +91,7 @@ class HeartbeatMonitor:
         max_misses: int = DEFAULT_MAX_MISSES,
         on_unhealthy: UnhealthyCallback | None = None,
         on_healthy: HealthyCallback | None = None,
-        clock: Callable[[], float] = time.monotonic,
+        clock: Callable[[], float] = time.time,
     ) -> None:
         self._interval_s = interval_s
         self._miss_threshold_s = miss_threshold_s
