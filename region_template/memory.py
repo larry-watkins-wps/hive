@@ -380,6 +380,17 @@ class MemoryStore:
         """Return the serialized STM document size in bytes."""
         return len(self._serialize())
 
+    def stm_size_bytes_sync(self) -> int:
+        """Synchronous STM size (bytes) without acquiring the lock.
+
+        Used by the runtime's sleep monitor (``_check_sleep_triggers``) which
+        runs in a tight tick loop and can't await. Accuracy is best-effort:
+        a concurrent ``write_stm``/``record_event`` may over- or under-count
+        by a single slot mid-serialize. That resolution is fine for the
+        stm_pressure trigger threshold check.
+        """
+        return len(self._serialize())
+
     async def sweep_expired(self) -> int:
         """Remove all expired slots from STM and persist. Returns removed count."""
         async with self._lock:

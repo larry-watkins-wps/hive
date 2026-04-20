@@ -204,6 +204,12 @@ class RegionRuntime:
         # Spawn reply correlation:
         self._spawn_futures: dict[str, asyncio.Future[SpawnResult]] = {}
 
+        # Normal-phase handler subscriptions — tracked so SLEEP entry can
+        # unsubscribe (§A.4.4.1: "user-level traffic queues at the broker
+        # (QoS 1 delivery guarantees it on wake)"). Map filter -> qos so
+        # re-subscribe uses the same QoS we bootstrapped with.
+        self._subscribed_handler_filters: dict[str, int] = {}
+
         # Sleep trigger state:
         self._pending_explicit_sleep: str | None = None
         self._sleep_quiet_window_s: float = float(
@@ -315,9 +321,10 @@ class RegionRuntime:
     async def run(self) -> None:
         """§A.4.3 — run until ``shutdown`` is called.
 
-        Spawns the message consumer + sleep monitor concurrently. The MQTT
-        receive loop (``mqtt.run``) is also started so real clients drain
-        the broker queue; fakes make this a no-op.
+        Spawns the message consumer, sleep monitor, and the ON_HEARTBEAT
+        tick loop concurrently. The MQTT receive loop (``mqtt.run``) is
+        also started so real clients drain the broker queue; fakes make
+        this a no-op.
         """
         if self.phase != LifecyclePhase.WAKE:
             raise RuntimeError(
@@ -327,6 +334,9 @@ class RegionRuntime:
         tasks = [
             asyncio.create_task(self.mqtt.run(), name="mqtt_run"),
             asyncio.create_task(self._sleep_monitor(), name="sleep_monitor"),
+            asyncio.create_task(
+                self._heartbeat_tick_loop(), name="heartbeat_tick_loop"
+            ),
         ]
         try:
             await self._shutdown_event.wait()
@@ -361,13 +371,42 @@ class RegionRuntime:
     # ------------------------------------------------------------------
 
     async def _enter_wake(self) -> None:
-        """Switch phase to WAKE. Called from bootstrap and after sleep."""
+        """Switch phase to WAKE. Called from bootstrap and after sleep.
+
+        Resumes normal-phase handler subscriptions that ``_enter_sleep``
+        unsubscribed. Broker-queued QoS-1 traffic (spec §A.4.4.1) is
+        delivered on resume.
+        """
+        resuming_from_sleep = self.phase == LifecyclePhase.SLEEP
         self.phase = LifecyclePhase.WAKE
         now = time.monotonic()
         self._last_inbound_ts = now
         # Reset the wake-cycle clock so the ``sleep_max_wake_s`` trigger
         # doesn't fire immediately after a sleep returns to WAKE.
         self._wake_start_time = now
+
+        # Re-subscribe the normal handler filters. On bootstrap this is a
+        # no-op (the map is empty at that point); on sleep→wake resume it
+        # rebuilds exactly what _pause_normal_subscriptions tore down.
+        if resuming_from_sleep:
+            await self._resume_normal_subscriptions()
+
+    async def _pause_normal_subscriptions(self) -> None:
+        """Unsubscribe the normal-phase handler filters for SLEEP.
+
+        After this call, user-level QoS-1 publishes accumulate at the broker
+        for us (the broker's per-client queue under ``clean_session=false``).
+        They are drained on WAKE resume via ``_resume_normal_subscriptions``.
+        """
+        for filter_ in list(self._subscribed_handler_filters):
+            with contextlib.suppress(Exception):
+                await self.mqtt.unsubscribe(filter_, handler=None)
+
+    async def _resume_normal_subscriptions(self) -> None:
+        """Re-subscribe normal handler filters after SLEEP exit."""
+        for filter_, qos in self._subscribed_handler_filters.items():
+            with contextlib.suppress(Exception):
+                await self.mqtt.subscribe(filter_, self._on_message, qos=qos)
 
     async def _enter_sleep(
         self, trigger: SleepTrigger, reason: str = ""
@@ -418,9 +457,11 @@ class RegionRuntime:
             )
             return  # stay in WAKE
 
-        # 3. Phase → SLEEP; bring up SLEEP listener.
+        # 3. Phase → SLEEP; unsubscribe normal topics (broker queues them
+        # for us per §A.4.4.1) and bring up the SLEEP listener.
         self.phase = LifecyclePhase.SLEEP
         await self._publish_heartbeat_once(status="sleep")
+        await self._pause_normal_subscriptions()
         await self._subscribe_sleep_phase_listener()
 
         # 4. Run SleepCoordinator.
@@ -650,9 +691,9 @@ class RegionRuntime:
         ):
             self._last_stm_check_ts = now
             with contextlib.suppress(Exception):
-                # list_stm/recent_events are async; _serialize is the cheap
-                # sync proxy that powers list_stm/stm_size_bytes internally.
-                size = len(self.memory._serialize())
+                # list_stm/recent_events are async; stm_size_bytes_sync is
+                # the lock-free sync API for the sleep monitor.
+                size = self.memory.stm_size_bytes_sync()
                 if size > self.config.memory.stm_max_bytes:
                     return (
                         "stm_pressure",
@@ -660,6 +701,82 @@ class RegionRuntime:
                     )
 
         return None
+
+    # ------------------------------------------------------------------
+    # ON_HEARTBEAT tick loop (§A.6.1 — "Also called on each heartbeat tick")
+    # ------------------------------------------------------------------
+
+    async def _heartbeat_tick_loop(self) -> None:
+        """Invoke every ``ON_HEARTBEAT=True`` handler once per interval.
+
+        Runs alongside :class:`Heartbeat` (which emits the *envelope*); this
+        loop invokes the *handlers*. Only runs in WAKE phase — ticks during
+        SLEEP/SHUTDOWN are skipped.
+        """
+        interval_s = float(self.config.lifecycle.heartbeat_interval_s)
+        while not self._shutdown_event.is_set():
+            try:
+                await asyncio.sleep(interval_s)
+                if self._shutdown_event.is_set():
+                    return
+                if self.phase != LifecyclePhase.WAKE:
+                    # Handlers don't fire during SLEEP/SHUTDOWN/BOOTSTRAP.
+                    continue
+                await self._dispatch_heartbeat_handlers()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                self._log.error("heartbeat_tick_loop_error", error=str(exc))
+
+    async def _dispatch_heartbeat_handlers(self) -> None:
+        """Synthesize a heartbeat envelope and fan out to ON_HEARTBEAT handlers.
+
+        Separate from :meth:`_dispatch` so topic-matching doesn't interfere
+        — a handler opts in via the ``ON_HEARTBEAT`` flag, not by subscribing
+        to the heartbeat topic. Timeouts and crashes produce the same
+        metacog errors as normal dispatch.
+        """
+        handlers = [h for h in self._handlers if h.on_heartbeat]
+        if not handlers:
+            return
+
+        topic = fill(SYSTEM_HEARTBEAT, region=self.region_name)
+        envelope = Envelope.new(
+            source_region=self.region_name,
+            topic=topic,
+            content_type="application/json",
+            data={
+                "region": self.region_name,
+                "status": "wake",
+                "phase": str(self.phase),
+            },
+        )
+        ctx = self._build_handler_context()
+        for h in handlers:
+            try:
+                async with asyncio.timeout(h.timeout_s):
+                    await h.handle(envelope, ctx)
+            except TimeoutError:
+                await self._publish_metacog_error(
+                    kind="handler_timeout",
+                    detail={
+                        "handler": h.name,
+                        "topic": topic,
+                        "timeout_s": h.timeout_s,
+                        "trigger": "on_heartbeat",
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001 — handler boundary
+                await self._publish_metacog_error(
+                    kind="handler_crash",
+                    detail={
+                        "handler": h.name,
+                        "topic": topic,
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                        "trigger": "on_heartbeat",
+                    },
+                )
 
     # ------------------------------------------------------------------
     # Message callbacks — subscribed during bootstrap / sleep entry
@@ -816,6 +933,11 @@ class RegionRuntime:
                 continue
             with contextlib.suppress(Exception):
                 await self.mqtt.subscribe(topic, self._on_message, qos=qos)
+            # Track for SLEEP-entry unsubscribe. When two sources (yaml +
+            # a handler) declare the same filter, the larger QoS wins.
+            self._subscribed_handler_filters[topic] = max(
+                self._subscribed_handler_filters.get(topic, 0), qos
+            )
 
     async def _subscribe_from_handlers(self) -> None:
         """Subscribe to every topic declared by every discovered handler."""
@@ -825,6 +947,10 @@ class RegionRuntime:
                     await self.mqtt.subscribe(
                         topic_filter, self._on_message, qos=h.qos
                     )
+                self._subscribed_handler_filters[topic_filter] = max(
+                    self._subscribed_handler_filters.get(topic_filter, 0),
+                    h.qos,
+                )
         # Also subscribe to spawn replies so publish_spawn_request can
         # resolve its futures.
         with contextlib.suppress(Exception):
@@ -903,7 +1029,7 @@ class RegionRuntime:
         stm_bytes = 0
         if self.memory is not None:
             with contextlib.suppress(Exception):
-                stm_bytes = len(self.memory._serialize())
+                stm_bytes = self.memory.stm_size_bytes_sync()
 
         # Map phase → status. 'sleep_restart' is set only in _enter_shutdown
         # when reason == 'restart' (handled by _publish_heartbeat_once).

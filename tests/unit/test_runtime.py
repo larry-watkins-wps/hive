@@ -39,6 +39,7 @@ from shared.message_envelope import Envelope
 from shared.topics import (
     METACOGNITION_ERROR_DETECTED,
     SYSTEM_RESTART_REQUEST,
+    SYSTEM_SLEEP_FORCE,
     SYSTEM_SLEEP_GRANTED,
     SYSTEM_SLEEP_REQUEST,
     SYSTEM_SPAWN_COMPLETE,
@@ -46,6 +47,9 @@ from shared.topics import (
 )
 from tests.fakes.llm import FakeLlmAdapter
 from tests.fakes.mqtt import FakeMqttClient
+
+# Constants used in assertions (silences ruff PLR2004 on "magic values").
+_MIN_HEARTBEAT_TICKS = 2
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -692,6 +696,308 @@ async def test_quiet_window_triggers_sleep(tmp_path: Path) -> None:
     finally:
         await runtime.shutdown("test_done")
         # Clean up the run task
+        if not run_task.done():
+            run_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await run_task
+
+
+# ---------------------------------------------------------------------------
+# Helpers for sleep-trigger tests
+# ---------------------------------------------------------------------------
+
+
+async def _auto_grant_sleep(mqtt: FakeMqttClient, region: str) -> None:
+    """Spin until a sleep/request is published, then inject sleep/granted."""
+    for _ in range(500):
+        if any(t == SYSTEM_SLEEP_REQUEST for t, *_ in mqtt.published):
+            granted = Envelope.new(
+                source_region="glia",
+                topic=SYSTEM_SLEEP_GRANTED,
+                content_type="application/json",
+                data={"region": region},
+            )
+            await mqtt.inject(SYSTEM_SLEEP_GRANTED, granted)
+            return
+        await asyncio.sleep(0.01)
+
+
+async def _wait_for(predicate: Any, *, max_iters: int = 200, step: float = 0.02) -> None:
+    """Yield until ``predicate()`` returns truthy, or give up."""
+    for _ in range(max_iters):
+        if predicate():
+            return
+        await asyncio.sleep(step)
+
+
+# ---------------------------------------------------------------------------
+# 13. ON_HEARTBEAT handlers invoked on each heartbeat tick (§A.6.1)
+# ---------------------------------------------------------------------------
+
+
+async def test_on_heartbeat_handler_called_on_tick(tmp_path: Path) -> None:
+    """Handlers with ``ON_HEARTBEAT=True`` fire once per heartbeat interval.
+
+    Uses heartbeat_interval_s=1 (config floor). Verify the counter grows
+    via tick dispatch — not via the normal message path (the handler's
+    SUBSCRIPTIONS use a sentinel topic that never fires).
+    """
+    mqtt = FakeMqttClient(region_name="test_region")
+    region_root = _build_region_root(tmp_path)
+
+    handler_file = region_root / "handlers" / "on_tick.py"
+    handler_file.write_text(
+        'SUBSCRIPTIONS = ["hive/_stub/never_fires"]\n'
+        "TIMEOUT_S = 5.0\n"
+        "ON_HEARTBEAT = True\n"
+        "\n"
+        "calls = []\n"
+        "\n"
+        "async def handle(envelope, ctx):\n"
+        "    calls.append(envelope.topic)\n",
+        encoding="utf-8",
+    )
+
+    cfg = _build_config(heartbeat_interval_s=1)
+    runtime = await _build_runtime(tmp_path, config=cfg, fake_mqtt=mqtt)
+    await runtime.bootstrap()
+
+    run_task = asyncio.create_task(runtime.run())
+    try:
+        # Allow ~2.5 heartbeat intervals for at least 2 ticks.
+        await asyncio.sleep(2.5)
+        handler_module = runtime._handlers[0]
+        assert handler_module.on_heartbeat is True
+        handler_py = __import__(
+            handler_module.handle.__module__, fromlist=["calls"]
+        )
+        # At least 2 ticks fired.
+        assert len(handler_py.calls) >= _MIN_HEARTBEAT_TICKS, (
+            f"expected >= {_MIN_HEARTBEAT_TICKS} tick calls, "
+            f"got {handler_py.calls}"
+        )
+        # Every call received a heartbeat-shaped topic (not the sentinel).
+        for topic in handler_py.calls:
+            assert topic.startswith("hive/system/heartbeat/")
+    finally:
+        await runtime.shutdown("test_done")
+        if not run_task.done():
+            run_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await run_task
+
+
+# ---------------------------------------------------------------------------
+# 14. SLEEP unsubscribes normal topics; WAKE resume re-subscribes (§A.4.4.1)
+# ---------------------------------------------------------------------------
+
+
+async def test_sleep_unsubscribes_normal_topics(tmp_path: Path) -> None:
+    """SLEEP pauses user-level subscriptions; WAKE resume re-adds them."""
+    mqtt = FakeMqttClient(region_name="test_region")
+    region_root = _build_region_root(tmp_path)
+
+    handler_file = region_root / "handlers" / "on_live.py"
+    handler_file.write_text(
+        'SUBSCRIPTIONS = ["hive/test/topic"]\n'
+        "TIMEOUT_S = 5.0\n"
+        "\n"
+        "async def handle(envelope, ctx):\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+
+    llm = FakeLlmAdapter(scripted_responses=[_empty_review_response()])
+    runtime = await _build_runtime(
+        tmp_path, fake_mqtt=mqtt, fake_llm=llm
+    )
+    await runtime.bootstrap()
+
+    try:
+        # Bootstrap subscribed hive/test/topic.
+        assert "hive/test/topic" in mqtt._subscriptions
+
+        granter = asyncio.create_task(
+            _auto_grant_sleep(mqtt, "test_region")
+        )
+        # Drive into SLEEP via force_sleep.
+        sleep_task = asyncio.create_task(runtime.force_sleep("test"))
+
+        # Once phase is SLEEP, normal handler filter must be gone.
+        await _wait_for(lambda: runtime.phase == LifecyclePhase.SLEEP)
+        assert "hive/test/topic" not in mqtt._subscriptions
+
+        # Wait for sleep to complete (empty review → back to WAKE).
+        await sleep_task
+        await granter
+
+        assert runtime.phase == LifecyclePhase.WAKE
+        # Re-subscribed on WAKE resume.
+        assert "hive/test/topic" in mqtt._subscriptions
+    finally:
+        await runtime.shutdown("test_done")
+
+
+# ---------------------------------------------------------------------------
+# 15. STM-pressure sleep trigger
+# ---------------------------------------------------------------------------
+
+
+async def test_stm_pressure_triggers_sleep(tmp_path: Path) -> None:
+    """Exceed ``stm_max_bytes`` → monitor fires stm_pressure trigger."""
+    mqtt = FakeMqttClient(region_name="test_region")
+    llm = FakeLlmAdapter(scripted_responses=[_empty_review_response()])
+    cfg = _build_config()
+    runtime = await _build_runtime(
+        tmp_path, config=cfg, fake_mqtt=mqtt, fake_llm=llm
+    )
+    await runtime.bootstrap()
+
+    try:
+        # Inflate STM past the (post-bootstrap overridden) threshold.
+        # stm_max_bytes in MemoryConfig has floor 1024; override in place
+        # for the trigger check (runtime reads config.memory.stm_max_bytes).
+        runtime.config.memory.stm_max_bytes = 1024
+        await runtime.memory.write_stm(
+            "big_payload", "x" * 2000, tags=("test",)
+        )
+        # Force the throttle to let stm check fire immediately.
+        runtime._last_stm_check_ts = 0.0
+
+        granter = asyncio.create_task(
+            _auto_grant_sleep(mqtt, "test_region")
+        )
+        run_task = asyncio.create_task(runtime.run())
+        await _wait_for(
+            lambda: any(
+                t == SYSTEM_SLEEP_REQUEST for t, *_ in mqtt.published
+            )
+        )
+        await granter
+
+        # Confirm the sleep/request payload's reason tag matches trigger.
+        sleep_requests = [
+            e for t, e, *_ in mqtt.published if t == SYSTEM_SLEEP_REQUEST
+        ]
+        assert sleep_requests
+        reasons = [
+            e.payload.data.get("reason", "") for e in sleep_requests
+        ]
+        # reason may be "stm_pressure" or "stm size X > Y" — check either.
+        assert any(
+            "stm" in r or r == "stm_pressure" for r in reasons
+        ), f"no stm_pressure trigger seen: {reasons}"
+    finally:
+        await runtime.shutdown("test_done")
+        if not run_task.done():
+            run_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await run_task
+
+
+# ---------------------------------------------------------------------------
+# 16. Heartbeat-cycle (max_wake) sleep trigger
+# ---------------------------------------------------------------------------
+
+
+async def test_heartbeat_cycle_triggers_sleep(tmp_path: Path) -> None:
+    """sleep_max_wake_s elapsed since last WAKE → heartbeat_cycle trigger."""
+    mqtt = FakeMqttClient(region_name="test_region")
+    llm = FakeLlmAdapter(scripted_responses=[_empty_review_response()])
+    # Config floor is 60s; bypass after bootstrap.
+    runtime = await _build_runtime(tmp_path, fake_mqtt=mqtt, fake_llm=llm)
+    await runtime.bootstrap()
+
+    try:
+        # Override threshold + backdate wake start so the check fires.
+        runtime._sleep_max_wake_s = 0.1
+        runtime._wake_start_time = time.monotonic() - 5.0
+        # Suppress the quiet-window trigger so we know it's this one.
+        runtime._sleep_quiet_window_s = 0.0
+        runtime._last_inbound_ts = time.monotonic()
+
+        granter = asyncio.create_task(
+            _auto_grant_sleep(mqtt, "test_region")
+        )
+        run_task = asyncio.create_task(runtime.run())
+
+        await _wait_for(
+            lambda: any(
+                t == SYSTEM_SLEEP_REQUEST for t, *_ in mqtt.published
+            )
+        )
+        await granter
+
+        sleep_requests = [
+            e for t, e, *_ in mqtt.published if t == SYSTEM_SLEEP_REQUEST
+        ]
+        reasons = [
+            e.payload.data.get("reason", "") for e in sleep_requests
+        ]
+        # reason is "awake for 0s" or the trigger literal.
+        assert any(
+            "awake" in r or r == "heartbeat_cycle" for r in reasons
+        ), f"no heartbeat_cycle trigger seen: {reasons}"
+    finally:
+        await runtime.shutdown("test_done")
+        if not run_task.done():
+            run_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await run_task
+
+
+# ---------------------------------------------------------------------------
+# 17. External-command sleep trigger via hive/system/sleep/force
+# ---------------------------------------------------------------------------
+
+
+async def test_external_command_triggers_sleep(tmp_path: Path) -> None:
+    """A ``hive/system/sleep/force`` envelope with matching region → sleep."""
+    mqtt = FakeMqttClient(region_name="test_region")
+    llm = FakeLlmAdapter(scripted_responses=[_empty_review_response()])
+    runtime = await _build_runtime(tmp_path, fake_mqtt=mqtt, fake_llm=llm)
+    await runtime.bootstrap()
+
+    try:
+        # Start the run loop (it subscribes to sleep/force at monitor start).
+        run_task = asyncio.create_task(runtime.run())
+        # Give monitor a beat to subscribe.
+        await _wait_for(
+            lambda: SYSTEM_SLEEP_FORCE in mqtt._subscriptions
+        )
+
+        granter = asyncio.create_task(
+            _auto_grant_sleep(mqtt, "test_region")
+        )
+        force_env = Envelope.new(
+            source_region="glia",
+            topic=SYSTEM_SLEEP_FORCE,
+            content_type="application/json",
+            data={"region": "test_region", "reason": "operator_shutdown"},
+        )
+        await mqtt.inject(SYSTEM_SLEEP_FORCE, force_env)
+
+        await _wait_for(
+            lambda: any(
+                t == SYSTEM_SLEEP_REQUEST for t, *_ in mqtt.published
+            )
+        )
+        await granter
+
+        sleep_requests = [
+            e for t, e, *_ in mqtt.published if t == SYSTEM_SLEEP_REQUEST
+        ]
+        assert sleep_requests
+        reasons = [
+            e.payload.data.get("reason", "") for e in sleep_requests
+        ]
+        # The _on_sleep_force callback forwards payload.reason, so
+        # reason == "operator_shutdown" (or "external_command" fallback).
+        assert any(
+            r in ("operator_shutdown", "external_command") for r in reasons
+        ), f"no external_command trigger seen: {reasons}"
+    finally:
+        await runtime.shutdown("test_done")
         if not run_task.done():
             run_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
