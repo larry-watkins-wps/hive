@@ -2,6 +2,8 @@
 """Hive error hierarchy — spec §A.9."""
 from __future__ import annotations
 
+from typing import Any
+
 
 class HiveError(Exception):
     """Base."""
@@ -34,7 +36,7 @@ class SandboxEscape(HiveError):
 class LlmError(HiveError):
     """Wraps LiteLLM exceptions; has .retryable attribute."""
 
-    def __init__(self, *args: object, retryable: bool = False) -> None:
+    def __init__(self, *args: Any, retryable: bool = False) -> None:
         super().__init__(*args)
         self.retryable = retryable
 

@@ -216,3 +216,83 @@ def test_module_attribute_accessible(name: str):
 def test_instantiation_with_message(cls):
     err = cls("test message")
     assert str(err) == "test message"
+
+
+# ---------------------------------------------------------------------------
+# 9. Raise/catch round-trip: every subclass can be caught as HiveError
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "cls",
+    [
+        ConfigError,
+        HiveConnectionError,
+        CapabilityDenied,
+        PhaseViolation,
+        HandlerError,
+        SandboxEscape,
+        LlmError,
+        GitError,
+        StmOverflow,
+    ],
+    ids=[
+        "ConfigError",
+        "ConnectionError",
+        "CapabilityDenied",
+        "PhaseViolation",
+        "HandlerError",
+        "SandboxEscape",
+        "LlmError",
+        "GitError",
+        "StmOverflow",
+    ],
+)
+def test_raise_and_catch_as_hive_error(cls):
+    """Every subclass can be raised and caught as HiveError."""
+    with pytest.raises(HiveError):
+        raise cls("boom")
+
+
+# ---------------------------------------------------------------------------
+# 10. Raise/catch round-trip: every subclass can be caught by its own type
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "cls",
+    [
+        ConfigError,
+        HiveConnectionError,
+        CapabilityDenied,
+        PhaseViolation,
+        HandlerError,
+        SandboxEscape,
+        LlmError,
+        GitError,
+        StmOverflow,
+    ],
+    ids=[
+        "ConfigError",
+        "ConnectionError",
+        "CapabilityDenied",
+        "PhaseViolation",
+        "HandlerError",
+        "SandboxEscape",
+        "LlmError",
+        "GitError",
+        "StmOverflow",
+    ],
+)
+def test_raise_and_catch_as_specific_subclass(cls):
+    """Raise each subclass and catch by its exact type."""
+    with pytest.raises(cls):
+        raise cls("boom")
+
+
+# ---------------------------------------------------------------------------
+# 11. LlmError explicit retryable=False (distinct from default)
+# ---------------------------------------------------------------------------
+
+def test_llm_error_retryable_explicit_false():
+    """Explicit retryable=False is preserved (distinct from default)."""
+    err = LlmError("permanent failure", retryable=False)
+    assert err.retryable is False
