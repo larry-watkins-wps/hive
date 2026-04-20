@@ -39,3 +39,20 @@ logs/
 
 # Hive-specific: region STM is ephemeral working memory, not version-controlled
 regions/*/memory/stm.json
+
+# Hive-specific: broker secrets and generated ACL (created at runtime)
+bus/passwd
+bus/acl.conf
+
+# Environment variable overrides (local secrets, never committed)
+.env
+
+# Test scratch directories
+tests/**/_tmp_*
+
+# Region LTM runtime notes (preserve the .gitkeep placeholder)
+regions/*/memory/ltm/*
+!regions/*/memory/ltm/.gitkeep
+
+# Per-region git repos (nested repos, managed independently)
+regions/*/.git/
