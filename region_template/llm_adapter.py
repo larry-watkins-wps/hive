@@ -214,15 +214,19 @@ class LlmAdapter:
             retryable attempts exhausted, or the ledger is over budget.
         """
         self._verify_capabilities(req)
-        self._check_budget_or_raise()
 
-        # Warning-threshold logging — best-effort, non-failing.
+        # Spec §C.5: reserve BEFORE checking budget so a self-tipping request
+        # (one whose own estimate would push a clean ledger over the cap) is
+        # rejected, not just requests already-over from prior reservations.
+        estimate = self.estimate_tokens(req.messages)
+        handle = self._ledger.reserve(estimate)
+        self._raise_if_over_budget(handle)
+
+        # Warning-threshold logging — best-effort, non-failing. Runs after
+        # reserve so the warning reflects the post-reservation state.
         bucket = self._ledger.over_warning_threshold()
         if bucket is not None:
             self._log.warning("llm_over_budget.warning", bucket=bucket)
-
-        estimate = self.estimate_tokens(req.messages)
-        handle = self._ledger.reserve(estimate)
 
         try:
             messages_dicts = _to_litellm_messages(req.messages)
@@ -272,10 +276,11 @@ class LlmAdapter:
         # Force stream=True to gate capability check correctly.
         stream_req = _replace_stream(req, True)
         self._verify_capabilities(stream_req)
-        self._check_budget_or_raise()
 
+        # Spec §C.5: reserve BEFORE checking budget (see complete() for rationale).
         estimate = self.estimate_tokens(req.messages)
         handle = self._ledger.reserve(estimate)
+        self._raise_if_over_budget(handle)
 
         try:
             async for chunk in self._stream_impl(stream_req, handle):
@@ -336,9 +341,15 @@ class LlmAdapter:
         if req.stream and not self._caps.stream:
             raise CapabilityDenied("stream")
 
-    def _check_budget_or_raise(self) -> None:
+    def _raise_if_over_budget(self, handle: str) -> None:
+        """Raise ``over_budget`` and release ``handle`` if any bucket is over.
+
+        Called after :meth:`TokenLedger.reserve` so the request's own estimate
+        counts toward the budget check (§C.5 call-flow diagram).
+        """
         bucket = self._ledger.over_budget()
         if bucket is not None:
+            self._ledger.release(handle)
             self._log.error("llm_over_budget.hard", bucket=bucket)
             raise LlmError(KIND_OVER_BUDGET, retryable=False)
 
@@ -450,9 +461,33 @@ class LlmAdapter:
         except Exception as exc:  # noqa: BLE001
             raise LlmError(KIND_STREAM_TRUNCATED, retryable=False) from exc
 
-        # Record actuals on successful terminal chunk. Cost not always
-        # available on streams — skip if we can't compute.
-        self._ledger.record(handle, usage, cost_usd=0.0)
+        # Record actuals on successful terminal chunk. Stream responses don't
+        # carry a `completion_response` object compatible with
+        # `litellm.completion_cost`, so compute from usage via
+        # `litellm.cost_per_token`; fall back to 0 with WARN if unavailable.
+        cost_usd = self._stream_cost_from_usage(usage)
+        self._ledger.record(handle, usage, cost_usd)
+
+    def _stream_cost_from_usage(self, usage: TokenUsage) -> float:
+        """Compute stream cost from final usage via ``litellm.cost_per_token``.
+
+        Returns 0.0 with a WARN log if the model isn't in LiteLLM's cost map
+        (same failure mode as :func:`_compute_cost`). Billed input tokens are
+        net of cache reads, matching the ledger's convention (§C.11).
+        """
+        try:
+            import litellm  # noqa: PLC0415 — lazy
+
+            billed_in = max(0, usage.input_tokens - usage.cache_read_tokens)
+            prompt_cost, completion_cost = litellm.cost_per_token(
+                model=self._model_string,
+                prompt_tokens=billed_in,
+                completion_tokens=usage.output_tokens,
+            )
+            return float(prompt_cost) + float(completion_cost)
+        except Exception as exc:  # noqa: BLE001 — advisory
+            self._log.warning("stream_cost_not_computed", error=str(exc))
+            return 0.0
 
 
 # ---------------------------------------------------------------------------

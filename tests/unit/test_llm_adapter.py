@@ -528,6 +528,72 @@ class TestBudget:
         # Provider was never called.
         assert calls_box["n"] == 0
 
+    async def test_self_tipping_request_rejects(
+        self, anthropic_env: None, monkeypatch: pytest.MonkeyPatch  # noqa: ARG002
+    ) -> None:
+        """A single large request on a clean ledger is rejected (§C.5 reserve-then-check).
+
+        Prior implementation checked budget BEFORE reserve, missing the case
+        where the request's own estimate alone would exceed the cap.
+        """
+        cfg = _make_config(budgets=LlmBudgets(per_hour_input_tokens=1000))
+        calls_box = {"n": 0}
+
+        def impl(**_kw: Any) -> Any:
+            calls_box["n"] += 1
+            return _make_success_response()
+
+        _patch_litellm(monkeypatch, impl)
+        ledger = TokenLedger(cfg.llm.budgets)
+        adapter = LlmAdapter(cfg, cfg.capabilities, ledger)
+
+        # Clean ledger — no prior reservations or records.
+        assert ledger.effective_usage().input_hour == 0
+
+        # Force the adapter's estimate above the cap. Using monkeypatch on
+        # the instance's `estimate_tokens` is the least-fragile approach;
+        # a very long string would also work.
+        monkeypatch.setattr(
+            adapter, "estimate_tokens", lambda _msgs: 5000  # noqa: ARG005
+        )
+
+        req = CompletionRequest(messages=[Message(role="user", content="hi")])
+        with pytest.raises(LlmError) as excinfo:
+            await adapter.complete(req)
+        assert excinfo.value.args[0] == "over_budget"
+        assert excinfo.value.retryable is False
+        # Provider was never called.
+        assert calls_box["n"] == 0
+        # Reservation was released — ledger has no residual.
+        assert ledger.effective_usage().input_hour == 0
+
+    async def test_self_tipping_stream_request_rejects(
+        self, anthropic_env: None, monkeypatch: pytest.MonkeyPatch  # noqa: ARG002
+    ) -> None:
+        """Same reserve-then-check guarantee for :meth:`LlmAdapter.stream`."""
+        cfg = _make_config(
+            budgets=LlmBudgets(per_hour_input_tokens=1000),
+            caps_overrides={"stream": True},
+        )
+        ledger = TokenLedger(cfg.llm.budgets)
+        adapter = LlmAdapter(cfg, cfg.capabilities, ledger)
+
+        monkeypatch.setattr(
+            adapter, "estimate_tokens", lambda _msgs: 5000  # noqa: ARG005
+        )
+
+        req = CompletionRequest(
+            messages=[Message(role="user", content="hi")],
+            stream=True,
+        )
+        with pytest.raises(LlmError) as excinfo:
+            # `stream()` is an async generator — the raise occurs on first
+            # iteration, not at call time.
+            async for _chunk in adapter.stream(req):
+                pass
+        assert excinfo.value.args[0] == "over_budget"
+        assert ledger.effective_usage().input_hour == 0
+
 
 # ---------------------------------------------------------------------------
 # Token ledger integration (§C.6.1, §C.11)
@@ -581,6 +647,154 @@ class TestLedgerIntegration:
             await adapter.complete(req)
         # No leaked reservation.
         assert ledger.effective_usage().input_hour == 0
+
+
+# ---------------------------------------------------------------------------
+# Streaming (§C.13)
+# ---------------------------------------------------------------------------
+
+
+class TestStreaming:
+    """Stream path — cost computation + capability enforcement on iteration."""
+
+    @staticmethod
+    def _chunks_with_final_usage(
+        input_tokens: int = _INPUT_TOKENS,
+        output_tokens: int = _OUTPUT_TOKENS,
+    ) -> list[dict[str, Any]]:
+        """Build a few stream chunks; final chunk carries usage."""
+        return [
+            {
+                "choices": [{"delta": {"content": "hel"}, "finish_reason": None}],
+            },
+            {
+                "choices": [{"delta": {"content": "lo"}, "finish_reason": None}],
+            },
+            {
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+                "usage": {
+                    "prompt_tokens": input_tokens,
+                    "completion_tokens": output_tokens,
+                    "cache_read_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                },
+            },
+        ]
+
+    @staticmethod
+    def _make_async_iter(chunks: list[dict[str, Any]]) -> Any:
+        async def gen() -> Any:
+            for c in chunks:
+                yield c
+        return gen()
+
+    async def test_stream_records_nonzero_cost(
+        self, anthropic_env: None, monkeypatch: pytest.MonkeyPatch  # noqa: ARG002
+    ) -> None:
+        """Stream path computes cost via ``litellm.cost_per_token`` (§C.11)."""
+        cfg = _make_config(caps_overrides={"stream": True})
+        ledger = TokenLedger(LlmBudgets())
+        adapter = LlmAdapter(cfg, cfg.capabilities, ledger)
+
+        chunks = self._chunks_with_final_usage()
+
+        async def fake_acompletion(**_kw: Any) -> Any:
+            return self._make_async_iter(chunks)
+
+        # Make cost_per_token return a known non-zero tuple.
+        expected_cost = 0.0007  # 0.0003 prompt + 0.0004 completion
+        cost_calls: list[dict[str, Any]] = []
+
+        def fake_cost_per_token(**kwargs: Any) -> tuple[float, float]:
+            cost_calls.append(kwargs)
+            return (0.0003, 0.0004)
+
+        monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+        monkeypatch.setattr(litellm, "cost_per_token", fake_cost_per_token)
+
+        # Wrap ledger.record to capture call args.
+        record_args: list[tuple[str, TokenUsage, float]] = []
+        real_record = ledger.record
+
+        def spy_record(handle: str, usage: TokenUsage, cost_usd: float) -> None:
+            record_args.append((handle, usage, cost_usd))
+            real_record(handle, usage, cost_usd)
+
+        monkeypatch.setattr(ledger, "record", spy_record)
+
+        req = CompletionRequest(
+            messages=[Message(role="user", content="hi")],
+            stream=True,
+        )
+        collected = [c async for c in adapter.stream(req)]
+
+        # Stream produced text chunks + terminal finish_reason.
+        assert len(collected) == len(chunks)
+        assert collected[-1].finish_reason == "stop"
+
+        # Ledger was recorded exactly once, with the non-zero cost.
+        assert len(record_args) == 1
+        _handle, usage, cost = record_args[0]
+        assert usage.input_tokens == _INPUT_TOKENS
+        assert usage.output_tokens == _OUTPUT_TOKENS
+        assert cost == pytest.approx(expected_cost)
+
+        # And cost_per_token was called with the billed token counts.
+        assert len(cost_calls) == 1
+        assert cost_calls[0]["prompt_tokens"] == _INPUT_TOKENS  # no cache read
+        assert cost_calls[0]["completion_tokens"] == _OUTPUT_TOKENS
+
+    async def test_stream_cost_falls_back_to_zero_on_unknown_model(
+        self, anthropic_env: None, monkeypatch: pytest.MonkeyPatch  # noqa: ARG002
+    ) -> None:
+        """If cost_per_token raises (unknown model), record 0 with WARN."""
+        cfg = _make_config(caps_overrides={"stream": True})
+        ledger = TokenLedger(LlmBudgets())
+        adapter = LlmAdapter(cfg, cfg.capabilities, ledger)
+
+        chunks = self._chunks_with_final_usage()
+
+        async def fake_acompletion(**_kw: Any) -> Any:
+            return self._make_async_iter(chunks)
+
+        def blowup_cost_per_token(**_kw: Any) -> tuple[float, float]:
+            raise ValueError("unknown model")
+
+        monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+        monkeypatch.setattr(litellm, "cost_per_token", blowup_cost_per_token)
+
+        record_args: list[tuple[str, TokenUsage, float]] = []
+        real_record = ledger.record
+
+        def spy_record(handle: str, usage: TokenUsage, cost_usd: float) -> None:
+            record_args.append((handle, usage, cost_usd))
+            real_record(handle, usage, cost_usd)
+
+        monkeypatch.setattr(ledger, "record", spy_record)
+
+        req = CompletionRequest(
+            messages=[Message(role="user", content="hi")],
+            stream=True,
+        )
+        async for _c in adapter.stream(req):
+            pass
+
+        # Recorded, but with cost 0.0 because lookup failed.
+        assert len(record_args) == 1
+        assert record_args[0][2] == 0.0
+
+    async def test_stream_iteration_without_stream_cap_raises(
+        self, anthropic_env: None  # noqa: ARG002
+    ) -> None:
+        """Iterating :meth:`stream` on a region without ``stream`` cap fails fast."""
+        adapter = _make_adapter()  # default stream=False
+        req = CompletionRequest(
+            messages=[Message(role="user", content="hi")],
+            stream=True,
+        )
+        with pytest.raises(CapabilityDenied, match="stream"):
+            async for _c in adapter.stream(req):
+                pass
 
 
 # ---------------------------------------------------------------------------
