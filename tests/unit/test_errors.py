@@ -296,3 +296,29 @@ def test_llm_error_retryable_explicit_false():
     """Explicit retryable=False is preserved (distinct from default)."""
     err = LlmError("permanent failure", retryable=False)
     assert err.retryable is False
+
+
+# ---------------------------------------------------------------------------
+# 12. LlmError.kind property — spec §C.8 pattern-match surface
+# ---------------------------------------------------------------------------
+
+def test_llm_error_kind_returns_first_arg():
+    """.kind mirrors the first positional arg — what spec §C.8 handlers match on."""
+    assert LlmError("rate_limit", retryable=True).kind == "rate_limit"
+
+
+def test_llm_error_kind_unknown_when_no_args():
+    """.kind falls back to 'unknown' so handlers never see AttributeError."""
+    assert LlmError().kind == "unknown"
+
+
+def test_llm_error_kind_over_budget():
+    """Spec-canonical kind string round-trips."""
+    assert LlmError("over_budget", retryable=False).kind == "over_budget"
+
+
+def test_llm_error_kind_and_args0_agree():
+    """Both access patterns work — existing `.args[0]` call sites keep working."""
+    err = LlmError("context_window_exceeded", retryable=False)
+    assert err.kind == "context_window_exceeded"
+    assert err.args[0] == "context_window_exceeded"

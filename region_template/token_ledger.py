@@ -205,31 +205,53 @@ class TokenLedger:
         )
 
     def over_budget(self) -> BucketName | None:
-        """Return the first bucket strictly over budget, or ``None``."""
+        """Return the first bucket strictly over budget, or ``None``.
+
+        A bucket whose budget is ``<= 0`` is treated as "no meaningful
+        limit for this bucket" and skipped — matching the warning-threshold
+        behavior so a zero budget never hard-rejects (or spuriously warns).
+        """
         u = self.effective_usage()
-        if u.input_hour > self._budgets.per_hour_input_tokens:
+        if (
+            self._budgets.per_hour_input_tokens > 0
+            and u.input_hour > self._budgets.per_hour_input_tokens
+        ):
             return "per_hour_input"
-        if u.output_hour > self._budgets.per_hour_output_tokens:
+        if (
+            self._budgets.per_hour_output_tokens > 0
+            and u.output_hour > self._budgets.per_hour_output_tokens
+        ):
             return "per_hour_output"
-        if u.cost_day_usd > self._budgets.per_day_cost_usd:
+        if (
+            self._budgets.per_day_cost_usd > 0
+            and u.cost_day_usd > self._budgets.per_day_cost_usd
+        ):
             return "per_day_cost"
         return None
 
     def over_warning_threshold(self) -> BucketName | None:
-        """Return the first bucket >=80% but not yet strictly over budget."""
+        """Return the first bucket >=80% but not yet strictly over budget.
+
+        A bucket whose budget is ``<= 0`` is skipped entirely: "0 >= 0*0.8"
+        is trivially true but meaningless, and would fire the warning on
+        every call for a region that declared "no limit for this bucket".
+        """
         u = self.effective_usage()
         if (
-            u.input_hour >= self._budgets.per_hour_input_tokens * _WARN_FRACTION
+            self._budgets.per_hour_input_tokens > 0
+            and u.input_hour >= self._budgets.per_hour_input_tokens * _WARN_FRACTION
             and u.input_hour <= self._budgets.per_hour_input_tokens
         ):
             return "per_hour_input"
         if (
-            u.output_hour >= self._budgets.per_hour_output_tokens * _WARN_FRACTION
+            self._budgets.per_hour_output_tokens > 0
+            and u.output_hour >= self._budgets.per_hour_output_tokens * _WARN_FRACTION
             and u.output_hour <= self._budgets.per_hour_output_tokens
         ):
             return "per_hour_output"
         if (
-            u.cost_day_usd >= self._budgets.per_day_cost_usd * _WARN_FRACTION
+            self._budgets.per_day_cost_usd > 0
+            and u.cost_day_usd >= self._budgets.per_day_cost_usd * _WARN_FRACTION
             and u.cost_day_usd <= self._budgets.per_day_cost_usd
         ):
             return "per_day_cost"

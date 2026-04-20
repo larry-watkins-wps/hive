@@ -224,6 +224,35 @@ class TestWarningThreshold:
         assert ledger.over_warning_threshold() is None
         assert ledger.over_budget() == "per_hour_input"
 
+    def test_zero_budget_does_not_warn(self) -> None:
+        """A budget of 0 means 'no limit for this bucket' and MUST NOT fire.
+
+        Without the ``> 0`` guard a fresh ledger would trigger
+        ``over_warning_threshold`` on every call (0 >= 0*0.8 and 0 <= 0),
+        spamming ``llm_over_budget.warning`` for any region that opts out
+        of a daily USD cap.
+        """
+        ledger = TokenLedger(_budgets(per_day_cost_usd=0.0))
+        # Record a tiny sample so the ledger is exercised, not empty.
+        ledger.record(
+            "h",
+            TokenUsage(
+                input_tokens=10,
+                output_tokens=10,
+                cache_read_tokens=0,
+                cache_write_tokens=0,
+            ),
+            cost_usd=0.0,
+        )
+        assert ledger.over_warning_threshold() != "per_day_cost"
+        assert ledger.over_budget() != "per_day_cost"
+
+    def test_zero_budget_on_fresh_ledger_does_not_warn(self) -> None:
+        """Same guarantee on a fresh ledger (no records, no reservations)."""
+        ledger = TokenLedger(_budgets(per_day_cost_usd=0.0))
+        assert ledger.over_warning_threshold() != "per_day_cost"
+        assert ledger.over_budget() != "per_day_cost"
+
 
 # ---------------------------------------------------------------------------
 # effective_usage type

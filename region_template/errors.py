@@ -34,11 +34,21 @@ class SandboxEscape(HiveError):
 
 
 class LlmError(HiveError):
-    """Wraps LiteLLM exceptions; has .retryable attribute."""
+    """Wraps LiteLLM exceptions; has .retryable and .kind attributes.
+
+    .kind is a short string identifier (e.g., "rate_limit", "bad_request",
+    "context_window_exceeded") that handlers can pattern-match on per
+    spec §C.8. Backwards-compatible with ``.args[0]`` access.
+    """
 
     def __init__(self, *args: Any, retryable: bool = False) -> None:
         super().__init__(*args)
         self.retryable = retryable
+
+    @property
+    def kind(self) -> str:
+        """The error kind string (first positional arg), or 'unknown' if none."""
+        return str(self.args[0]) if self.args else "unknown"
 
 
 class GitError(HiveError):

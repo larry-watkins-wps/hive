@@ -270,6 +270,10 @@ class LlmAdapter:
         most providers only include final usage on the last chunk, so early
         chunks return zeros.
 
+        Note: because this is an async generator, all pre-flight checks
+        (capability, budget) run on first ``async for`` iteration, not on
+        the initial ``adapter.stream(req)`` call.
+
         Failure during iteration raises
         ``LlmError("stream_truncated", retryable=False)``.
         """
@@ -391,7 +395,7 @@ class LlmAdapter:
                 self._log.info(
                     "llm_retry",
                     attempt=attempt,
-                    kind=mapped.args[0] if mapped.args else KIND_UNKNOWN,
+                    kind=mapped.kind,
                     delay_s=delay,
                 )
                 await asyncio.sleep(delay)

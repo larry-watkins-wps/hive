@@ -9,7 +9,7 @@ description = "Runtime DNA shared by all Hive regions (v0)"
 requires-python = ">=3.11"
 dependencies = [
   "aiomqtt>=2.0,<3",
-  "litellm>=1.40",
+  "litellm>=1.54,<2",
   "ruamel.yaml",
   "structlog>=24",
   "jsonschema>=4.20",

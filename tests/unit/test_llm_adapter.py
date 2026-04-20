@@ -384,6 +384,34 @@ class TestCacheStrategy:
                 for part in content:
                     assert "cache_control" not in part
 
+    async def test_system_strategy_with_no_system_message_is_noop(
+        self, anthropic_env: None, monkeypatch: pytest.MonkeyPatch  # noqa: ARG002
+    ) -> None:
+        """When cache_strategy='system' but request has only user messages,
+        no cache_control marker is injected (spec §C.6 is silent, no-op is
+        the safest behavior for user-only prompts)."""
+        adapter = _make_adapter()
+        state = _patch_litellm(
+            monkeypatch, lambda **kw: _make_success_response()  # noqa: ARG005
+        )
+        req = CompletionRequest(
+            messages=[
+                Message(role="user", content="just a user message"),
+                Message(role="user", content="and another"),
+            ],
+            cache_strategy="system",
+        )
+        await adapter.complete(req)
+
+        sent = state["calls"][0]["messages"]
+        for m in sent:
+            content = m.get("content")
+            if isinstance(content, list):
+                for part in content:
+                    assert "cache_control" not in part, (
+                        "no cache marker should appear when no system message exists"
+                    )
+
     async def test_system_and_messages_marks_system_and_last_two_users(
         self, anthropic_env: None, monkeypatch: pytest.MonkeyPatch  # noqa: ARG002
     ) -> None:
