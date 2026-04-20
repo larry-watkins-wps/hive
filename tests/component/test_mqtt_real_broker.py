@@ -214,14 +214,9 @@ class TestRetainedSemantics:
         assert received[0].source_region == "amygdala"
 
         # 3. Cleanup: clear the retained value so re-runs are hermetic.
-        #    (Zero-length retained publish = clear.)
+        #    (§B.5 zero-length retained publish = clear.)
         async with _running_client(cfg, "amygdala") as (cleaner, _):
-            # Publish empty payload directly via aiomqtt — MqttClient.publish
-            # always sends a non-empty envelope.
-            assert cleaner._client is not None
-            await cleaner._client.publish(
-                "hive/modulator/cortisol", payload=b"", qos=0, retain=True
-            )
+            await cleaner.clear_retained("hive/modulator/cortisol")
             await asyncio.sleep(0.2)
 
     async def test_non_retained_rhythm_not_delivered_to_fresh_subscriber(

@@ -19,10 +19,13 @@ Wraps :mod:`aiomqtt` with Hive-specific concerns:
   ``reconnect_give_up_s`` seconds elapsed without success, raise
   :class:`region_template.errors.ConnectionError` (Exit 4).
 - **Bounded outbound queue** (§B.14) — publishes issued while disconnected
-  accumulate in a 256-slot :class:`asyncio.Queue`. Overflow drops the message,
-  logs ERROR, and publishes a ``backpressure`` event to
+  accumulate in a 256-slot :class:`collections.deque` of
+  ``(envelope, qos, retain)`` tuples. Overflow drops the message, logs ERROR,
+  and publishes a ``backpressure`` event to
   ``hive/metacognition/error/detected`` when possible (never recursively —
-  if the metacog publish itself would block, it is skipped).
+  if the metacog publish itself would block, it is skipped). On mid-drain
+  send failure after reconnect, the failed envelope is re-inserted at the
+  head, preserving QoS-1 ordering.
 - **Poison-message handling** (§B.14) — malformed envelopes on receive are
   dropped and reported via metacog ``poison_message``; the dispatch loop
   continues.
@@ -37,6 +40,7 @@ import asyncio
 import contextlib
 import os
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
@@ -59,9 +63,9 @@ log = structlog.get_logger(__name__)
 
 # Constants (§B.9 / §B.10 / §B.11)
 _OUT_QUEUE_MAX = 256
-_IN_QUEUE_MAX = 256
 _RECONNECT_BACKOFF_CAP_S = 30
 # §B.11 — MQTT v5 session-expiry: keep QoS-1 queued messages for 1 hour.
+# TODO: elevate to config if regions need different retention windows.
 _SESSION_EXPIRY_S = 3600
 
 
@@ -102,10 +106,18 @@ class MqttClient:
         self._cfg = cfg
         self._region_name = region_name
         self._client: aiomqtt.Client | None = None
-        # Outbound queue — holds envelopes that couldn't be sent (disconnect,
-        # reconnect in progress). Drained on reconnect.
-        self._out_queue: asyncio.Queue[Envelope] = asyncio.Queue(maxsize=_OUT_QUEUE_MAX)
-        self._in_queue: asyncio.Queue[Envelope] = asyncio.Queue(maxsize=_IN_QUEUE_MAX)
+        # Outbound queue — holds (envelope, qos, retain) tuples that couldn't
+        # be sent (disconnect, reconnect in progress). Drained on reconnect.
+        # A deque (vs asyncio.Queue) lets us re-insert at the head if a
+        # mid-drain send fails — preserving QoS-1 ordering (§B.11/§I2).
+        # Manual cap (not deque(maxlen=...)) because we want to REJECT new
+        # messages on overflow, not evict the oldest.
+        self._out_queue: deque[tuple[Envelope, int, bool]] = deque()
+        self._out_queue_lock: asyncio.Lock = asyncio.Lock()
+        # Set True once __aenter__ on an aiomqtt.Client succeeds. Used by
+        # publish() to distinguish "disconnected mid-run" (enqueue is fine)
+        # from "never connected" (programmer forgot 'async with' — raise).
+        self._has_ever_connected: bool = False
         # topic_filter -> list of handlers (ordered by registration)
         self._subscriptions: dict[str, list[Handler]] = {}
         # Tracked so reconnect can re-subscribe with the right QoS.
@@ -129,6 +141,44 @@ class MqttClient:
             with contextlib.suppress(Exception):
                 await client.__aexit__(exc_type, exc, tb)
 
+    def _build_client(self) -> aiomqtt.Client:
+        """Construct a fresh :class:`aiomqtt.Client` with Hive settings.
+
+        Used by both :meth:`connect` (initial open) and :meth:`_reconnect_once`
+        (run-loop reconnect) so any future construction changes land in one
+        place (§M2).
+        """
+        lwt_payload = Envelope.new(
+            source_region=self._region_name,
+            topic=f"hive/system/heartbeat/{self._region_name}",
+            content_type="application/json",
+            data={"status": "dead", "detail": "lwt"},
+        ).to_json()
+        will = Will(
+            topic=f"hive/system/heartbeat/{self._region_name}",
+            payload=lwt_payload,
+            qos=1,
+            retain=True,
+        )
+        password = (
+            os.getenv(self._cfg.password_env) if self._cfg.password_env else None
+        )
+        return aiomqtt.Client(
+            hostname=self._cfg.broker_host,
+            port=self._cfg.broker_port,
+            identifier=f"hive-{self._region_name}",
+            username=self._region_name,
+            password=password,
+            will=will,
+            keepalive=self._cfg.keepalive_s,
+            protocol=ProtocolVersion.V5,
+            # MQTT v5 uses clean_start + SessionExpiryInterval instead of
+            # v3.1.1's clean_session (see §B.11). False = resume if a session
+            # exists on the broker.
+            clean_start=False,
+            properties=_connect_properties(),
+        )
+
     async def connect(self) -> None:
         """Open the broker connection, retrying on :class:`aiomqtt.MqttError`.
 
@@ -137,44 +187,15 @@ class MqttClient:
         Raises :class:`region_template.errors.ConnectionError` after
         ``cfg.max_connect_attempts`` failures.
         """
-        lwt_payload = Envelope.new(
-            source_region=self._region_name,
-            topic=f"hive/system/heartbeat/{self._region_name}",
-            content_type="application/json",
-            data={"status": "dead", "detail": "lwt"},
-        ).to_json()
-
-        will = Will(
-            topic=f"hive/system/heartbeat/{self._region_name}",
-            payload=lwt_payload,
-            qos=1,
-            retain=True,
-        )
-
-        password = (
-            os.getenv(self._cfg.password_env) if self._cfg.password_env else None
-        )
-
         attempt = 0
         while attempt < self._cfg.max_connect_attempts:
+            # Candidate pattern: only bind self._client AFTER __aenter__
+            # succeeds. If __aenter__ raises, the candidate was never
+            # entered — nothing to clean up, and self._client stays None
+            # so publish() will (correctly) enqueue to the outbound queue.
+            candidate = self._build_client()
             try:
-                self._client = aiomqtt.Client(
-                    hostname=self._cfg.broker_host,
-                    port=self._cfg.broker_port,
-                    identifier=f"hive-{self._region_name}",
-                    username=self._region_name,
-                    password=password,
-                    will=will,
-                    keepalive=self._cfg.keepalive_s,
-                    protocol=ProtocolVersion.V5,
-                    # MQTT v5 uses clean_start + SessionExpiryInterval instead
-                    # of v3.1.1's clean_session (see §B.11). False = resume if
-                    # a session exists on the broker.
-                    clean_start=False,
-                    properties=_connect_properties(),
-                )
-                await self._client.__aenter__()
-                return
+                await candidate.__aenter__()
             except (aiomqtt.MqttError, OSError) as e:
                 delay = min(_RECONNECT_BACKOFF_CAP_S, 2**attempt)
                 log.warn(
@@ -185,6 +206,11 @@ class MqttClient:
                 )
                 await asyncio.sleep(delay)
                 attempt += 1
+                continue
+            self._client = candidate
+            self._has_ever_connected = True
+            return
+        self._client = None
         raise HiveConnectionError(
             f"mqtt unreachable after {attempt} attempts"
         )
@@ -208,10 +234,21 @@ class MqttClient:
     ) -> None:
         """Build, enrich, encode, and publish an envelope.
 
-        When disconnected (``self._client is None``), the envelope is
-        enqueued to ``_out_queue`` and drained on reconnect. Queue-full drops
-        the message, logs ERROR, and emits a metacog backpressure event.
+        When disconnected mid-run (``self._client is None`` but we've
+        previously connected at least once), the envelope is enqueued to
+        ``_out_queue`` and drained on reconnect. Queue-full drops the
+        message, logs ERROR, and emits a metacog backpressure event.
+
+        Raises :class:`RuntimeError` if called before any ``connect()`` /
+        ``async with`` — silent enqueue in that case is a programmer-error
+        footgun (§I3).
         """
+        if self._client is None and not self._has_ever_connected:
+            raise RuntimeError(
+                "MqttClient.publish() called before connect() — "
+                "use 'async with' or call connect() first"
+            )
+
         envelope = Envelope.new(
             source_region=self._region_name,
             topic=topic,
@@ -224,11 +261,31 @@ class MqttClient:
         )
 
         if self._client is None:
-            # Disconnected: enqueue for drain on reconnect.
-            self._enqueue_outbound(envelope, qos=qos, retain=retain)
+            # Disconnected mid-run: enqueue for drain on reconnect.
+            await self._enqueue_outbound(envelope, qos=qos, retain=retain)
             return
 
         await self._send_envelope(envelope, qos=qos, retain=retain)
+
+    async def clear_retained(self, topic: str) -> None:
+        """Clear a retained value on ``topic`` per §B.5.
+
+        Publishes a zero-length payload with ``retain=True`` — MQTT's native
+        clear-retained mechanism. The envelope validator exempts zero-length
+        payloads from schema validation precisely for this use case.
+
+        Skipped with a WARN log if the client is disconnected: ``clear`` is
+        a single-purpose operational call (e.g., amygdala zeroing cortisol
+        before sleep), not a normal data path. If the caller needs guaranteed
+        delivery they should retry after reconnect.
+        """
+        if self._client is None:
+            log.warn(
+                "mqtt_clear_retained_skipped_disconnected",
+                topic=topic,
+            )
+            return
+        await self._client.publish(topic, payload=b"", qos=0, retain=True)
 
     async def _send_envelope(
         self, envelope: Envelope, *, qos: int, retain: bool
@@ -242,51 +299,48 @@ class MqttClient:
             retain=retain,
         )
 
-    def _enqueue_outbound(
+    async def _enqueue_outbound(
         self, envelope: Envelope, *, qos: int, retain: bool
     ) -> None:
-        """Try to queue; on overflow drop + log + publish backpressure."""
-        # qos/retain aren't captured in Envelope — stash them on a tuple
-        # via a sentinel-wrapping Envelope clone. Simpler: we serialize
-        # qos/retain into the outbound queue as part of the tuple wrapper.
-        # However, the type is Queue[Envelope]; to keep the public shape we
-        # just track pending (envelope, qos, retain) in a parallel deque.
-        # For the unit-test shape we treat the queue as a simple backpressure
-        # gauge — the drain loop, once reconnect is implemented, reads from
-        # the same structure.
-        del qos, retain  # carried via defaults when drained; see note.
-        try:
-            self._out_queue.put_nowait(envelope)
-        except asyncio.QueueFull:
-            log.error(
-                "mqtt_outbound_queue_full",
-                topic=envelope.topic,
-                dropped_envelope_id=envelope.id,
-            )
-            # Best-effort metacog publish; skip silently if that's full too.
-            self._try_publish_backpressure(envelope)
+        """Try to queue; on overflow drop + log ERROR + publish backpressure.
+
+        Preserves ``qos``/``retain`` so the drain loop on reconnect publishes
+        with the same flags the caller intended — critical for §B.5 retained
+        topics (modulators, self, interoception, attention).
+        """
+        async with self._out_queue_lock:
+            if len(self._out_queue) >= _OUT_QUEUE_MAX:
+                log.error(
+                    "mqtt_outbound_queue_full",
+                    topic=envelope.topic,
+                    dropped_envelope_id=envelope.id,
+                )
+                # Best-effort metacog publish; skip silently if full too.
+                self._try_publish_backpressure(envelope)
+                return
+            self._out_queue.append((envelope, qos, retain))
 
     def _try_publish_backpressure(self, dropped: Envelope) -> None:
         """Publish a metacog backpressure note for a dropped envelope.
 
-        Never recurses into ``publish()`` (which might itself be queue-full);
-        enqueues directly or drops silently.
+        Best-effort: appends to the outbound queue if there's room, otherwise
+        drops silently (the queue is the reason we're here). The caller holds
+        ``_out_queue_lock`` — we mutate the deque directly, no re-acquire.
+        Never recurses into ``publish()`` (which would re-check queue state).
         """
-        try:
-            backpressure_env = Envelope.new(
-                source_region=self._region_name,
-                topic=METACOGNITION_ERROR_DETECTED,
-                content_type="application/hive+error",
-                data={
-                    "kind": "backpressure",
-                    "dropped_topic": dropped.topic,
-                    "dropped_envelope_id": dropped.id,
-                },
-            )
-            self._out_queue.put_nowait(backpressure_env)
-        except asyncio.QueueFull:
-            # Nothing sensible to do — the queue is the reason we're here.
+        if len(self._out_queue) >= _OUT_QUEUE_MAX:
             return
+        backpressure_env = Envelope.new(
+            source_region=self._region_name,
+            topic=METACOGNITION_ERROR_DETECTED,
+            content_type="application/hive+error",
+            data={
+                "kind": "backpressure",
+                "dropped_topic": dropped.topic,
+                "dropped_envelope_id": dropped.id,
+            },
+        )
+        self._out_queue.append((backpressure_env, 1, False))
 
     # ------------------------------------------------------------------
     # Subscribe / unsubscribe (§B.14: ACL-rejected subscribes log WARN)
@@ -469,35 +523,16 @@ class MqttClient:
             return
 
     async def _reconnect_once(self) -> None:
-        """Single reopen attempt; same construction args as :meth:`connect`."""
-        lwt_payload = Envelope.new(
-            source_region=self._region_name,
-            topic=f"hive/system/heartbeat/{self._region_name}",
-            content_type="application/json",
-            data={"status": "dead", "detail": "lwt"},
-        ).to_json()
-        will = Will(
-            topic=f"hive/system/heartbeat/{self._region_name}",
-            payload=lwt_payload,
-            qos=1,
-            retain=True,
-        )
-        password = (
-            os.getenv(self._cfg.password_env) if self._cfg.password_env else None
-        )
-        self._client = aiomqtt.Client(
-            hostname=self._cfg.broker_host,
-            port=self._cfg.broker_port,
-            identifier=f"hive-{self._region_name}",
-            username=self._region_name,
-            password=password,
-            will=will,
-            keepalive=self._cfg.keepalive_s,
-            protocol=ProtocolVersion.V5,
-            clean_start=False,
-            properties=_connect_properties(),
-        )
-        await self._client.__aenter__()
+        """Single reopen attempt; same construction args as :meth:`connect`.
+
+        Uses the candidate pattern (§C1) so a failed reopen leaves
+        ``self._client`` as ``None`` rather than binding a dead Client.
+        """
+        candidate = self._build_client()
+        await candidate.__aenter__()
+        # Only bind after __aenter__ succeeded.
+        self._client = candidate
+        self._has_ever_connected = True
 
     async def _resubscribe_all(self) -> None:
         """Re-issue SUBSCRIBE for every registered filter."""
@@ -508,14 +543,21 @@ class MqttClient:
                 await self._client.subscribe(topic_filter, qos=qos)
 
     async def _drain_out_queue(self) -> None:
-        """Flush queued envelopes. Stops on first publish failure."""
-        while not self._out_queue.empty():
-            envelope = self._out_queue.get_nowait()
-            try:
-                # Default qos=1, retain=False — see _enqueue_outbound note.
-                await self._send_envelope(envelope, qos=1, retain=False)
-            except aiomqtt.MqttError:
-                # Put it back at the head and let the outer loop reconnect.
-                # Queue doesn't support front-insert; use a temp list.
-                self._out_queue.put_nowait(envelope)
-                return
+        """Flush queued envelopes after a successful reconnect.
+
+        On mid-drain send failure, put the envelope back at the HEAD and
+        return. This preserves QoS-1 ordering — the next ``run()`` iteration
+        will hit ``MqttError`` and re-trigger ``_reconnect_loop``, which will
+        eventually retry the drain with the failed envelope still first.
+        """
+        async with self._out_queue_lock:
+            while self._out_queue:
+                envelope, qos, retain = self._out_queue.popleft()
+                try:
+                    await self._send_envelope(envelope, qos=qos, retain=retain)
+                except aiomqtt.MqttError:
+                    # Fresh disconnect mid-drain: re-insert at head so
+                    # ordering is preserved. The run() loop's next
+                    # aiomqtt.MqttError will re-enter _reconnect_loop.
+                    self._out_queue.appendleft((envelope, qos, retain))
+                    return

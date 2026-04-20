@@ -38,10 +38,15 @@ class FakeMqttClient:
     """In-memory stand-in for :class:`region_template.mqtt_client.MqttClient`."""
 
     published: list[tuple[str, Envelope, int, bool]]
+    cleared_retained: list[str]
 
     def __init__(self, region_name: str = "test_region") -> None:
         self._region_name = region_name
         self.published = []
+        # Topics for which clear_retained(...) was called. Separate from
+        # `published` so tests can unambiguously assert "clear intent" without
+        # teaching the envelope-tuple shape about zero-length sentinels.
+        self.cleared_retained = []
         # topic_filter -> list of handlers
         self._subscriptions: dict[str, list[Handler]] = {}
         self._entered = False
@@ -86,6 +91,14 @@ class FakeMqttClient:
             attention_hint=attention_hint,
         )
         self.published.append((topic, envelope, qos, retain))
+
+    async def clear_retained(self, topic: str) -> None:
+        """Record a retained-clear intent on ``topic`` (§B.5 clear-retained).
+
+        Mirrors :meth:`region_template.mqtt_client.MqttClient.clear_retained`.
+        Tests verify via ``fake.cleared_retained``.
+        """
+        self.cleared_retained.append(topic)
 
     # ------------------------------------------------------------------
     # Subscribe / unsubscribe

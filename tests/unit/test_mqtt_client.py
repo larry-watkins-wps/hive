@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 
 import pytest
 
@@ -459,41 +458,252 @@ class TestMqttClientQueueOverflow:
     async def test_publish_when_disconnected_enqueues_out_queue(
         self, stub_aiomqtt: type[_StubAiomqttClient]
     ) -> None:
-        """When the client has no active aiomqtt connection, publish() should
-        enqueue to _out_queue rather than raise."""
+        """When the client disconnects mid-run, publish() should enqueue to
+        ``_out_queue`` rather than raise.
+
+        A call before any connect() raises RuntimeError (see
+        ``test_publish_before_connect_raises``); this test simulates the
+        more common case of a runtime disconnect by entering + exiting the
+        context first, then publishing.
+        """
         cfg = _cfg()
         client = MqttClient(cfg, region_name="test_region")
-        # No __aenter__: _client is None.
+        async with client:
+            pass
+        # After __aexit__: _client is None but _has_ever_connected is True,
+        # so publish should enqueue rather than raise.
         await client.publish(
             topic="hive/rhythm/gamma",
             content_type="application/json",
             data={"x": 1},
             qos=0,
         )
-        assert client._out_queue.qsize() == 1
+        assert len(client._out_queue) == 1
+        _env, qos, retain = client._out_queue[0]
+        assert qos == 0
+        assert retain is False
 
-    async def test_queue_full_drops_and_logs(
-        self, stub_aiomqtt: type[_StubAiomqttClient], caplog: pytest.LogCaptureFixture
+    async def test_publish_preserves_qos_and_retain_across_disconnect(
+        self, stub_aiomqtt: type[_StubAiomqttClient]
     ) -> None:
-        caplog.set_level(logging.ERROR)
+        """§I1/§B.5 — retained publishes issued while disconnected must be
+        drained as retained on reconnect (not silently coerced to non-retained)."""
+        cfg = _cfg()
+        client = MqttClient(cfg, region_name="amygdala")
+
+        # First connect-and-disconnect so _has_ever_connected is True.
+        async with client:
+            pass
+        # Publish retained while disconnected — goes to queue as retained=True.
+        await client.publish(
+            topic="hive/modulator/cortisol",
+            content_type="application/hive+modulator",
+            data={"level": 0.8},
+            qos=1,
+            retain=True,
+        )
+        assert len(client._out_queue) == 1
+        _env, qos, retain = client._out_queue[0]
+        assert qos == 1
+        assert retain is True
+
+        # Now "reconnect" (open a fresh context on the same client) and
+        # verify the drain preserves retain=True.
+        async with client:
+            await client._drain_out_queue()
+        # Find the stub that was used for the second connect (the most recent).
+        stub = stub_aiomqtt.instances[-1]
+        # Published as retain=True with qos=1.
+        assert any(
+            topic == "hive/modulator/cortisol" and qos_ == 1 and retain_ is True
+            for topic, _payload, qos_, retain_ in stub.published
+        )
+
+    async def test_publish_before_connect_raises(
+        self, stub_aiomqtt: type[_StubAiomqttClient]
+    ) -> None:
+        """§I3 — publish() before any connect() is a programmer error."""
         cfg = _cfg()
         client = MqttClient(cfg, region_name="test_region")
-        # Fill the out_queue to capacity manually.
-        maxsize = client._out_queue.maxsize
-        for _ in range(maxsize):
-            client._out_queue.put_nowait(
-                Envelope.new(
-                    source_region="x",
-                    topic="hive/rhythm/gamma",
-                    content_type="application/json",
-                    data={"x": 0},
+        # Never entered, never connected.
+        with pytest.raises(RuntimeError, match="before connect"):
+            await client.publish(
+                topic="hive/rhythm/gamma",
+                content_type="application/json",
+                data={"x": 1},
+            )
+
+    async def test_queue_full_drops_and_logs(
+        self, stub_aiomqtt: type[_StubAiomqttClient]
+    ) -> None:
+        """§B.14 + §I6: drop on overflow AND log ERROR AND attempt a metacog
+        backpressure publish (best-effort)."""
+        from structlog.testing import capture_logs  # noqa: PLC0415
+
+        cfg = _cfg()
+        client = MqttClient(cfg, region_name="test_region")
+        # Simulate a prior connect so publish() doesn't raise RuntimeError.
+        async with client:
+            pass
+        # Fill the out_queue to capacity directly.
+        for _ in range(mqtt_client_mod._OUT_QUEUE_MAX):
+            client._out_queue.append(
+                (
+                    Envelope.new(
+                        source_region="x",
+                        topic="hive/rhythm/gamma",
+                        content_type="application/json",
+                        data={"x": 0},
+                    ),
+                    1,
+                    False,
                 )
             )
+
+        # Spy on _try_publish_backpressure to assert it was invoked even
+        # though the queue is full (best-effort contract; see §B.14).
+        backpressure_calls: list[Envelope] = []
+        original = client._try_publish_backpressure
+
+        def spy(dropped: Envelope) -> None:
+            backpressure_calls.append(dropped)
+            original(dropped)
+
+        client._try_publish_backpressure = spy  # type: ignore[method-assign]
+
         # Next publish must drop, not hang.
-        await client.publish(
-            topic="hive/rhythm/gamma",
-            content_type="application/json",
-            data={"x": 999},
-        )
+        with capture_logs() as logs:
+            await client.publish(
+                topic="hive/rhythm/gamma",
+                content_type="application/json",
+                data={"x": 999},
+            )
         # Queue size stays at maxsize (not exceeded).
-        assert client._out_queue.qsize() == maxsize
+        assert len(client._out_queue) == mqtt_client_mod._OUT_QUEUE_MAX
+        # Metacog backpressure attempt happened.
+        assert len(backpressure_calls) == 1
+        assert backpressure_calls[0].topic == "hive/rhythm/gamma"
+        # ERROR-level structlog event with the expected event name emitted.
+        assert any(
+            rec.get("log_level") == "error"
+            and rec.get("event") == "mqtt_outbound_queue_full"
+            for rec in logs
+        )
+
+
+class TestMqttClientReconnectGiveUp:
+    """§C2 — run()'s reconnect loop raises HiveConnectionError when the
+    ``reconnect_give_up_s`` budget is exhausted. Task 3.15 (runtime) depends
+    on this contract to classify Exit 4 fatal errors."""
+
+    async def test_run_raises_hive_connection_error_after_give_up(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # First __aenter__ succeeds so the client can enter its run loop;
+        # subsequent reconnect attempts all raise MqttError.
+        enter_calls = {"n": 0}
+
+        class _ReconnectFailingClient:
+            def __init__(self, *a: object, **kw: object) -> None:
+                pass
+
+            async def __aenter__(self) -> _ReconnectFailingClient:
+                enter_calls["n"] += 1
+                if enter_calls["n"] == 1:
+                    return self
+                # Second+ attempts (reconnect path) all fail.
+                raise mqtt_client_mod.aiomqtt.MqttError("reconnect_boom")
+
+            async def __aexit__(self, *a: object) -> None:
+                return None
+
+            async def publish(self, *a: object, **kw: object) -> None:
+                return None
+
+            async def subscribe(self, *a: object, **kw: object) -> None:
+                return None
+
+            async def unsubscribe(self, *a: object, **kw: object) -> None:
+                return None
+
+            @property
+            def messages(self) -> object:
+                # Yield once, then raise MqttError to trigger reconnect.
+                async def _gen() -> object:
+                    raise mqtt_client_mod.aiomqtt.MqttError("disconnected")
+                    yield  # unreachable  # noqa: B901
+
+                return _gen()
+
+        monkeypatch.setattr(
+            mqtt_client_mod.aiomqtt, "Client", _ReconnectFailingClient
+        )
+
+        # Stub sleep to also advance monotonic so the give-up budget trips.
+        fake_time = {"t": 0.0}
+        real_monotonic = mqtt_client_mod.time.monotonic
+
+        def fake_monotonic() -> float:
+            return fake_time["t"]
+
+        async def fake_sleep(seconds: float) -> None:
+            fake_time["t"] += seconds
+
+        monkeypatch.setattr(mqtt_client_mod.time, "monotonic", fake_monotonic)
+        monkeypatch.setattr(mqtt_client_mod.asyncio, "sleep", fake_sleep)
+
+        # Minimum budget per MqttConfig is 10s; our fake_sleep advances
+        # fake_time so the backoff series (1,2,4,8,...) quickly blows past it.
+        cfg = _cfg(reconnect_give_up_s=10)
+        client = MqttClient(cfg, region_name="test_region")
+        await client.connect()
+        try:
+            with pytest.raises(HiveConnectionError):
+                await client.run()
+        finally:
+            # Restore time so teardown doesn't misbehave.
+            monkeypatch.setattr(mqtt_client_mod.time, "monotonic", real_monotonic)
+
+
+class TestMqttClientClearRetained:
+    """§I4/§B.5 — explicit clear-retained API for e.g. amygdala zeroing
+    cortisol before sleep."""
+
+    async def test_clear_retained_publishes_empty_retained_payload(
+        self, stub_aiomqtt: type[_StubAiomqttClient]
+    ) -> None:
+        cfg = _cfg()
+        async with MqttClient(cfg, region_name="amygdala") as client:
+            await client.clear_retained("hive/modulator/cortisol")
+        stub = stub_aiomqtt.instances[0]
+        # One raw publish on the topic with empty payload, retain=True, qos=0.
+        assert ("hive/modulator/cortisol", b"", 0, True) in stub.published
+
+    async def test_clear_retained_skipped_when_disconnected(
+        self, stub_aiomqtt: type[_StubAiomqttClient]
+    ) -> None:
+        """§I4 — ``clear_retained`` is best-effort; a disconnected call logs
+        WARN and returns without raising."""
+        from structlog.testing import capture_logs  # noqa: PLC0415
+
+        cfg = _cfg()
+        client = MqttClient(cfg, region_name="amygdala")
+        # Never entered → _client is None.
+        with capture_logs() as logs:
+            await client.clear_retained("hive/modulator/cortisol")
+        assert any(
+            rec.get("event") == "mqtt_clear_retained_skipped_disconnected"
+            for rec in logs
+        )
+
+
+class TestFakeMqttClientClearRetained:
+    """Fake mirrors the real API so tests can assert clear intent."""
+
+    async def test_clear_retained_records_topic(self) -> None:
+        fake = FakeMqttClient(region_name="amygdala")
+        async with fake:
+            await fake.clear_retained("hive/modulator/cortisol")
+        assert fake.cleared_retained == ["hive/modulator/cortisol"]
+        # Does NOT pollute `published` — different test channel.
+        assert fake.published == []
