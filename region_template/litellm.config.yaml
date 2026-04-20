@@ -1,0 +1,28 @@
+# region_template/litellm.config.yaml
+#
+# LiteLLM router configuration bundled with the region image (spec §C.14).
+# Regions may reference `model_list` entries by their short `model_name`
+# in their `config.yaml`'s `llm.model` field; the adapter also accepts
+# a bare `provider/model` string per §C.9.
+#
+# Secrets (API keys, base URLs that vary per environment) live in env
+# vars — never in this file. See spec §C.10 for the standard names.
+
+model_list:
+  - model_name: claude-opus
+    litellm_params:
+      model: anthropic/claude-opus-4-6-20260401
+      max_tokens: 4096
+  - model_name: claude-haiku
+    litellm_params:
+      model: anthropic/claude-haiku-4-6-20260401
+  - model_name: llama-local
+    litellm_params:
+      model: ollama/llama3.3:70b
+      api_base: os.environ/OLLAMA_API_BASE
+
+litellm_settings:
+  drop_params: true            # silently drop unsupported per-provider fields
+  max_budget: null             # per-region budget is authoritative (§C.11)
+  set_verbose: false
+  telemetry: false             # Hive does its own telemetry (§H)
