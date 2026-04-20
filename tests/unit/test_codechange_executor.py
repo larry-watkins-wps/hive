@@ -60,7 +60,7 @@ class _RunnerRecorder:
     def __call__(self, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
         argv = tuple(args[0]) if args else ()
         self.calls.append({"args": args, "kwargs": kwargs})
-        # Match by longest prefix.
+        # Longer key prefixes win (so "git apply --check" matches before "git apply").
         for key in sorted(self._dispatch, key=len, reverse=True):
             if argv[: len(key)] == key:
                 return self._dispatch[key]
@@ -520,6 +520,67 @@ async def test_restart_failure_triggers_image_rollback(
     ]
     assert len(restores) >= 1
     # rollback event published
+    rollback_calls = [
+        c for c in publish.await_args_list
+        if c.args[0].payload.data.get("kind") == "codechange_rollback"
+    ]
+    assert len(rollback_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# 10b. rollback relaunches ALL affected regions (spec §E.10 step 5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_restart_failure_rollback_relaunches_all_affected(
+    mock_launcher: MagicMock,
+    registry: RegionRegistry,
+    publish: AsyncMock,
+    mock_docker_client: MagicMock,
+    repo_dirs: tuple[Path, Path],
+) -> None:
+    """Restart fails at index 2 of 5 regions; rollback must bounce ALL 5.
+
+    Call accounting:
+      - initial attempt restarts region 0 (1 call), region 1 (2 calls), then
+        region 2 raises (3 calls)
+      - rollback relaunches all 5 regions (3 + 5 = 8 calls)
+    """
+    affected = ["amygdala", "hippocampus", "thalamus", "insula", "cerebellum"]
+    n_affected = 5
+    fail_at_call = 3  # 1-based
+    expected_total = fail_at_call + n_affected  # 3 + 5 = 8
+
+    call_count = {"n": 0}
+
+    def side(_name: str) -> Any:
+        call_count["n"] += 1
+        if call_count["n"] == fail_at_call:
+            raise GliaError("boom at index 2")
+        return MagicMock()
+
+    mock_launcher.restart_region.side_effect = side
+
+    ex = _make_executor(
+        mock_launcher=mock_launcher,
+        registry=registry,
+        publish=publish,
+        mock_docker_client=mock_docker_client,
+        repo_dirs=repo_dirs,
+    )
+    result = await ex.apply_change(_envelope(_valid_payload(affected)))
+
+    assert result.ok is False
+    assert mock_launcher.restart_region.call_count == expected_total
+
+    names_called = [c.args[0] for c in mock_launcher.restart_region.call_args_list]
+    # First 3 calls: initial restart attempts 0, 1, 2 (2 fails).
+    assert names_called[:fail_at_call] == affected[:fail_at_call]
+    # Next 5 calls: rollback relaunches ALL of 0..4, not just the failed tail.
+    assert names_called[fail_at_call:] == affected
+
+    # Rollback event published.
     rollback_calls = [
         c for c in publish.await_args_list
         if c.args[0].payload.data.get("kind") == "codechange_rollback"

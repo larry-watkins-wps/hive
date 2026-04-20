@@ -213,11 +213,12 @@ class CodeChangeExecutor:
                 change_id=change_id,
                 error=str(exc),
             )
-            # Roll image back, relaunch remaining regions on old tag.
+            # Roll image back, relaunch ALL affected regions on the old tag.
+            # Regions 0..failed_index-1 were already restarted on the NEW image;
+            # bouncing them again on the rolled-back image is cheap and
+            # idempotent (spec §E.10 step 5).
             self._rollback_image()
-            failed_from = getattr(exc, "failed_index", 0)
-            recovery_regions = affected[failed_from:]
-            await self._restart_on_rollback(recovery_regions)
+            await self._restart_on_rollback(affected)
             await self._publish_metacog(
                 kind="codechange_rollback",
                 change_id=change_id,
@@ -249,7 +250,14 @@ class CodeChangeExecutor:
 
     @staticmethod
     def _missing_fields(data: dict[str, Any]) -> list[str]:
-        return [f for f in _REQUIRED_PAYLOAD_FIELDS if not data.get(f)]
+        # Key-absent check (not falsy) — empty strings for ``patch`` or
+        # ``change_id`` should fall through to downstream validation which
+        # will surface a clearer error (e.g. the patch dry-run will reject
+        # an empty patch explicitly).
+        return [
+            f for f in _REQUIRED_PAYLOAD_FIELDS
+            if f not in data or data.get(f) is None
+        ]
 
     def _resolve_affected(self, affected: list[str]) -> list[str]:
         """Expand ``["*"]`` into the registry's active region names."""
@@ -279,7 +287,13 @@ class CodeChangeExecutor:
         return result.returncode == 0
 
     def _apply_patch(self, patch_text: str) -> None:
-        """git apply - (stdin).  Raises :class:`CodeChangeError` on failure."""
+        """git apply - (stdin).  Raises :class:`CodeChangeError` on failure.
+
+        Assumes the patch's ``a/`` and ``b/`` paths are repo-root relative.
+        The patch is fed via stdin and applied with
+        ``cwd=region_template_dir``; paths inside the patch must be relative
+        to the git repo root for ``git apply`` to locate them correctly.
+        """
         result = self._runner(
             ["git", "apply", "-"],
             cwd=self._region_template_dir,
@@ -294,11 +308,19 @@ class CodeChangeExecutor:
             )
 
     def _revert_patch(self) -> None:
-        """git checkout . in the template dir — undo a successfully-applied patch."""
+        """Undo a successfully-applied patch by checking out region_template/.
+
+        Runs ``git checkout -- <region_template_path>`` from the repo root,
+        scoping the revert precisely to the DNA path.
+        """
+        try:
+            rel = self._region_template_dir.relative_to(self._repo_root)
+        except ValueError:
+            rel = self._region_template_dir
         try:
             self._runner(
-                ["git", "checkout", "."],
-                cwd=self._region_template_dir,
+                ["git", "checkout", "--", str(rel)],
+                cwd=self._repo_root,
                 capture_output=True,
                 text=True,
                 check=False,
@@ -400,14 +422,14 @@ class CodeChangeExecutor:
         sf_path: str | None = None
         try:
             with tempfile.NamedTemporaryFile(
-                "w", suffix=".patch", delete=False
+                mode="wb", suffix=".patch", delete=False
             ) as pf:
-                pf.write(patch_text)
+                pf.write(patch_text.encode("utf-8"))
                 pf_path = pf.name
             with tempfile.NamedTemporaryFile(
-                "w", suffix=".sig", delete=False
+                mode="wb", suffix=".sig", delete=False
             ) as sf:
-                sf.write(signature)
+                sf.write(signature.encode("utf-8"))
                 sf_path = sf.name
             result = subprocess.run(
                 [
