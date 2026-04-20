@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hive.local/schemas/region_stats/v1.json",
+  "title": "Hive Region Stats v1",
+  "$ref": "#/$defs/RegionStats",
+  "$defs": {
+    "RegionStats": {
+      "type": "object",
+      "title": "RegionStats",
+      "required": [
+        "region",
+        "ts",
+        "uptime_s",
+        "phase",
+        "build_sha",
+        "handlers",
+        "mqtt",
+        "llm",
+        "memory",
+        "sleep"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "region": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{2,30}$",
+          "description": "Region name. Must match the region's config.name."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of this stats snapshot (RFC 3339 UTC)."
+        },
+        "uptime_s": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Seconds since region process started."
+        },
+        "phase": {
+          "type": "string",
+          "enum": ["bootstrap", "wake", "sleep", "shutdown"],
+          "description": "Current LifecyclePhase of the region."
+        },
+        "build_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$",
+          "description": "Short git SHA of the running build."
+        },
+        "handlers": {
+          "$ref": "#/$defs/Handlers"
+        },
+        "mqtt": {
+          "$ref": "#/$defs/MqttStats"
+        },
+        "llm": {
+          "$ref": "#/$defs/LlmStats"
+        },
+        "memory": {
+          "$ref": "#/$defs/MemoryStats"
+        },
+        "sleep": {
+          "$ref": "#/$defs/SleepStats"
+        }
+      }
+    },
+    "Handlers": {
+      "type": "object",
+      "title": "Handlers",
+      "required": ["count", "degraded"],
+      "additionalProperties": true,
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of registered handlers."
+        },
+        "degraded": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of handlers currently in a degraded state."
+        }
+      }
+    },
+    "MqttStats": {
+      "type": "object",
+      "title": "MqttStats",
+      "required": [
+        "messages_in_total",
+        "messages_out_total",
+        "subscribed_topics",
+        "reconnects"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "messages_in_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total MQTT messages received since process start."
+        },
+        "messages_out_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total MQTT messages published since process start."
+        },
+        "subscribed_topics": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of currently active topic subscriptions."
+        },
+        "reconnects": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of broker reconnections since process start."
+        }
+      }
+    },
+    "LlmStats": {
+      "type": "object",
+      "title": "LlmStats",
+      "required": [
+        "calls_total",
+        "cache_hits_total",
+        "input_tokens_total",
+        "output_tokens_total",
+        "errors_total",
+        "over_budget_events"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "calls_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total LLM API calls made since process start."
+        },
+        "cache_hits_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total prompt cache hits since process start."
+        },
+        "input_tokens_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total input tokens sent to the LLM since process start."
+        },
+        "output_tokens_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total output tokens received from the LLM since process start."
+        },
+        "errors_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total LLM call errors since process start."
+        },
+        "over_budget_events": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of times token budget was exceeded since process start."
+        }
+      }
+    },
+    "MemoryStats": {
+      "type": "object",
+      "title": "MemoryStats",
+      "required": ["stm_bytes", "ltm_files", "index_terms"],
+      "additionalProperties": true,
+      "properties": {
+        "stm_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Current size of short-term memory in bytes."
+        },
+        "ltm_files": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of long-term memory files on disk."
+        },
+        "index_terms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of indexed terms in the memory index."
+        }
+      }
+    },
+    "SleepStats": {
+      "type": "object",
+      "title": "SleepStats",
+      "required": ["cycles_total", "last_sleep_ts", "last_commit_sha"],
+      "additionalProperties": true,
+      "properties": {
+        "cycles_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of completed sleep cycles since process start."
+        },
+        "last_sleep_ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the most recent sleep cycle start (RFC 3339 UTC)."
+        },
+        "last_commit_sha": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{7,40}$",
+          "description": "Git SHA of the last commit written during sleep. Null if no sleep has completed."
+        }
+      }
+    }
+  }
+}
