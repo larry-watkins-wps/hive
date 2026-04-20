@@ -1,7 +1,7 @@
 # Hive — Session Handoff
 
 **Last updated:** 2026-04-19
-**Current phase:** Phase 2 (Design Spec) — not started
+**Current phase:** Phase 4 (Implementation) — ready to start
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
@@ -13,9 +13,9 @@ This document is the **source of truth for session-to-session continuity.** Any 
 | Phase | Status | Artifact location |
 |---|---|---|
 | 1. Brainstorming | ✅ Complete | `docs/principles.md`, `docs/architecture.md`, `docs/starter_prompts/` |
-| 2. Design Spec | ⏳ **Next** | `docs/superpowers/specs/2026-04-19-hive-v0-design.md` (to be written) |
-| 3. Implementation Plan | ⏳ Pending | `docs/superpowers/plans/2026-04-19-hive-v0-plan.md` (to be written) |
-| 4. Implementation | ⏳ Pending | `region_template/`, `regions/`, `glia/`, `bus/`, `shared/` (code) |
+| 2. Design Spec | ✅ Complete (2026-04-19) | `docs/superpowers/specs/2026-04-19-hive-v0-design.md` (4,792 lines) |
+| 3. Implementation Plan | ✅ Complete (2026-04-19) | `docs/superpowers/plans/2026-04-19-hive-v0-plan.md` (3 review iterations) |
+| 4. Implementation | ⏳ **Next** | `region_template/`, `regions/`, `glia/`, `bus/`, `shared/` (code) |
 
 ---
 
