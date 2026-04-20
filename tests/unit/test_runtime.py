@@ -28,7 +28,8 @@ from region_template.config_loader import (
     MqttConfig,
     RegionConfig,
 )
-from region_template.errors import ConfigError
+from region_template.errors import ConfigError, GitError
+from region_template.errors import ConnectionError as HiveConnectionError
 from region_template.llm_adapter import CompletionResult
 from region_template.runtime import RegionRuntime
 from region_template.self_modify import SpawnProposal, SubscriptionEntry
@@ -37,7 +38,9 @@ from region_template.token_ledger import TokenUsage
 from region_template.types import CapabilityProfile, LifecyclePhase
 from shared.message_envelope import Envelope
 from shared.topics import (
+    BROADCAST_SHUTDOWN,
     METACOGNITION_ERROR_DETECTED,
+    MODULATOR_CORTISOL,
     SYSTEM_RESTART_REQUEST,
     SYSTEM_SLEEP_FORCE,
     SYSTEM_SLEEP_GRANTED,
@@ -1002,3 +1005,235 @@ async def test_external_command_triggers_sleep(tmp_path: Path) -> None:
             run_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await run_task
+
+
+# ---------------------------------------------------------------------------
+# 18. hive/broadcast/shutdown delivered during WAKE triggers shutdown (§E.13)
+# ---------------------------------------------------------------------------
+
+
+async def test_broadcast_shutdown_during_wake_triggers_shutdown(
+    tmp_path: Path,
+) -> None:
+    """An operator broadcast during WAKE must transition the region to SHUTDOWN.
+
+    Regression for review finding I1: previously the runtime only subscribed
+    to ``hive/broadcast/shutdown`` inside ``_subscribe_sleep_phase_listener``,
+    so WAKE regions silently ignored operator shutdown. §E.13 and §A.4.4.1
+    both expect delivery in WAKE (the "during sleep" wording in §A.4.4.1 is
+    additive, not exclusive).
+    """
+    mqtt = FakeMqttClient(region_name="test_region")
+    runtime = await _build_runtime(tmp_path, fake_mqtt=mqtt)
+    await runtime.bootstrap()
+
+    # Confirm the bootstrap path added the subscription during WAKE.
+    assert BROADCAST_SHUTDOWN in mqtt._subscriptions, (
+        "WAKE bootstrap must subscribe to hive/broadcast/shutdown"
+    )
+    assert runtime.phase == LifecyclePhase.WAKE
+
+    env = Envelope.new(
+        source_region="glia",
+        topic=BROADCAST_SHUTDOWN,
+        content_type="application/json",
+        data={"reason": "operator_halt"},
+    )
+    await mqtt.inject(BROADCAST_SHUTDOWN, env)
+    # _on_broadcast_shutdown awaits shutdown directly; no extra pump.
+
+    assert runtime.phase == LifecyclePhase.SHUTDOWN
+
+
+# ---------------------------------------------------------------------------
+# 19. Bootstrap fails with GitError when GitTools.__init__ raises
+# ---------------------------------------------------------------------------
+
+
+async def test_bootstrap_raises_git_error_on_git_init_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitTools failure during bootstrap surfaces as GitError (§A.9 exit 3)."""
+    mqtt = FakeMqttClient(region_name="test_region")
+    runtime = await _build_runtime(tmp_path, fake_mqtt=mqtt)
+
+    def fake_git_init(self: Any, root: Path, region_name: str) -> None:
+        raise GitError(f"git init failed for {region_name}")
+
+    monkeypatch.setattr(
+        "region_template.runtime.GitTools.__init__",
+        fake_git_init,
+    )
+
+    with pytest.raises(GitError):
+        await runtime.bootstrap()
+
+
+# ---------------------------------------------------------------------------
+# 20. Bootstrap fails with ConnectionError when MQTT __aenter__ raises
+# ---------------------------------------------------------------------------
+
+
+async def test_bootstrap_raises_connection_error_on_mqtt_failure(
+    tmp_path: Path,
+) -> None:
+    """MQTT connect failure during bootstrap surfaces as ConnectionError
+    (§A.9 exit 4)."""
+
+    class BrokenMqttClient(FakeMqttClient):
+        async def __aenter__(self) -> FakeMqttClient:
+            raise HiveConnectionError("broker unreachable")
+
+    mqtt = BrokenMqttClient(region_name="test_region")
+    runtime = await _build_runtime(tmp_path, fake_mqtt=mqtt)
+
+    with pytest.raises(HiveConnectionError):
+        await runtime.bootstrap()
+
+
+# ---------------------------------------------------------------------------
+# 21. Sleep-grant timeout leaves the region in WAKE with a metacog error
+# ---------------------------------------------------------------------------
+
+
+async def test_sleep_grant_timeout_stays_wake(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No ``hive/system/sleep/granted`` within the timeout → stay WAKE + metacog.
+
+    Regression: if a grant never arrives the runtime must not escalate to
+    SLEEP or SHUTDOWN. Spec §A.4.4 step 2.
+    """
+    # Shorten the grant timeout so the test completes quickly.
+    monkeypatch.setattr(
+        "region_template.runtime._SLEEP_GRANT_TIMEOUT_S", 0.05
+    )
+
+    mqtt = FakeMqttClient(region_name="test_region")
+    runtime = await _build_runtime(tmp_path, fake_mqtt=mqtt)
+    await runtime.bootstrap()
+
+    try:
+        # Don't publish sleep/granted; force_sleep will time out waiting.
+        await runtime.force_sleep("test_trigger")
+
+        # Phase stayed WAKE (didn't escalate or hang).
+        assert runtime.phase == LifecyclePhase.WAKE
+        # Metacog error published with kind=sleep_grant_timeout.
+        metacog = [
+            e.payload.data
+            for topic, e, _, _ in mqtt.published
+            if topic == METACOGNITION_ERROR_DETECTED
+        ]
+        assert any(
+            m.get("kind") == "sleep_grant_timeout" for m in metacog
+        ), f"no sleep_grant_timeout metacog seen: {metacog}"
+    finally:
+        await runtime.shutdown("test_done")
+
+
+# ---------------------------------------------------------------------------
+# 22. Cortisol spike during SLEEP calls SleepCoordinator.abort()
+# ---------------------------------------------------------------------------
+
+
+async def test_cortisol_abort_during_sleep(tmp_path: Path) -> None:
+    """Unit-level: ``_on_cortisol_during_sleep`` above threshold calls abort.
+
+    Staging the full pipeline (enter sleep + race an LLM call + inject
+    cortisol) is fragile on Windows; per the fix plan we exercise the
+    callback directly with phase=SLEEP so the abort branch is covered.
+    """
+    mqtt = FakeMqttClient(region_name="test_region")
+    runtime = await _build_runtime(tmp_path, fake_mqtt=mqtt)
+    await runtime.bootstrap()
+
+    abort_calls: list[str] = []
+
+    async def fake_abort(reason: str) -> None:
+        abort_calls.append(reason)
+
+    # Install a fake abort on the coordinator (created during bootstrap).
+    assert runtime.sleep is not None
+    runtime.sleep.abort = fake_abort  # type: ignore[assignment]
+
+    # Flip phase to SLEEP so the callback's guard lets through.
+    runtime.phase = LifecyclePhase.SLEEP
+
+    threshold = runtime.config.lifecycle.sleep_abort_cortisol_threshold
+    above = min(1.0, threshold + 0.1)
+    below = max(0.0, threshold - 0.1)
+
+    # Below-threshold: must NOT abort.
+    low_env = Envelope.new(
+        source_region="amygdala",
+        topic=MODULATOR_CORTISOL,
+        content_type="application/json",
+        data={"level": below},
+    )
+    await runtime._on_cortisol_during_sleep(low_env)
+    assert abort_calls == []
+
+    # Above-threshold: MUST abort.
+    high_env = Envelope.new(
+        source_region="amygdala",
+        topic=MODULATOR_CORTISOL,
+        content_type="application/json",
+        data={"level": above},
+    )
+    await runtime._on_cortisol_during_sleep(high_env)
+    assert len(abort_calls) == 1
+    assert "cortisol" in abort_calls[0]
+
+    # Cleanup: put phase back so shutdown path is clean.
+    runtime.phase = LifecyclePhase.WAKE
+    await runtime.shutdown("test_done")
+
+
+# ---------------------------------------------------------------------------
+# 23. _pre_restart_verify — real subprocess success path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+async def test_pre_restart_verify_real_subprocess_success(
+    tmp_path: Path,
+) -> None:
+    """Exercise the real subprocess dry-import against a real config on disk.
+
+    Complements ``test_pre_restart_verify_failure_reverts_and_stays_wake``
+    (which monkeypatches the verify method wholesale). This test runs
+    ``sys.executable -c "import runtime; RegionRuntime(config_path)"`` in
+    a subprocess so the actual §D.5.5 path gets coverage. Marked ``slow``
+    — subprocess spin-up takes roughly a second.
+    """
+    # Write a valid minimal config.yaml that load_config accepts.
+    region_name = "verify_region"
+    region_root = tmp_path / "regions" / region_name
+    region_root.mkdir(parents=True)
+    (region_root / "handlers").mkdir()
+    (region_root / "memory").mkdir()
+    (region_root / "prompt.md").write_text("seed\n", encoding="utf-8")
+
+    config_yaml = region_root / "config.yaml"
+    config_yaml.write_text(
+        "schema_version: 1\n"
+        f"name: {region_name}\n"
+        "role: a verify-path test region used only by unit tests\n"
+        "llm:\n"
+        "  provider: anthropic\n"
+        "  model: claude-3-5-sonnet-20241022\n"
+        "capabilities:\n"
+        "  self_modify: false\n"
+        "  tool_use: none\n"
+        "  vision: false\n"
+        "  audio: false\n",
+        encoding="utf-8",
+    )
+
+    # Build the runtime via __init__ so config_path points at the real file.
+    runtime = RegionRuntime(config_yaml)
+
+    # No mock — this actually shells out to sys.executable.
+    ok = await runtime._pre_restart_verify()
+    assert ok is True, "real subprocess dry-import must succeed on a valid config"

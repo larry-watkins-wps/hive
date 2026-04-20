@@ -852,26 +852,23 @@ class RegionRuntime:
         """Add subscriptions for the narrow SLEEP-phase topic set.
 
         Only framework topics; handler dispatch is suspended during SLEEP.
-        Spawn replies are already subscribed at bootstrap.
+        Spawn replies and ``hive/broadcast/shutdown`` are already subscribed
+        at bootstrap (see :meth:`_subscribe_from_handlers`).
         """
         with contextlib.suppress(Exception):
             await self.mqtt.subscribe(
                 MODULATOR_CORTISOL, self._on_cortisol_during_sleep, qos=1
             )
-        with contextlib.suppress(Exception):
-            await self.mqtt.subscribe(
-                BROADCAST_SHUTDOWN, self._on_broadcast_shutdown, qos=1
-            )
 
     async def _teardown_sleep_listener(self) -> None:
-        """Remove the extra SLEEP-phase subscriptions."""
+        """Remove the extra SLEEP-phase subscriptions.
+
+        ``hive/broadcast/shutdown`` stays subscribed across WAKE/SLEEP
+        boundaries — it's owned by :meth:`_subscribe_from_handlers`.
+        """
         with contextlib.suppress(Exception):
             await self.mqtt.unsubscribe(
                 MODULATOR_CORTISOL, self._on_cortisol_during_sleep
-            )
-        with contextlib.suppress(Exception):
-            await self.mqtt.unsubscribe(
-                BROADCAST_SHUTDOWN, self._on_broadcast_shutdown
             )
 
     async def _on_cortisol_during_sleep(self, envelope: Envelope) -> None:
@@ -960,6 +957,14 @@ class RegionRuntime:
         with contextlib.suppress(Exception):
             await self.mqtt.subscribe(
                 SYSTEM_SPAWN_FAILED, self._on_spawn_reply, qos=1
+            )
+        # §E.13 + §A.4.4.1 — operator shutdown must reach WAKE regions too.
+        # Subscribe once at bootstrap and leave the filter in place across
+        # WAKE/SLEEP transitions (``_pause_normal_subscriptions`` only
+        # touches user-level handler filters, not framework filters).
+        with contextlib.suppress(Exception):
+            await self.mqtt.subscribe(
+                BROADCAST_SHUTDOWN, self._on_broadcast_shutdown, qos=1
             )
 
     # ------------------------------------------------------------------
@@ -1107,6 +1112,9 @@ class RegionRuntime:
         Spec §D.5.5: verifies the committed code still imports cleanly
         before we ask glia to restart us. Subprocess call is wrapped in
         ``asyncio.to_thread`` so it doesn't block the event loop.
+
+        On failure the subprocess's stderr+stdout are logged so operators
+        have diagnostic visibility into why the dry-import broke.
         """
         code = (
             "from region_template.runtime import RegionRuntime; "
@@ -1121,6 +1129,13 @@ class RegionRuntime:
                 timeout=_PRE_RESTART_VERIFY_TIMEOUT_S,
                 check=False,
             )
+            if result.returncode != 0:
+                self._log.warning(
+                    "pre_restart_verify_failed",
+                    returncode=result.returncode,
+                    stderr=result.stderr.decode("utf-8", errors="replace"),
+                    stdout=result.stdout.decode("utf-8", errors="replace"),
+                )
             return result.returncode == 0
         except Exception as exc:  # noqa: BLE001
             self._log.warning("pre_restart_verify_exception", error=str(exc))

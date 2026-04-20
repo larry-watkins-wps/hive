@@ -18,4 +18,5 @@ markers = [
     "component: requires embedded broker (testcontainers)",
     "integration: requires docker compose stack",
     "llm_real: requires real LLM provider (gated)",
+    "slow: test is slow (subprocess spin-up, etc.) — runs in default suite",
 ]
