@@ -52,6 +52,9 @@ bus/acl.conf
 docker-compose.override.yaml
 docker-compose.override.yml
 
+# Local Phase 11 observation scratch (logs, probes, launcher scripts)
+.pfc-obs/
+
 # Test scratch directories
 tests/**/_tmp_*
 
