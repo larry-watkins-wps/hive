@@ -1,6 +1,6 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-21 (session 3, Tasks 9 + 10 + 11 complete)*
+*Last updated: 2026-04-21 (session 3, Tasks 9–12 complete)*
 
 **Canonical resume prompt:** `continue observatory v1`
 
@@ -25,8 +25,9 @@
 | v1 Task 9 — frontend scaffolding (Vite + React + TS + Tailwind) | ✅ Complete | Commits `8b6be24` + `fc0ce94` |
 | v1 Task 10 — WebSocket client + REST client + zustand store | ✅ Complete | Commits `4cd41aa` + `efb8397` |
 | v1 Task 11 — Scene shell + force graph hook | ✅ Complete | Commits `b188dcd` + `d614a48` |
-| v1 Task 12 — Region rendering (phase color + halo + size + ring) | ⏳ Next | |
-| v1 Tasks 13–16 — sparks + HUD + retain/ambient surfacing + integration | ⏳ Pending | |
+| v1 Task 12 — Region rendering (phase color + halo + size + ring) | ✅ Complete | Commits `eddc34c` + `aae715a` |
+| v1 Task 13 — Sparks (traveling particles on edges) | ⏳ Next | |
+| v1 Tasks 14–16 — HUD + retain/ambient surfacing + integration | ⏳ Pending | |
 | v2 implementation | ⏳ Pending | |
 | v3 implementation | ⏳ Pending | |
 
@@ -43,9 +44,9 @@
 
 ## What's done (session 3)
 
-Executed **Tasks 9 + 10 + 11** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each, review-fix commit on top of each. Implementer prompts stored under `observatory/prompts/` (`task-09-frontend-scaffolding.md`, `task-10-ws-rest-store.md`, `task-11-scene-force-graph.md`). Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–62).
+Executed **Tasks 9 + 10 + 11 + 12** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each, review-fix commit on top of each. Implementer prompts stored under `observatory/prompts/`. Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–66).
 
-**Session 3 totals: 3 task commits (`8b6be24`, `4cd41aa`, `b188dcd`) + 3 review-fix commits (`fc0ce94`, `efb8397`, `d614a48`) + HANDOFF bumps.**
+**Session 3 totals: 4 task commits (`8b6be24`, `4cd41aa`, `b188dcd`, `eddc34c`) + 4 review-fix commits (`fc0ce94`, `efb8397`, `d614a48`, `aae715a`) + HANDOFF bumps.**
 
 ### Task 9 substantive fixes vs. the plan
 
@@ -71,6 +72,14 @@ Executed **Tasks 9 + 10 + 11** with `superpowers:subagent-driven-development` di
 - **Review-fix 3** — Trimmed unused `forceCenter`, `forceCollide`, `forceRadial` from `types.d.ts` (dead declarations in a type-only file are still drift surface).
 - **Review-fix 4** — `App.tsx` now documents strict-mode safety: double mount/unmount in dev is absorbed by Task 10's `ws.ts` reconnect guard.
 
+### Task 12 substantive fixes vs. the plan
+
+- **Drift (Scene.tsx)** — Plan's Step 2 Scene.tsx predated Task 11's review-fix memoization. Preserved `useMemo(() => Object.keys(regions).sort(), [regions])` rather than reverting to plan's unmemoized `Object.keys(regions)`.
+- **Drift (Regions.tsx)** — Plan's `useStore((s) => Object.keys(s.regions))` allocates a fresh array per read, causing `Regions` to re-render on every store update. Replicated Scene.tsx's pattern: `useStore((s) => s.regions)` + `useMemo(...)`.
+- **Review-fix 1 (Critical)** — Torus mesh had no ref, so its position prop was only re-evaluated on React re-render. `useForceGraph` mutates `node.x/y/z` in place without re-rendering, so the torus was stuck while base+halo drifted. Added `torusRef` and mirrored the position-set in `useFrame`.
+- **Review-fix 2 (Important)** — `PHASE_COLOR` only covered `sleep|wake|processing|unknown`, but backend `LifecyclePhase` StrEnum emits `bootstrap|wake|sleep|shutdown`. Added `bootstrap` (dim blue-green) and `shutdown` (desaturated red); kept `processing` for a future `llm_in_flight`-derived signal.
+- **Review-fix 3 (Important)** — Per-frame `new Color(...)` allocated ~840 instances/sec. Hoisted a module-level `PHASE_COLOR_CACHE` pre-constructed once; `useFrame` now looks up cached Color instances. `.lerp` mutates the target material's color, not the source, so sharing cached colors is safe.
+
 ### Prior session (session 2) substantive fixes vs. the plan
 
 - **Task 2** — real `glia/regions_registry.yaml` schema (dict keyed by name with `layer`/`required_capabilities`) reconciled; plan's list-of-dicts format would have silently returned empty.
@@ -82,17 +91,15 @@ Executed **Tasks 9 + 10 + 11** with `superpowers:subagent-driven-development` di
 
 ## What's next
 
-**Task 12: Region rendering — phase color + halo + size + ring.** Replaces Task 11's placeholder cubes with real region meshes: base sphere colored by `stats.phase`, emissive halo scaling with rolling token burn rate, slight size scaling from queue depth, and a thin torus for handler count.
+**Task 13: Sparks — traveling particles on edges.** Envelopes emit one particle per (source, destination) pair. Particles travel from source to destination over ~800 ms then expire. Color comes from a pure prefix mapper (topic → color).
 
-- Plan: search `### Task 12:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 2534).
-- **Critical:** Task 12 is where `useFrame` (or an imperative ref-based position sync) has to land so cubes/meshes actually track the d3-force-3d simulation per frame. See decision entry 58 (Task 11 `useFrame` observation). The Task 11 fix-loop already ensured `useForceGraph` keeps a single long-lived sim across renders, so Task 12 can safely subscribe to tick updates.
+- Plan: search `### Task 13:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 2661).
 - Gotchas to carry forward:
-  - Delete the placeholder-cube block in `Scene.tsx` (lines 12–23 region). The plan's `Scene.tsx` comment `// (Remove this block when Task 12 lands.)` is the marker.
-  - `regions` identity is now stable across unrelated renders (Task 11 review-fix #2 depends on it). Don't destructure in ways that force new references.
-  - `stats.phase` is a `string` on the store — Task 12 will want a typed mapping from phase → color (spec §4.2 has the palette).
-  - `@react-three/fiber`'s JSX augmentation resolved first-try in Task 11; no `compilerOptions.types` workaround needed.
-  - `d3-force-3d` shim is minimum-typed — if Task 12 imports `forceCollide` (to stop spheres overlapping) or `forceCenter`, re-add the declaration to `types.d.ts` with the same pattern (generic returning `any`).
-  - If Task 12 adds component-level tests, switch `vitest.config.ts` to `environment: 'jsdom'` and add `@testing-library/react` + `jsdom` devDeps (don't do this preemptively — only when a test actually needs DOM globals).
+  - Task 12's `PHASE_COLOR_CACHE` pattern is the template: module-level caches for colors, no per-frame allocation. When Task 13 maps topic prefixes to spark colors, use the same pattern.
+  - Don't add a new per-envelope React component — that would create + destroy components at ~50–100 Hz. Use a single `<points>` (three.js `Points` / `BufferGeometry`) or instanced meshes driven by `useFrame` imperatively.
+  - `store.ts` has `envelopes: Envelope[]` (5000-cap ring). Task 13's spark emitter should subscribe to the newest envelope index and spawn sparks only for fresh ones — NOT replay the entire ring on every update.
+  - The torus-stationary pattern (Task 12 Critical bug) applies generally: any mesh whose position depends on `node.x/y/z` MUST have a ref updated in `useFrame`. If a spark's position is a prop, it will be stuck.
+  - Component tests for the pure color mapper are worth adding — switch `vitest.config.ts` to `environment: 'jsdom'` if any test renders React. Don't do it preemptively; only when needed.
 
 ## Follow-ups / open threads
 
@@ -119,3 +126,4 @@ Executed **Tasks 9 + 10 + 11** with `superpowers:subagent-driven-development` di
 | 2026-04-21 | Session 3: Task 9 complete + review-fix. Vite 5 + React 18 + TypeScript 5 + Tailwind 3 scaffolded under `observatory/web-src/`; `npm run build` produces `observatory/web/index.html` + assets in ~800 ms. Three plan-code drifts resolved (@types/d3-force-3d phantom, @types/node omission, tsconfig noEmit residue). Python suite still 67 unit + 1 component passing, ruff clean. Next is Task 10 (WS client + REST client + zustand store). |
 | 2026-04-21 | Session 3 continued: Task 10 complete + review-fix. Zustand store + WS client (5 message types, auto-reconnect) + REST wrappers. TDD discipline: red-phase for both `store.test.ts` and `ws.test.ts` captured. 8 frontend tests passing (5 store + 3 ws). Review-fix addressed 3 Important findings: WS reconnect race on stop, unsafe modulator name cast (now type-guarded), opaque REST error messages. Python suite still 67 unit + 1 component passing. Next is Task 11 (scene shell + force graph — first `d3-force-3d` import; create `src/types.d.ts`). |
 | 2026-04-21 | Session 3 continued: Task 11 complete + review-fix. `<Canvas>` + orbit controls + lights + `useForceGraph` hook. First `d3-force-3d` import — `src/types.d.ts` seeded with minimum-typed shim. Review-fix addressed 2 Important findings: sim rebuilt on every render (unstable `names` → sim-build effect churn) — split into stable single-build + sync-on-namesKey. Also: trim unused shim declarations, strict-mode safety comment in `App.tsx`. Python suite still 67 unit + 1 component passing; 8 frontend tests green; `tsc -b` + `vite build` clean. Next is Task 12 (region meshes + `useFrame`). |
+| 2026-04-21 | Session 3 continued: Task 12 complete + review-fix. Region meshes (base sphere + halo + handler torus) with `useFrame`-driven color/halo/scale. First `useFrame` usage in the project. Pre-approved plan deviations: preserved Task 11's `useMemo` in Scene.tsx and applied the same pattern to Regions.tsx (plan's `useStore((s) => Object.keys(s.regions))` would cause re-renders on every envelope push). Review-fix addressed 1 Critical + 2 Important: torus stationary (no ref), `PHASE_COLOR` missing `bootstrap`/`shutdown` (backend emits these), and per-frame `new Color()` allocation hoisted to module-level cache. Python suite still 67 unit + 1 component passing; 8 frontend tests green. Next is Task 13 (sparks — traveling particles on edges). |
