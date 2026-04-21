@@ -5,17 +5,24 @@ import { useStore } from '../store';
 import type { ForceNode } from './useForceGraph';
 
 const PHASE_COLOR: Record<string, string> = {
-  sleep: '#444450',
+  bootstrap: '#3a5a50',
   wake: '#4a6a8a',
+  sleep: '#444450',
+  shutdown: '#6a3a3a',
   processing: '#e8e8f0',
   unknown: '#2a2a36',
 };
+
+const PHASE_COLOR_CACHE: Record<string, Color> = Object.fromEntries(
+  Object.entries(PHASE_COLOR).map(([k, v]) => [k, new Color(v)]),
+);
 
 function Region({ node }: { node: ForceNode }) {
   const regions = useStore((s) => s.regions);
   const meta = regions[node.id];
   const meshRef = useRef<any>(null);
   const haloRef = useRef<any>(null);
+  const torusRef = useRef<any>(null);
   const tokensRef = useRef<number>(meta?.stats.tokens_lifetime ?? 0);
   const burnRef = useRef<number>(0);
 
@@ -23,6 +30,7 @@ function Region({ node }: { node: ForceNode }) {
     if (!meshRef.current) return;
     meshRef.current.position.set(node.x, node.y, node.z);
     if (haloRef.current) haloRef.current.position.set(node.x, node.y, node.z);
+    if (torusRef.current) torusRef.current.position.set(node.x, node.y, node.z);
     if (!meta) return;
     // update burn estimate
     const tokens = meta.stats.tokens_lifetime;
@@ -31,8 +39,8 @@ function Region({ node }: { node: ForceNode }) {
     burnRef.current = burnRef.current * 0.92 + (delta / Math.max(dt, 0.001)) * 0.08;
     const intensity = Math.min(1, burnRef.current / 500); // 500 tok/sec = full glow
     if (haloRef.current) haloRef.current.material.opacity = 0.15 + 0.6 * intensity;
-    // base color
-    const col = new Color(PHASE_COLOR[meta.stats.phase] ?? PHASE_COLOR.unknown);
+    // base color (cached Color instances — no per-frame allocation)
+    const col = PHASE_COLOR_CACHE[meta.stats.phase] ?? PHASE_COLOR_CACHE.unknown;
     meshRef.current.material.color.lerp(col, Math.min(1, dt * 3));
     // size from queue depth
     const scale = 1 + Math.min(0.3, meta.stats.queue_depth * 0.03);
@@ -49,7 +57,7 @@ function Region({ node }: { node: ForceNode }) {
         <sphereGeometry args={[0.6, 16, 16]} />
         <meshBasicMaterial color="#ffc97a" transparent opacity={0.15} depthWrite={false} />
       </mesh>
-      <mesh position={[node.x, node.y, node.z]}>
+      <mesh ref={torusRef} position={[node.x, node.y, node.z]}>
         <torusGeometry args={[0.5, 0.02, 8, Math.max(4, (meta?.stats.handler_count ?? 4))]} />
         <meshBasicMaterial color="#8899aa" />
       </mesh>
