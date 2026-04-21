@@ -11,25 +11,59 @@ from observatory.types import RegionMeta
 _YAML = YAML(typ="safe")
 
 
+def _coerce_int(value: Any, fallback: int) -> int:
+    """Best-effort int coercion that falls back on None / non-numeric input.
+
+    Heartbeats arrive from the wild; a region may stub a metric as `null` or
+    emit a string, and the observatory must degrade rather than drop the
+    whole update.
+    """
+    if value is None:
+        return fallback
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
 class RegionRegistry:
     def __init__(self) -> None:
         self._regions: dict[str, RegionMeta] = {}
 
     @classmethod
     def seed_from(cls, hive_repo_root: Path) -> RegionRegistry:
+        """Load region names + metadata from ``glia/regions_registry.yaml``.
+
+        The canonical schema is a top-level mapping keyed by region name, e.g.::
+
+            regions:
+              thalamus:
+                layer: cognitive
+                required_capabilities: [tool_use]
+
+        ``layer`` populates ``RegionMeta.role`` (same concept, different name
+        upstream). Missing file, empty file, malformed top-level, or malformed
+        entries all result in an empty / partial registry rather than an
+        exception — the observatory is a read-only sidecar and must not crash
+        on Hive-side schema drift.
+        """
         reg = cls()
         yaml_path = hive_repo_root / "glia" / "regions_registry.yaml"
         if not yaml_path.exists():
             return reg
         data = _YAML.load(yaml_path.read_text(encoding="utf-8")) or {}
-        for entry in data.get("regions", []):
-            name = entry.get("name")
-            if not name:
+        if not isinstance(data, dict):
+            return reg
+        regions = data.get("regions")
+        if not isinstance(regions, dict):
+            return reg
+        for name, entry in regions.items():
+            if not name or not isinstance(entry, dict):
                 continue
-            reg._regions[name] = RegionMeta(
-                name=name,
-                role=entry.get("role", ""),
-                llm_model=entry.get("llm_model", ""),
+            reg._regions[str(name)] = RegionMeta(
+                name=str(name),
+                role=str(entry.get("layer", "")),
+                llm_model=str(entry.get("llm_model", "")),
             )
         return reg
 
@@ -45,11 +79,13 @@ class RegionRegistry:
             meta = RegionMeta(name=name)
             self._regions[name] = meta
         s = meta.stats
-        s.phase = payload.get("phase", s.phase)
-        s.queue_depth = int(payload.get("queue_depth_messages", s.queue_depth))
-        s.stm_bytes = int(payload.get("stm_bytes", s.stm_bytes))
-        s.tokens_lifetime = int(payload.get("llm_tokens_used_lifetime", s.tokens_lifetime))
-        s.handler_count = int(payload.get("handler_count", s.handler_count))
+        s.phase = str(payload.get("phase", s.phase))
+        s.queue_depth = _coerce_int(payload.get("queue_depth_messages"), s.queue_depth)
+        s.stm_bytes = _coerce_int(payload.get("stm_bytes"), s.stm_bytes)
+        s.tokens_lifetime = _coerce_int(
+            payload.get("llm_tokens_used_lifetime"), s.tokens_lifetime
+        )
+        s.handler_count = _coerce_int(payload.get("handler_count"), s.handler_count)
         s.last_error_ts = payload.get("last_error_ts", s.last_error_ts)
 
     def to_json(self) -> dict[str, Any]:

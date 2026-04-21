@@ -15,6 +15,12 @@ class RetainedCache:
         return self._data.get(topic)
 
     def snapshot(self) -> dict[str, dict[str, Any]]:
+        """Return a shallow copy of the `topic → envelope` map.
+
+        Adding or removing keys on the returned dict does not affect the
+        cache. Envelope values are shared references; consumers treat them
+        as read-only.
+        """
         return dict(self._data)
 
     def keys_matching(self, prefix: str) -> list[str]:

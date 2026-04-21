@@ -22,7 +22,10 @@ def test_missing_topic_returns_none() -> None:
     assert cache.get("hive/nope") is None
 
 
-def test_snapshot_returns_immutable_copy() -> None:
+def test_snapshot_key_set_is_independent() -> None:
+    """`snapshot()` returns a shallow copy — adding/removing keys on the
+    returned dict must not affect the cache. Envelope values are shared
+    references by design; callers treat envelopes as read-only."""
     cache = RetainedCache()
     cache.put("a", _env("a", {"x": 1}))
     cache.put("b", _env("b", {"x": 2}))
