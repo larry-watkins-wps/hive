@@ -10,14 +10,14 @@ Hive is a distributed LLM-based system modeled on the human brain. 14 brain-regi
 
 **Observatory sub-project:** if the user types anything matching `continue observatory`, `continue observatory v1|v2|v3`, `resume observatory`, etc., read [observatory/CLAUDE.md](observatory/CLAUDE.md) and follow its resume protocol instead of this one. The observatory is a self-contained sub-project with its own spec, plan, prompts, and handoff tracked inside `observatory/`.
 
-When the user types something like `continue phase 4`, `continue with glia`, `start phase 8 regions`, etc.:
+When the user types something like `continue phase 11`, `resume runtime evolution`, `start first self-mod cycle`, or similar post-v0 commands:
 
-1. Read [docs/HANDOFF.md](docs/HANDOFF.md) in full. The Phase-3 progress table is the authoritative state snapshot. The "Prompt for next Phase-4 session" at the bottom is your starting instruction.
+1. Read [docs/HANDOFF.md](docs/HANDOFF.md) in full. The Quick-reference table at the top is the authoritative state snapshot. The "Prompt for next Phase-11 session" at the bottom is your starting instruction.
 2. Confirm state:
    ```bash
-   git fetch origin && git checkout impl/v0 && git log --oneline -10
-   python -m pytest tests/unit/ -q            # expect 508 passed
-   python -m ruff check region_template/ tests/
+   git fetch origin && git checkout main && git log --oneline -10
+   python -m pytest tests/unit/ -q            # expect 691 passed
+   python -m ruff check region_template/ glia/ tools/ tests/ shared/
    ```
 3. Read the relevant sections of:
    - `docs/superpowers/specs/2026-04-19-hive-v0-design.md` — **authoritative design spec** (4,792 lines).
@@ -37,7 +37,7 @@ Per-task discipline:
 - **Verify after each task:**
   ```bash
   python -m pytest tests/unit/ -q
-  python -m ruff check region_template/ tests/
+  python -m ruff check region_template/ glia/ tools/ tests/ shared/
   ```
 
 ## Authority ordering
@@ -70,3 +70,5 @@ Per-task discipline:
 - **Auto mode may be active.** Execute on routine decisions; pause only for spec conflicts, risky ops (destructive git, pushes to shared branches without scope), or Larry's explicit checkpoints.
 - **Infrastructure (glia) does not deliberate; cognition (regions) does not execute infrastructure.** Don't cross this line.
 - **Update HANDOFF.md at the end of every meaningful session** — bump `Last updated`, update the progress table, add follow-up items.
+- **Never edit across region boundaries.** Each region's `regions/<name>/` is that region's sovereign territory (Principle III). Cross-region coordination happens via MQTT signals, not file writes. If you find yourself editing `regions/<A>/` while working on `regions/<B>/`, stop — that's a spec violation.
+- **Self-modification is sleep-only.** Regions may only edit their own `prompt.md`, `subscriptions.yaml`, `handlers/`, and `memory/` during a sleep cycle (Principle IX). `region_template/` (DNA) is read-only from a region's perspective and changes only via the cosign-gated code-change path.
