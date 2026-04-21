@@ -110,14 +110,42 @@ def _event_timestamp(event: object) -> str:
     return "-"
 
 
+def _coerce_slots(raw: object) -> dict:
+    """Return ``raw`` if it's a dict, else warn on stderr and degrade to ``{}``."""
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    typer.echo(
+        f"warning: 'slots' is {type(raw).__name__}, expected object; "
+        "rendering as empty.",
+        err=True,
+    )
+    return {}
+
+
+def _coerce_events(raw: object) -> list:
+    """Return ``raw`` if it's a list, else warn on stderr and degrade to ``[]``."""
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return raw
+    typer.echo(
+        f"warning: 'recent_events' is {type(raw).__name__}, "
+        "expected list; rendering as empty.",
+        err=True,
+    )
+    return []
+
+
 def _render(data: dict, *, slots_only: bool, events_only: bool, limit: int) -> None:
     if not events_only:
         typer.echo(f"region:      {data.get('region', '?')}")
         typer.echo(f"updated_at:  {data.get('updated_at', '-')}")
         typer.echo(f"schema:      {data.get('schema_version', '-')}")
 
-    slots = data.get("slots") or {}
-    events = data.get("recent_events") or []
+    slots = _coerce_slots(data.get("slots"))
+    events = _coerce_events(data.get("recent_events"))
 
     if not events_only:
         typer.echo("")
@@ -131,7 +159,9 @@ def _render(data: dict, *, slots_only: bool, events_only: bool, limit: int) -> N
 
     if not slots_only:
         total = len(events)
-        shown = events[-limit:] if limit > 0 else events
+        # limit == 0 → show no events; limit > 0 → tail. Negative values are
+        # rejected at arg validation, so we don't need to defend here.
+        shown = events[-limit:] if limit > 0 else []
         typer.echo("")
         header = f"recent events (last {len(shown)} of {total}):"
         typer.echo(header)
@@ -163,12 +193,26 @@ def main(  # noqa: PLR0913 — flag surface is the CLI contract
         False, "--events-only", help="Render only the recent-events section."
     ),
     limit: int = typer.Option(
-        _DEFAULT_LIMIT, "--limit", help="Max events to show (default 20)."
+        _DEFAULT_LIMIT,
+        "--limit",
+        help=(
+            "Max events to show (default 20). --limit N with N > 0 prints the "
+            "last N events; --limit 0 prints the section header with no events; "
+            "negative values are rejected."
+        ),
     ),
 ) -> None:
     """Pretty-print ``regions/<region>/memory/stm.json``."""
     if slots_only and events_only:
         typer.echo("error: --slots-only and --events-only are mutually exclusive.", err=True)
+        raise typer.Exit(code=2)
+
+    if limit < 0:
+        typer.echo(
+            f"error: --limit must be >= 0 (got {limit}). "
+            "Use 0 to suppress events or a positive N to tail the last N.",
+            err=True,
+        )
         raise typer.Exit(code=2)
 
     if not _REGION_NAME_RE.match(region):
@@ -181,6 +225,26 @@ def main(  # noqa: PLR0913 — flag surface is the CLI contract
 
     base = _resolve_root(root)
     stm_path = base / "regions" / region / "memory" / "stm.json"
+
+    # Symlink-escape guard: the resolved STM path MUST live under the
+    # resolved <base>/regions/ subtree. A symlink at any segment that
+    # points outside (e.g., regions/<name>/memory/stm.json → /etc/passwd)
+    # is rejected. We check only if the file exists so the missing-file
+    # branch below still produces its friendlier message.
+    if stm_path.exists():
+        regions_root = (base / "regions").resolve()
+        try:
+            resolved_stm = stm_path.resolve(strict=True)
+        except OSError as exc:
+            typer.echo(f"error: could not resolve {stm_path}: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        if not resolved_stm.is_relative_to(regions_root):
+            typer.echo(
+                f"error: unsafe path — {stm_path} resolves to {resolved_stm}, "
+                f"which is outside the regions tree at {regions_root}.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
 
     if not stm_path.is_file():
         typer.echo(

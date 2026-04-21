@@ -8,6 +8,7 @@ Task 7.3, per spec §H.3 (operator-side filesystem peek at STM). Uses a
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -164,7 +165,7 @@ def test_missing_file_exits_usage_with_path_hint(tmp_path: Path) -> None:
     # Path or --root hint should surface on stderr.
     combined = result.stderr.lower()
     assert "stm.json" in combined or "not found" in combined
-    assert "--root" in result.stderr or "root" in combined
+    assert "--root" in result.stderr
 
 
 def test_malformed_json_exits_data_err(tmp_path: Path) -> None:
@@ -212,3 +213,110 @@ def test_event_without_topic_uses_json_preview(tmp_path: Path) -> None:
     )
     assert result.exit_code == EXIT_OK, result.stderr
     assert "tick" in result.stdout or "seq" in result.stdout
+
+
+def _can_symlink(tmp_path: Path) -> bool:
+    """Probe whether the current process can create filesystem symlinks.
+
+    On Windows, ``os.symlink`` requires Developer Mode or admin; on POSIX
+    it's always permitted. Probing is safer than hard-coding the platform
+    check because CI runners vary.
+    """
+    target = tmp_path / "_symlink_probe_target"
+    link = tmp_path / "_symlink_probe_link"
+    target.write_text("x", encoding="utf-8")
+    try:
+        os.symlink(target, link)
+    except (OSError, NotImplementedError):
+        return False
+    finally:
+        link.unlink(missing_ok=True)
+        target.unlink(missing_ok=True)
+    return True
+
+
+def test_symlink_escape_is_rejected(tmp_path: Path) -> None:
+    """F8: a symlinked stm.json pointing outside the regions tree must be rejected."""
+    if not _can_symlink(tmp_path):
+        pytest.skip(
+            "symlink creation not permitted on this system "
+            "(Windows requires Developer Mode or admin)."
+        )
+
+    # Real stm.json OUTSIDE the regions tree.
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    real_stm = outside_dir / "stm.json"
+    real_stm.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "region": "test_region",
+                "updated_at": "2026-04-19T10:30:00.000Z",
+                "slots": {},
+                "recent_events": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # Place a symlink inside the regions tree pointing at the outside file.
+    link_dir = tmp_path / "regions" / "test_region" / "memory"
+    link_dir.mkdir(parents=True)
+    link_path = link_dir / "stm.json"
+    os.symlink(real_stm, link_path)
+
+    result = _runner().invoke(app, ["test_region", "--root", str(tmp_path)])
+    assert result.exit_code == EXIT_USAGE, result.stderr
+    combined = result.stderr.lower()
+    assert "unsafe" in combined or "outside" in combined
+
+
+def test_malformed_slots_type_degrades_with_warning(tmp_path: Path) -> None:
+    """F9: non-dict 'slots' triggers a warning on stderr but still renders."""
+    path = tmp_path / "regions" / "test_region" / "memory" / "stm.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "region": "test_region",
+                "updated_at": "2026-04-19T10:30:00.000Z",
+                "slots": [],  # WRONG TYPE — should be dict.
+                "recent_events": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = _runner().invoke(app, ["test_region", "--root", str(tmp_path)])
+    assert result.exit_code == EXIT_OK, result.stderr
+    assert "warning" in result.stderr.lower()
+    assert "slots" in result.stderr.lower()
+    # Still renders the (empty) slots section.
+    assert "slots (0)" in result.stdout
+
+
+def test_limit_zero_renders_empty_events_section(tmp_path: Path) -> None:
+    """F10: --limit 0 prints the events header with zero events listed."""
+    _make_stm(
+        tmp_path,
+        "test_region",
+        events=[{"topic": "hive/x", "content": "y"}],
+    )
+    result = _runner().invoke(
+        app, ["test_region", "--root", str(tmp_path), "--limit", "0"]
+    )
+    assert result.exit_code == EXIT_OK, result.stderr
+    assert "recent events (last 0 of 1)" in result.stdout
+    # The event itself must NOT appear in the output.
+    assert "hive/x" not in result.stdout
+
+
+def test_negative_limit_rejected(tmp_path: Path) -> None:
+    """F10: --limit -1 exits EXIT_USAGE with an explanatory message."""
+    _make_stm(tmp_path, "test_region")
+    result = _runner().invoke(
+        app, ["test_region", "--root", str(tmp_path), "--limit", "-1"]
+    )
+    assert result.exit_code == EXIT_USAGE
+    assert "--limit" in result.stderr or "limit" in result.stderr.lower()

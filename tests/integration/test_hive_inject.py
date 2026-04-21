@@ -8,6 +8,7 @@ Task 7.4, per spec §H.3 / §K.2.
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -324,3 +325,35 @@ def test_cli_runner_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert result.exit_code == EXIT_OK
     assert "published" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Stdin input (payload_or_file == "-")
+# ---------------------------------------------------------------------------
+
+
+def test_stdin_sentinel_reads_piped_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F13: ``-`` routes to stdin, not to a file-path lookup."""
+    piped = '{"data":"piped","content_type":"text/plain"}'
+    monkeypatch.setattr("sys.stdin", io.StringIO(piped))
+
+    rc = run(
+        "hive/sensory/input/text",
+        "-",
+        host="localhost",
+        port=1883,
+        qos=1,
+        retain=False,
+        correlation_id=None,
+        reply_to=None,
+        client_factory=_factory,
+    )
+    assert rc == EXIT_OK
+    assert len(_FakeClient.instances) == 1
+    call = _FakeClient.instances[0].publishes[0]
+    env = Envelope.from_json(call.payload)
+    # Contents of stdin must be reflected in the published envelope.
+    assert env.payload.data == "piped"
+    assert env.payload.content_type == "text/plain"
+    # Label remains the operator marker.
+    assert env.source_region == "hive_inject"

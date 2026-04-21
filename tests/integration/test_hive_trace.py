@@ -11,6 +11,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import aiomqtt
 import pytest
 from typer.testing import CliRunner
 
@@ -21,6 +22,7 @@ pytestmark = pytest.mark.integration
 
 # Named exit codes — keep ruff PLR2004 quiet on "magic values".
 EXIT_OK = 0
+EXIT_ERROR = 1
 EXIT_USAGE = 2
 EXPECTED_MATCHES = 3
 PREVIEW_MAX_CHARS = 60
@@ -155,9 +157,14 @@ def test_run_ignores_envelopes_without_correlation_id(capsys):
         client_factory=factory,
     )
     assert rc == EXIT_OK
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
+    out = captured.out
     assert "thalamus" in out
     assert "rogue" not in out
+    # Spec §H.4: chain-gap warning must be emitted when non-correlated
+    # envelopes are observed during the collect window.
+    assert "chain-gap" in captured.err
+    assert "1" in captured.err
 
 
 def test_run_payload_preview_text_plain_truncated(capsys):
@@ -222,7 +229,55 @@ def test_run_timeout_with_no_matches_exits_clean(capsys):
     assert rc == EXIT_OK
     out = capsys.readouterr().out
     # Best-effort semantics: tool reports 0 matches, does not crash.
-    assert "0" in out
+    assert "0 events" in out
+
+
+def test_run_broker_unreachable_exits_error_with_message(capsys):
+    """§H.7: broker hiccups surface as a clean error message, not a traceback."""
+
+    def broken_factory(**_: Any) -> Any:
+        raise aiomqtt.MqttError("connection refused")
+
+    rc = run(
+        "c1",
+        host="localhost",
+        port=1883,
+        timeout=0.2,
+        live=False,
+        client_factory=broken_factory,
+    )
+    assert rc == EXIT_ERROR
+    captured = capsys.readouterr()
+    assert "broker unreachable" in captured.err
+    assert "connection refused" in captured.err
+
+
+def test_run_sorts_mixed_z_and_offset_timestamps(capsys):
+    """§H.4: ISO-8601 sort must cope with both ``Z`` and ``+00:00`` suffixes."""
+    # Lexicographically, "T10:30:00.200Z" < "T10:30:00.100+00:00" (because
+    # '2' < '1' is false but '0' < '+' is... actually 'Z' > '+'). Without
+    # normalization the sort misorders these.
+    a = _env(corr="c1", ts="2026-04-19T10:30:00.200Z", source="motor")
+    b = _env(corr="c1", ts="2026-04-19T10:30:00.100+00:00", source="thalamus")
+    c = _env(corr="c1", ts="2026-04-19T10:30:00.050Z", source="sensory")
+
+    factory = _make_factory([_msg(x) for x in (a, b, c)])
+    rc = run(
+        "c1",
+        host="localhost",
+        port=1883,
+        timeout=0.2,
+        live=False,
+        client_factory=factory,
+    )
+    assert rc == EXIT_OK
+    out = capsys.readouterr().out
+    i_sensory = out.find("sensory")
+    i_thalamus = out.find("thalamus")
+    i_motor = out.find("motor")
+    # Correct chronological order regardless of suffix style:
+    # sensory (.050) < thalamus (.100) < motor (.200).
+    assert 0 <= i_sensory < i_thalamus < i_motor
 
 
 # ---------------------------------------------------------------------------

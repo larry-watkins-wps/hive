@@ -26,6 +26,7 @@ import json
 import os
 import sys
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
@@ -114,18 +115,24 @@ async def _collect(
     timeout: float,
     live: bool,
     client_factory: Callable[..., Any],
-) -> list[Envelope]:
+) -> tuple[list[Envelope], int]:
     """Subscribe and buffer matching envelopes until ``timeout`` seconds elapse.
 
     If ``live`` is true, each matching envelope is echoed as it arrives; the
     returned list is still populated so the caller can decide whether to also
     print a sorted summary (current CLI does not — ``--live`` is stream-only).
+
+    Returns a tuple of ``(matching_envelopes, chain_gap_count)`` where
+    ``chain_gap_count`` is the number of envelopes observed without a
+    ``correlation_id`` (a handler forgot to propagate, per spec §H.4).
     """
     username = os.environ.get("MQTT_USERNAME")
     password = os.environ.get("MQTT_PASSWORD")
     buffer: list[Envelope] = []
+    chain_gaps = 0
 
     async def _inner() -> None:
+        nonlocal chain_gaps
         async with client_factory(
             hostname=host,
             port=port,
@@ -140,6 +147,9 @@ async def _collect(
                 except EnvelopeValidationError:
                     # Malformed envelope on the bus — skip, keep tailing.
                     continue
+                if env.correlation_id is None:
+                    chain_gaps += 1
+                    continue
                 if env.correlation_id != correlation_id:
                     continue
                 buffer.append(env)
@@ -150,7 +160,22 @@ async def _collect(
     with contextlib.suppress(TimeoutError):
         await asyncio.wait_for(_inner(), timeout=timeout)
 
-    return buffer
+    return buffer, chain_gaps
+
+
+def _ts_key(env: Envelope) -> Any:
+    """Sort key for timestamps. Normalizes ``Z`` suffix → ``+00:00`` and
+    parses with :func:`datetime.fromisoformat`; on parse failure, falls
+    back to the raw string so badly-formed timestamps still sort stably
+    (lexicographically) relative to each other.
+    """
+    ts = env.timestamp
+    normalized = ts[:-1] + "+00:00" if ts.endswith("Z") else ts
+    try:
+        return (0, datetime.fromisoformat(normalized))
+    except ValueError:
+        # Keep unparseable timestamps sorted after parseable ones.
+        return (1, ts)
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +200,7 @@ def run(
     the injection seam.
     """
     try:
-        collected = asyncio.run(
+        collected, chain_gaps = asyncio.run(
             _collect(
                 correlation_id,
                 host=host,
@@ -188,15 +213,27 @@ def run(
     except KeyboardInterrupt:
         # Ctrl-C is a graceful exit per §H.4 (tool just reports what it has).
         collected = []
+        chain_gaps = 0
+    except aiomqtt.MqttError as exc:
+        # §H.7 best-effort: no tracebacks on broker hiccups.
+        typer.echo(f"error: broker unreachable: {exc}", err=True)
+        return EXIT_ERROR
 
     if not live:
-        # Print sorted-by-timestamp summary. ISO-8601 sorts correctly
-        # lexicographically for well-formed timestamps.
-        collected.sort(key=lambda e: e.timestamp)
+        # Print sorted-by-timestamp summary with robust ISO-8601 parsing
+        # (handles mixed ``Z`` and ``+00:00`` suffixes).
+        collected.sort(key=_ts_key)
         for env in collected:
             typer.echo(_format(env, correlation_id))
 
-    typer.echo(f"done: {len(collected)} events matching corr={correlation_id}")
+    typer.echo(
+        f"done: {len(collected)} events matching corr={correlation_id}"
+    )
+    if chain_gaps > 0:
+        typer.echo(
+            f"warn: {chain_gaps} envelope(s) seen without correlation_id (chain-gap)",
+            err=True,
+        )
     return EXIT_OK
 
 

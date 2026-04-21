@@ -2,7 +2,8 @@
 
 Task 7.4 per spec §H.3 (line 4101) and §K.2 (line 4462). The sole write
 surface among the dbg tools; operator-authored traffic is labeled with
-``source_region="hive-inject"`` in payload-shorthand mode so a downstream
+``source_region="hive_inject"`` (underscore, to match the schema regex
+``^[a-z][a-z0-9_]{2,30}$``) in payload-shorthand mode so a downstream
 observer can always tell a crafted message from an organic one.
 
 Two modes:

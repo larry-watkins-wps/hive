@@ -30,6 +30,7 @@ import os
 import sys
 from collections.abc import Callable
 from typing import Any
+from uuid import uuid4
 
 import aiomqtt
 import typer
@@ -64,6 +65,7 @@ _RETAINED_QUIET_WINDOW_S = 0.5
 
 # Exit codes.
 _EXIT_OK = 0
+_EXIT_ERROR = 1
 _EXIT_USAGE = 2
 
 
@@ -149,11 +151,12 @@ async def _consume(
 
 async def _drain_retained(client: Any, *, hard_cap: float) -> None:
     """Collect retained messages until quiet window or ``hard_cap`` expires."""
-    deadline = asyncio.get_event_loop().time() + hard_cap
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + hard_cap
     iterator = client.messages.__aiter__()
 
     while True:
-        now = asyncio.get_event_loop().time()
+        now = loop.time()
         remaining = deadline - now
         if remaining <= 0:
             return
@@ -209,23 +212,35 @@ def run(
     username = os.environ.get("MQTT_USERNAME")
     password = os.environ.get("MQTT_PASSWORD")
 
-    kwargs: dict[str, Any] = {"hostname": host, "port": port}
+    kwargs: dict[str, Any] = {
+        "hostname": host,
+        "port": port,
+        "identifier": f"hive-watch-{uuid4().hex[:8]}",
+    }
     if username is not None:
         kwargs["username"] = username
     if password is not None:
         kwargs["password"] = password
 
+    exit_code = _EXIT_OK
+
     async def _main() -> None:
-        async with client_factory(**kwargs) as client:
-            await client.subscribe(resolved)
-            try:
-                await _consume(client, retained=retained, timeout=timeout)
-            except KeyboardInterrupt:  # pragma: no cover - interactive only
-                return
+        nonlocal exit_code
+        try:
+            async with client_factory(**kwargs) as client:
+                await client.subscribe(resolved)
+                try:
+                    await _consume(client, retained=retained, timeout=timeout)
+                except KeyboardInterrupt:  # pragma: no cover - interactive only
+                    return
+        except aiomqtt.MqttError as exc:
+            # §H.3: human-facing wrapper — no tracebacks on broker hiccups.
+            typer.echo(f"broker error: {exc}", err=True)
+            exit_code = _EXIT_ERROR
 
     with contextlib.suppress(KeyboardInterrupt):  # pragma: no cover
         asyncio.run(_main())
-    return _EXIT_OK
+    return exit_code
 
 
 # ---------------------------------------------------------------------------
