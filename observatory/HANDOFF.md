@@ -1,6 +1,6 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-21 (session 3, Tasks 9 + 10 complete)*
+*Last updated: 2026-04-21 (session 3, Tasks 9 + 10 + 11 complete)*
 
 **Canonical resume prompt:** `continue observatory v1`
 
@@ -24,8 +24,9 @@
 | **v1 backend — complete, end-to-end verified against real broker** | ✅ | |
 | v1 Task 9 — frontend scaffolding (Vite + React + TS + Tailwind) | ✅ Complete | Commits `8b6be24` + `fc0ce94` |
 | v1 Task 10 — WebSocket client + REST client + zustand store | ✅ Complete | Commits `4cd41aa` + `efb8397` |
-| v1 Task 11 — Scene shell + force graph hook | ⏳ Next | |
-| v1 Tasks 12–16 — frontend regions + sparks + HUD + integration | ⏳ Pending | |
+| v1 Task 11 — Scene shell + force graph hook | ✅ Complete | Commits `b188dcd` + `d614a48` |
+| v1 Task 12 — Region rendering (phase color + halo + size + ring) | ⏳ Next | |
+| v1 Tasks 13–16 — sparks + HUD + retain/ambient surfacing + integration | ⏳ Pending | |
 | v2 implementation | ⏳ Pending | |
 | v3 implementation | ⏳ Pending | |
 
@@ -38,12 +39,13 @@
 - Smoke-verified against production `glia/regions_registry.yaml`: 19 regions load correctly (`layer` → `role` mapping).
 - Frontend: `cd observatory/web-src && npm run build` → `observatory/web/index.html` + `assets/index-*.{js,css}` emitted in ~800 ms.
 - Frontend: `cd observatory/web-src && npm run test` → **8 passed** (5 store + 3 ws). Typecheck via `npx tsc -b` clean.
+- Frontend: `cd observatory/web-src && npm run build` → `observatory/web/` emitted; bundle ~991 kB (three.js + drei + fiber + d3-force-3d); chunk-size warning expected, Task 16 polish.
 
 ## What's done (session 3)
 
-Executed **Tasks 9 + 10** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each, review-fix commit on top of each. Implementer prompts stored under `observatory/prompts/` (`task-09-frontend-scaffolding.md`, `task-10-ws-rest-store.md`). Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–56).
+Executed **Tasks 9 + 10 + 11** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each, review-fix commit on top of each. Implementer prompts stored under `observatory/prompts/` (`task-09-frontend-scaffolding.md`, `task-10-ws-rest-store.md`, `task-11-scene-force-graph.md`). Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–62).
 
-**Session 3 totals: 2 task commits (`8b6be24`, `4cd41aa`) + 2 review-fix commits (`fc0ce94`, `efb8397`) + HANDOFF bumps.**
+**Session 3 totals: 3 task commits (`8b6be24`, `4cd41aa`, `b188dcd`) + 3 review-fix commits (`fc0ce94`, `efb8397`, `d614a48`) + HANDOFF bumps.**
 
 ### Task 9 substantive fixes vs. the plan
 
@@ -60,6 +62,15 @@ Executed **Tasks 9 + 10** with `superpowers:subagent-driven-development` discipl
 - **Review-fix 2** — `extractAmbient` / `applyRetained` dropped the unsafe `as keyof Ambient['modulators']` cast in favor of a `MODULATOR_NAMES` tuple + `isModulatorName` type guard. Unknown modulator names no longer pollute the ambient map. Two regression tests.
 - **Review-fix 3** — `rest.ts` error messages now include method, path, status, and statusText for debuggability.
 
+### Task 11 substantive fixes vs. the plan
+
+- **Drift** — `useForceGraph.ts` is the first `d3-force-3d` import. Task 9 had removed the phantom `@types/d3-force-3d` devDep; this task had to create `observatory/web-src/src/types.d.ts`. A bare `declare module 'd3-force-3d';` failed under `strict` because the plan's verbatim code uses typed generic calls (`forceSimulation<ForceNode>(...)`, `forceX<ForceNode>(...)`, `forceLink<ForceNode, ForceLink>(...)`). **Fix:** minimum-typed shim — each imported symbol declared as a generic function returning `any`, and `forceLink<N>()` returns a narrow `ForceLinkChainable<N>` interface so the plan's `.id((d) => d.id)` callback type-checks.
+- **Observation** — Plan Step 4 says "cubes gently settle" but `Scene.tsx` has no `useFrame`, so cubes render at their seed positions and don't animate. Task 12+ introduces the per-frame driver. Logged as known mismatch; not fixed here.
+- **Review-fix 1** — `useForceGraph` rebuilt the entire d3-force-3d simulation on every render (sim effect dep on `[nodes]` which derived from unstable `names`). Latent perf bug under Task 12+ live traffic. Split into three effects: `[]` builds sim once, `[namesKey]` (stable sorted join) syncs `.nodes(...)` + restarts alpha, `[adjacency]` attaches link force + restarts alpha.
+- **Review-fix 2** — `Scene.tsx` now memoizes `names` via `useMemo(() => Object.keys(regions).sort(), [regions])` so its reference is stable when regions identity is stable.
+- **Review-fix 3** — Trimmed unused `forceCenter`, `forceCollide`, `forceRadial` from `types.d.ts` (dead declarations in a type-only file are still drift surface).
+- **Review-fix 4** — `App.tsx` now documents strict-mode safety: double mount/unmount in dev is absorbed by Task 10's `ws.ts` reconnect guard.
+
 ### Prior session (session 2) substantive fixes vs. the plan
 
 - **Task 2** — real `glia/regions_registry.yaml` schema (dict keyed by name with `layer`/`required_capabilities`) reconciled; plan's list-of-dicts format would have silently returned empty.
@@ -71,21 +82,23 @@ Executed **Tasks 9 + 10** with `superpowers:subagent-driven-development` discipl
 
 ## What's next
 
-**Task 11: Scene shell + force graph hook.** First task with real React + three.js + d3-force-3d. Mounts a `<Canvas>` at full viewport, adds orbit controls + ambient/directional lights, and wires a `useForceGraph` hook that maintains per-region positions. No spheres rendered yet — scene wiring only; Task 12 adds region spheres on top.
+**Task 12: Region rendering — phase color + halo + size + ring.** Replaces Task 11's placeholder cubes with real region meshes: base sphere colored by `stats.phase`, emissive halo scaling with rolling token burn rate, slight size scaling from queue depth, and a thin torus for handler count.
 
-- Plan: search `### Task 11:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 2394).
-- **Critical gotcha:** This is when `d3-force-3d` is first imported. Create `observatory/web-src/src/types.d.ts` with `declare module 'd3-force-3d';` (drift A in Task 9 removed the phantom `@types/d3-force-3d` devDep). Without this ambient declaration, `tsc -b` will fail TS7016.
+- Plan: search `### Task 12:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 2534).
+- **Critical:** Task 12 is where `useFrame` (or an imperative ref-based position sync) has to land so cubes/meshes actually track the d3-force-3d simulation per frame. See decision entry 58 (Task 11 `useFrame` observation). The Task 11 fix-loop already ensured `useForceGraph` keeps a single long-lived sim across renders, so Task 12 can safely subscribe to tick updates.
 - Gotchas to carry forward:
-  - Vitest's current `environment: 'node'` won't work for React component tests. When Task 11's tests exercise `<Canvas>` rendering, switch to `environment: 'jsdom'` and add `@testing-library/react` / `jsdom` to devDependencies. Don't do this preemptively — only when a test needs DOM globals.
-  - `@react-three/fiber` v8 + React 18 peer-dep warning is expected; don't upgrade.
-  - TypeScript strict mode still applies; `noUnusedLocals`/`noUnusedParameters` require `_` prefix for unused params.
-  - The store is the single source of truth — `useStore(state => state.regions)` for regions list, not a prop cascade.
-  - Follow-up from Task 10 review: the `ws.ts` reconnect race test was deferred. Tasks 11+ will trigger HMR; if duplicate store handlers appear in dev, hook the fix-loop back to `ws.ts`.
+  - Delete the placeholder-cube block in `Scene.tsx` (lines 12–23 region). The plan's `Scene.tsx` comment `// (Remove this block when Task 12 lands.)` is the marker.
+  - `regions` identity is now stable across unrelated renders (Task 11 review-fix #2 depends on it). Don't destructure in ways that force new references.
+  - `stats.phase` is a `string` on the store — Task 12 will want a typed mapping from phase → color (spec §4.2 has the palette).
+  - `@react-three/fiber`'s JSX augmentation resolved first-try in Task 11; no `compilerOptions.types` workaround needed.
+  - `d3-force-3d` shim is minimum-typed — if Task 12 imports `forceCollide` (to stop spheres overlapping) or `forceCenter`, re-add the declaration to `types.d.ts` with the same pattern (generic returning `any`).
+  - If Task 12 adds component-level tests, switch `vitest.config.ts` to `environment: 'jsdom'` and add `@testing-library/react` + `jsdom` devDeps (don't do this preemptively — only when a test actually needs DOM globals).
 
 ## Follow-ups / open threads
 
-- **Plan-code drift** (20+ documented deviations in `decisions.md`): Plan's verbatim code blocks repeatedly fail ruff (UP037, UP035, PLR2004, B007, I001), sometimes have correctness bugs (fnmatch MQTT wildcards, `_Client` hashability, YAML schema), and on the frontend side — omit the `@types/node` devDep required by Vite 5, include a phantom `@types/d3-force-3d` package, miss `noEmit: true` needed to suppress `tsc -b` residue, and mis-suggest `npx tsc -b --noEmit` as a verification gate (incompatible with `composite: true` refs). Fix-loop catches them consistently, but a v1.1 plan-prose pass could save future implementers the re-discovery cost.
-- **`d3-force-3d` typing.** Task 9 removed the phantom `@types/d3-force-3d` devDep. **Task 11** must add `declare module 'd3-force-3d';` in `src/types.d.ts` on first import (this is where `d3-force-3d` first gets used per the plan).
+- **Plan-code drift** (25+ documented deviations in `decisions.md`): Plan's verbatim code blocks repeatedly fail ruff (UP037, UP035, PLR2004, B007, I001), sometimes have correctness bugs (fnmatch MQTT wildcards, `_Client` hashability, YAML schema), and on the frontend side — omit the `@types/node` devDep required by Vite 5, include a phantom `@types/d3-force-3d` package, miss `noEmit: true` needed to suppress `tsc -b` residue, mis-suggest `npx tsc -b --noEmit` as a verification gate (incompatible with `composite: true` refs), and in Task 11 add a latent perf bug (sim rebuilt on every render due to unstable `names` reference — fixed in review). Fix-loop catches them consistently, but a v1.1 plan-prose pass could save future implementers the re-discovery cost.
+- **`d3-force-3d` typing lives at `observatory/web-src/src/types.d.ts`** — minimum-typed ambient shim. Swap for a real DefinitelyTyped package if one ever ships. Task 12+ additions go in the same file with the same pattern.
+- **`useFrame` deferred to Task 12.** Task 11's static cube field doesn't animate; decision entry 58 is the breadcrumb.
 - **`ws.ts` reconnect-race regression test.** Task 10 fixed the race but did not add a test (needs `WebSocket` mock + fake timers — larger than a review-fix). Fold into Task 16 CI wiring.
 - **`rest.ts` error test.** Same class — needs `vi.stubGlobal('fetch', ...)`. Fold into Task 16.
 - **npm audit** — 4 moderate warnings in the Task 9 install (all transitive). Deferred until Task 16 final polish / CI setup.
@@ -105,3 +118,4 @@ Executed **Tasks 9 + 10** with `superpowers:subagent-driven-development` discipl
 | 2026-04-20 | Session 2 v1-backend-complete: Tasks 7–8 complete + review-fixes; 67 unit + 1 component test passing; end-to-end MQTT publish → WS receive verified against a real `eclipse-mosquitto:2` broker. Next is Task 9 (frontend scaffolding). |
 | 2026-04-21 | Session 3: Task 9 complete + review-fix. Vite 5 + React 18 + TypeScript 5 + Tailwind 3 scaffolded under `observatory/web-src/`; `npm run build` produces `observatory/web/index.html` + assets in ~800 ms. Three plan-code drifts resolved (@types/d3-force-3d phantom, @types/node omission, tsconfig noEmit residue). Python suite still 67 unit + 1 component passing, ruff clean. Next is Task 10 (WS client + REST client + zustand store). |
 | 2026-04-21 | Session 3 continued: Task 10 complete + review-fix. Zustand store + WS client (5 message types, auto-reconnect) + REST wrappers. TDD discipline: red-phase for both `store.test.ts` and `ws.test.ts` captured. 8 frontend tests passing (5 store + 3 ws). Review-fix addressed 3 Important findings: WS reconnect race on stop, unsafe modulator name cast (now type-guarded), opaque REST error messages. Python suite still 67 unit + 1 component passing. Next is Task 11 (scene shell + force graph — first `d3-force-3d` import; create `src/types.d.ts`). |
+| 2026-04-21 | Session 3 continued: Task 11 complete + review-fix. `<Canvas>` + orbit controls + lights + `useForceGraph` hook. First `d3-force-3d` import — `src/types.d.ts` seeded with minimum-typed shim. Review-fix addressed 2 Important findings: sim rebuilt on every render (unstable `names` → sim-build effect churn) — split into stable single-build + sync-on-namesKey. Also: trim unused shim declarations, strict-mode safety comment in `App.tsx`. Python suite still 67 unit + 1 component passing; 8 frontend tests green; `tsc -b` + `vite build` clean. Next is Task 12 (region meshes + `useFrame`). |
