@@ -1,0 +1,11 @@
+schema_version: 1
+subscriptions:
+  - topic: hive/self/#
+    qos: 1
+    description: "Global identity state (base)"
+  - topic: hive/broadcast/#
+    qos: 1
+    description: "System broadcasts"
+  - topic: hive/system/sleep/granted
+    qos: 1
+    description: "Sleep grant from glia"

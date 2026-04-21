@@ -1,0 +1,30 @@
+name: test_self_mod
+role: "self-modification cycle integration test region"
+schema_version: 1
+
+llm:
+  provider: anthropic
+  model: claude-haiku-4-5-20251001
+  params:
+    temperature: 0.3
+    max_tokens: 1024
+  budgets:
+    per_call_max_tokens: 1024
+    per_hour_input_tokens: 500000
+    per_hour_output_tokens: 100000
+    per_day_cost_usd: 5
+
+capabilities:
+  self_modify: true
+  tool_use: basic
+  vision: false
+  audio: false
+  stream: false
+  can_spawn: false
+  modalities: [text]
+
+mqtt:
+  password_env: MQTT_PASSWORD_TEST_SELF_MOD
+
+lifecycle:
+  sleep_quiet_window_s: 30
