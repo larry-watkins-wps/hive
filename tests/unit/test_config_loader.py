@@ -49,6 +49,10 @@ _REGION_HEARTBEAT_S = 10
 _REGION_HEARTBEAT_ALT_S = 7
 _REGION_TEMPERATURE = 0.1
 
+# Arbitrary non-default ports used in env-override tests.
+_OVERRIDE_PORT = 2883
+_OVERRIDE_PORT_ALT = 9999
+
 
 def _write_fixture(tmp_path: Path, data: dict, name: str = "config.yaml") -> Path:
     """Write ``data`` as YAML to ``tmp_path / name`` and return the path."""
@@ -291,6 +295,69 @@ def test_env_interpolation_pattern_anywhere_string_only(tmp_path, monkeypatch):
     path = _write_fixture(tmp_path, data)
     cfg = load_config(path)
     assert cfg.lifecycle.heartbeat_interval_s == _REGION_HEARTBEAT_ALT_S
+
+
+# ---------------------------------------------------------------------------
+# 11b. MQTT broker env overrides (HIVE_MQTT_BROKER_HOST / _PORT)
+# ---------------------------------------------------------------------------
+
+
+def test_mqtt_host_env_override_applies(tmp_path, monkeypatch):
+    """HIVE_MQTT_BROKER_HOST overrides mqtt.broker_host."""
+    monkeypatch.setenv("HIVE_MQTT_BROKER_HOST", "127.0.0.1")
+    monkeypatch.delenv("HIVE_MQTT_BROKER_PORT", raising=False)
+    path = _write_fixture(tmp_path, _minimal_valid_config())
+    cfg = load_config(path)
+    assert cfg.mqtt.broker_host == "127.0.0.1"
+    assert cfg.mqtt.broker_port == _DEFAULT_MQTT_PORT
+
+
+def test_mqtt_port_env_override_applies(tmp_path, monkeypatch):
+    """HIVE_MQTT_BROKER_PORT overrides mqtt.broker_port, parsed as int."""
+    monkeypatch.delenv("HIVE_MQTT_BROKER_HOST", raising=False)
+    monkeypatch.setenv("HIVE_MQTT_BROKER_PORT", str(_OVERRIDE_PORT))
+    path = _write_fixture(tmp_path, _minimal_valid_config())
+    cfg = load_config(path)
+    assert cfg.mqtt.broker_port == _OVERRIDE_PORT
+
+
+def test_mqtt_env_overrides_win_over_region_config(tmp_path, monkeypatch):
+    """Env overrides are last-word — they beat a region's own mqtt block."""
+    monkeypatch.setenv("HIVE_MQTT_BROKER_HOST", "env.host")
+    monkeypatch.setenv("HIVE_MQTT_BROKER_PORT", str(_OVERRIDE_PORT_ALT))
+    data = _minimal_valid_config()
+    data["mqtt"] = {"broker_host": "region.host", "broker_port": _OVERRIDE_PORT}
+    path = _write_fixture(tmp_path, data)
+    cfg = load_config(path)
+    assert cfg.mqtt.broker_host == "env.host"
+    assert cfg.mqtt.broker_port == _OVERRIDE_PORT_ALT
+
+
+def test_mqtt_env_override_missing_is_noop(tmp_path, monkeypatch):
+    """With neither override env var set, defaults apply."""
+    monkeypatch.delenv("HIVE_MQTT_BROKER_HOST", raising=False)
+    monkeypatch.delenv("HIVE_MQTT_BROKER_PORT", raising=False)
+    path = _write_fixture(tmp_path, _minimal_valid_config())
+    cfg = load_config(path)
+    assert cfg.mqtt.broker_host == "broker"
+    assert cfg.mqtt.broker_port == _DEFAULT_MQTT_PORT
+
+
+def test_mqtt_port_env_override_non_integer_raises(tmp_path, monkeypatch):
+    """Non-integer HIVE_MQTT_BROKER_PORT → ConfigError naming the env var."""
+    monkeypatch.setenv("HIVE_MQTT_BROKER_PORT", "not-a-number")
+    path = _write_fixture(tmp_path, _minimal_valid_config())
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(path)
+    assert "HIVE_MQTT_BROKER_PORT" in str(exc_info.value)
+
+
+def test_mqtt_port_env_override_out_of_range_raises(tmp_path, monkeypatch):
+    """Port outside 1–65535 is caught by Pydantic (not our parser)."""
+    monkeypatch.setenv("HIVE_MQTT_BROKER_PORT", "70000")
+    path = _write_fixture(tmp_path, _minimal_valid_config())
+    with pytest.raises(ConfigError):
+        load_config(path)
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,11 @@ Pipeline
    does not match the ``${ENV:...}`` pattern unless a region writes
    ``password_env: "${ENV:SOMETHING}"`` explicitly, which is valid but
    unusual.
+4b. MQTT broker env overrides: if ``HIVE_MQTT_BROKER_HOST`` or
+   ``HIVE_MQTT_BROKER_PORT`` are set in the environment, they override
+   ``mqtt.broker_host`` / ``mqtt.broker_port``. Missing vars are a no-op.
+   Intended for running a region as a host-side process against a non-docker
+   broker (e.g. a local Windows service) without editing config.yaml.
 5. Construct :class:`RegionConfig` (Pydantic v2). This second validation pass
    catches any drift between the JSON schema and the Pydantic model, and
    yields the typed object the rest of the runtime consumes.
@@ -203,6 +208,13 @@ def _deep_merge(defaults: dict[str, Any], region: dict[str, Any]) -> dict[str, A
 
 _ENV_PATTERN = re.compile(r"^\$\{ENV:([A-Za-z_][A-Za-z0-9_]*)\}$")
 
+# Local-dev env-var overrides for MQTT broker location. Intended for running a
+# region as a host-side process against a non-docker broker (e.g. a Windows
+# service) without editing the region's config.yaml. Missing vars are ignored
+# (unlike the strict ${ENV:VAR} pattern).
+_MQTT_HOST_OVERRIDE_ENV = "HIVE_MQTT_BROKER_HOST"
+_MQTT_PORT_OVERRIDE_ENV = "HIVE_MQTT_BROKER_PORT"
+
 
 def _interp_env(value: Any) -> Any:
     """Replace ``${ENV:VAR}`` scalar strings with ``os.environ['VAR']``.
@@ -284,8 +296,39 @@ def load_config(path: Path) -> RegionConfig:
     except ConfigError as exc:
         raise ConfigError(f"{path}: {exc}") from exc
 
+    # 4b. MQTT broker env overrides — local-dev escape hatch (see §F.5 note).
+    merged = _apply_mqtt_env_overrides(merged)
+
     # 5. Construct typed object
     try:
         return RegionConfig(**merged)
     except ValidationError as exc:
         raise ConfigError(f"{path}: config model violation: {exc}") from exc
+
+
+def _apply_mqtt_env_overrides(merged: dict[str, Any]) -> dict[str, Any]:
+    """Apply ``HIVE_MQTT_BROKER_HOST`` / ``HIVE_MQTT_BROKER_PORT`` overrides.
+
+    Last-word override on ``mqtt.broker_host`` and ``mqtt.broker_port``. Lets an
+    operator run a region locally against a host-side broker without editing
+    config.yaml. Missing vars are a no-op. A non-integer port env raises
+    :class:`ConfigError`; Pydantic then enforces the 1–65535 range.
+    """
+    host = os.environ.get(_MQTT_HOST_OVERRIDE_ENV)
+    port_str = os.environ.get(_MQTT_PORT_OVERRIDE_ENV)
+    if host is None and port_str is None:
+        return merged
+
+    result = dict(merged)
+    mqtt = dict(result.get("mqtt", {}))
+    if host is not None:
+        mqtt["broker_host"] = host
+    if port_str is not None:
+        try:
+            mqtt["broker_port"] = int(port_str)
+        except ValueError as exc:
+            raise ConfigError(
+                f"{_MQTT_PORT_OVERRIDE_ENV} must be an integer; got {port_str!r}"
+            ) from exc
+    result["mqtt"] = mqtt
+    return result
