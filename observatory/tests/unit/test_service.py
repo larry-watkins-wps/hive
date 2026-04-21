@@ -6,11 +6,27 @@ Task 7 scope: verify `build_app(settings)` assembles without a live broker
 """
 from __future__ import annotations
 
+import dataclasses
+from pathlib import Path
+
 import pytest
 from fastapi import FastAPI
 
 from observatory.config import Settings
 from observatory.service import _parse_mqtt_url, build_app
+
+
+def _smoke_settings(tmp_path: Path) -> Settings:
+    """Settings with regions_root pointed at a real (empty) tmp dir.
+
+    Task 4 made ``RegionReader.__init__`` eager (fails fast if
+    ``regions_root`` doesn't exist), so ``build_app(Settings())`` now
+    depends on cwd containing a ``./regions/`` directory. The smoke
+    tests supply a temp dir instead so they stay cwd-independent.
+    """
+    regions = tmp_path / "regions"
+    regions.mkdir()
+    return dataclasses.replace(Settings(), regions_root=regions)
 
 
 class TestParseMqttUrl:
@@ -34,12 +50,12 @@ class TestParseMqttUrl:
 
 
 class TestBuildAppSmoke:
-    def test_build_app_returns_fastapi_instance(self) -> None:
-        app = build_app(Settings())
+    def test_build_app_returns_fastapi_instance(self, tmp_path: Path) -> None:
+        app = build_app(_smoke_settings(tmp_path))
         assert isinstance(app, FastAPI)
 
-    def test_build_app_registers_api_and_ws_routes(self) -> None:
-        app = build_app(Settings())
+    def test_build_app_registers_api_and_ws_routes(self, tmp_path: Path) -> None:
+        app = build_app(_smoke_settings(tmp_path))
         paths = {getattr(r, "path", None) for r in app.routes}
         # REST router is prefixed /api.
         assert "/api/health" in paths
@@ -47,12 +63,12 @@ class TestBuildAppSmoke:
         # WS router mounts /ws.
         assert "/ws" in paths
 
-    def test_build_app_wraps_subscriber_dispatch(self) -> None:
+    def test_build_app_wraps_subscriber_dispatch(self, tmp_path: Path) -> None:
         # The factory swaps subscriber.dispatch for a wrapper that fans new
         # ring records to the ConnectionHub. We can't easily inspect the
         # wrapped function from outside, but we can confirm build_app did
         # not crash and that the app has a lifespan handler attached.
-        app = build_app(Settings())
+        app = build_app(_smoke_settings(tmp_path))
         assert app.router.lifespan_context is not None
 
 

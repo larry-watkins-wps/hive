@@ -11,10 +11,8 @@ on a per-app basis).
 """
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from observatory import __version__
 from observatory.region_reader import RegionReader, SandboxError
@@ -78,56 +76,40 @@ def build_router(region_registry: RegionRegistry) -> APIRouter:
         )
 
     @router.get("/regions/{name}/stm")
-    def get_stm(name: str, request: Request) -> Response:
+    def get_stm(name: str, request: Request) -> JSONResponse:
         _ensure_region(request, name)
         try:
             data = _reader(request).read_stm(name)
         except SandboxError as e:
             raise HTTPException(status_code=e.code, detail=_error_detail(e)) from e
-        return Response(
-            content=json.dumps(data),
-            media_type="application/json",
-            headers=_NO_STORE,
-        )
+        return JSONResponse(data, headers=_NO_STORE)
 
     @router.get("/regions/{name}/subscriptions")
-    def get_subscriptions(name: str, request: Request) -> Response:
+    def get_subscriptions(name: str, request: Request) -> JSONResponse:
         _ensure_region(request, name)
         try:
             data = _reader(request).read_subscriptions(name)
         except SandboxError as e:
             raise HTTPException(status_code=e.code, detail=_error_detail(e)) from e
-        return Response(
-            content=json.dumps(data),
-            media_type="application/json",
-            headers=_NO_STORE,
-        )
+        return JSONResponse(data, headers=_NO_STORE)
 
     @router.get("/regions/{name}/config")
-    def get_config(name: str, request: Request) -> Response:
+    def get_config(name: str, request: Request) -> JSONResponse:
         _ensure_region(request, name)
         try:
             data = _reader(request).read_config(name)
         except SandboxError as e:
             raise HTTPException(status_code=e.code, detail=_error_detail(e)) from e
-        return Response(
-            content=json.dumps(data),
-            media_type="application/json",
-            headers=_NO_STORE,
-        )
+        return JSONResponse(data, headers=_NO_STORE)
 
     @router.get("/regions/{name}/handlers")
-    def get_handlers(name: str, request: Request) -> Response:
+    def get_handlers(name: str, request: Request) -> JSONResponse:
         _ensure_region(request, name)
         try:
             entries = _reader(request).list_handlers(name)
         except SandboxError as e:
             raise HTTPException(status_code=e.code, detail=_error_detail(e)) from e
         body = [{"path": e.path, "size": e.size} for e in entries]
-        return Response(
-            content=json.dumps(body),
-            media_type="application/json",
-            headers=_NO_STORE,
-        )
+        return JSONResponse(body, headers=_NO_STORE)
 
     return router

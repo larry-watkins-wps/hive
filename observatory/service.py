@@ -15,8 +15,10 @@ from pathlib import Path
 
 import aiomqtt
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from observatory.adjacency import Adjacency
 from observatory.api import build_router
@@ -145,6 +147,31 @@ def build_app(settings: Settings) -> FastAPI:  # noqa: PLR0915 — composition f
             log.info("observatory.shutdown_complete")
 
     app = FastAPI(lifespan=lifespan, title="Hive Observatory", version="0.1.0")
+
+    # Spec §6.2 requires error bodies of shape {"error", "message"} (not
+    # wrapped under {"detail": ...}) and `Cache-Control: no-store` on ALL
+    # responses — including errors. FastAPI's default HTTPException handler
+    # emits neither. This custom handler:
+    #   1. Unwraps dict `detail` (v2 handlers raise HTTPException with
+    #      {"error", "message"} as `detail`) to the top-level body.
+    #   2. Leaves legacy/string `detail` alone via the standard wrapper
+    #      (no v1 code currently takes this path, but preserving it is
+    #      defensive against future additions).
+    #   3. Attaches Cache-Control: no-store to every error response.
+    @app.exception_handler(StarletteHTTPException)
+    async def _observatory_http_exc_handler(
+        _request: Request, exc: StarletteHTTPException,
+    ) -> JSONResponse:
+        if isinstance(exc.detail, dict) and "error" in exc.detail:
+            body: dict = exc.detail
+        else:
+            body = {"detail": exc.detail}
+        return JSONResponse(
+            body,
+            status_code=exc.status_code,
+            headers={"Cache-Control": "no-store"},
+        )
+
     # Attach singletons to `app.state` so the v2 REST handlers (and tests
     # that want to swap them) have a stable access point. v1's routes still
     # use the closure-captured `registry`; v2's use `request.app.state.*`.

@@ -106,8 +106,8 @@ def test_unknown_region_prompt_404(client: TestClient) -> None:
     r = client.get("/api/regions/nosuch/prompt")
     assert r.status_code == 404  # noqa: PLR2004
     body = r.json()
-    assert body["detail"]["error"] == "not_found"
-    assert "nosuch" in body["detail"]["message"]
+    assert body["error"] == "not_found"
+    assert "nosuch" in body["message"]
 
 
 def test_unknown_region_all_endpoints_return_404(client: TestClient) -> None:
@@ -115,7 +115,7 @@ def test_unknown_region_all_endpoints_return_404(client: TestClient) -> None:
     for suffix in ("prompt", "stm", "subscriptions", "config", "handlers"):
         r = client.get(f"/api/regions/ghost/{suffix}")
         assert r.status_code == 404, f"/{suffix} did not 404 for unknown region"  # noqa: PLR2004
-        assert r.json()["detail"]["error"] == "not_found"
+        assert r.json()["error"] == "not_found"
 
 
 def test_missing_file_returns_404_not_found(client: TestClient, regions_root: Path) -> None:
@@ -123,7 +123,7 @@ def test_missing_file_returns_404_not_found(client: TestClient, regions_root: Pa
     (regions_root / "testregion" / "prompt.md").unlink()
     r = client.get("/api/regions/testregion/prompt")
     assert r.status_code == 404  # noqa: PLR2004
-    assert r.json()["detail"]["error"] == "not_found"
+    assert r.json()["error"] == "not_found"
 
 
 def test_parse_error_returns_502_parse(client: TestClient, regions_root: Path) -> None:
@@ -133,7 +133,7 @@ def test_parse_error_returns_502_parse(client: TestClient, regions_root: Path) -
     )
     r = client.get("/api/regions/testregion/stm")
     assert r.status_code == 502  # noqa: PLR2004
-    assert r.json()["detail"]["error"] == "parse"
+    assert r.json()["error"] == "parse"
 
 
 def test_oversize_returns_413(
@@ -145,7 +145,7 @@ def test_oversize_returns_413(
     monkeypatch.setattr(rr_mod, "MAX_FILE_BYTES", 16)
     r = client.get("/api/regions/testregion/prompt")
     assert r.status_code == 413  # noqa: PLR2004
-    assert r.json()["detail"]["error"] == "oversize"
+    assert r.json()["error"] == "oversize"
 
 
 def test_invalid_region_name_returns_404_not_found(client: TestClient) -> None:
@@ -174,4 +174,4 @@ def test_symlink_rejected_as_sandbox_403(
         pytest.skip("symlinks not available on this host")
     r = client.get("/api/regions/testregion/prompt")
     assert r.status_code == 403  # noqa: PLR2004
-    assert r.json()["detail"]["error"] == "sandbox"
+    assert r.json()["error"] == "sandbox"
