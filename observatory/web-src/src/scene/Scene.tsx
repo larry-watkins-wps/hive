@@ -73,7 +73,6 @@ export function Scene() {
         ref={cameraControlsRef}
         minDistance={10}
         maxDistance={140}
-        dampingFactor={0.08}
         smoothTime={0.6}
       />
     </Canvas>
