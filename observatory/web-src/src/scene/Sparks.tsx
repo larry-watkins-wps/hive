@@ -26,6 +26,7 @@ export function Sparks({ nodesRef }: { nodesRef: React.MutableRefObject<Map<stri
     const envs = store.envelopes;
     const newCount = envs.length - lastLenRef.current;
     if (newCount > 0) {
+      // Prefer freshness: if a burst >100 arrived in one frame, take the last 100.
       const slice = envs.slice(envs.length - Math.min(newCount, 100));
       for (const e of slice) {
         if (!e.source_region || e.destinations.length === 0) continue;
@@ -39,6 +40,9 @@ export function Sparks({ nodesRef }: { nodesRef: React.MutableRefObject<Map<stri
           const dst = nodesRef.current.get(dname);
           if (!dst) continue;
           if (sparks.current.length >= MAX_SPARKS) sparks.current.shift();
+          // Snapshot positions at spawn. Sparks may miss moving targets during
+          // force-graph settle (first seconds after mount or topology change).
+          // Acceptable v1 tradeoff; v2 could look up live positions each frame.
           sparks.current.push({
             src: new Vector3(src.x, src.y, src.z),
             dst: new Vector3(dst.x, dst.y, dst.z),

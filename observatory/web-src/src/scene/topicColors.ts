@@ -28,6 +28,14 @@ const COLOR_CACHE: Record<string, Color> = Object.fromEntries(
   [...PREFIXES.map(([, hex]) => hex), FALLBACK].map((hex) => [hex, new Color(hex)]),
 );
 
+/**
+ * Returns the cached three.js Color for this topic's branch.
+ *
+ * **DO NOT MUTATE** the returned Color — it is shared across all callers.
+ * If you need to modify (e.g. `.multiplyScalar`, `.lerp`), call `.clone()`
+ * first. `InstancedMesh.setColorAt` copies internally and is safe to pass
+ * the cached instance directly.
+ */
 export function topicColorObject(topic: string): Color {
   return COLOR_CACHE[topicColor(topic)];
 }

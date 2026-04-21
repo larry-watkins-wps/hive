@@ -23,4 +23,13 @@ describe('topicColor', () => {
     expect(a).toBe(b); // same instance because both map to '#e8e8e8'
     expect(a.getHexString()).toBe('e8e8e8');
   });
+
+  it('empty topic falls through to the FALLBACK color', () => {
+    expect(topicColor('')).toBe('#666666');
+  });
+
+  it('is case-sensitive — uppercase prefix falls through to FALLBACK', () => {
+    expect(topicColor('HIVE/cognitive/plan')).toBe('#666666');
+    expect(topicColor('hive/Cognitive/plan')).toBe('#666666');
+  });
 });
