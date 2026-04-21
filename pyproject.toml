@@ -19,4 +19,5 @@ markers = [
     "integration: requires docker compose stack",
     "llm_real: requires real LLM provider (gated)",
     "slow: test is slow (subprocess spin-up, etc.) — runs in default suite",
+    "smoke: full-system boot smoke (very slow; requires running Docker stack)",
 ]
