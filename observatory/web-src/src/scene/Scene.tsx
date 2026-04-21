@@ -4,7 +4,7 @@ import { CameraControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from '../store';
 import { useForceGraph } from './useForceGraph';
-import { Regions } from './Regions';
+import { FuzzyOrbs } from './FuzzyOrbs';
 import { Sparks } from './Sparks';
 import { ModulatorFog } from './Fog';
 import { RhythmPulse } from './Rhythm';
@@ -53,10 +53,9 @@ export function Scene() {
     return () => window.removeEventListener('observatory:camera-reset', onReset);
   }, []);
 
-  // 1.0 normal, 0.25 when any region is selected. Threaded into Tasks 9/10/11
-  // child components once they mount.
-  const _dimFactor = selectedRegion == null ? 1.0 : 0.25;
-  void _dimFactor; // consumed by FuzzyOrbs/Edges/Labels (Tasks 9-11)
+  // 1.0 normal, 0.25 when any region is selected. Consumed by FuzzyOrbs
+  // (Task 9); Edges (Task 11) and Labels (Task 10) will read it from here too.
+  const dimFactor = selectedRegion == null ? 1.0 : 0.25;
 
   return (
     <Canvas
@@ -67,7 +66,12 @@ export function Scene() {
       <directionalLight position={[10, 10, 5]} intensity={0.6} />
       <ModulatorFog />
       <RhythmPulse lightRef={ambientRef} />
-      <Regions nodesRef={nodes} />
+      <FuzzyOrbs
+        dimFactor={dimFactor}
+        onRegionClick={(name) => useStore.getState().select(name)}
+        refMap={regionMeshRefs}
+        nodesRef={nodes}
+      />
       <Sparks nodesRef={nodes} />
       <CameraControls
         ref={cameraControlsRef}
