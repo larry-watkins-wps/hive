@@ -33,6 +33,22 @@ export type EdgePulseEntry = {
  * Key format: undirected canonical — `${min(a,b)}|${max(a,b)}`.
  * Region names are `^[A-Za-z0-9_-]+$` per backend, so `|` is a safe delimiter.
  */
+// Module-level singleton: Sparks.tsx writes to this Map during envelope
+// spawns; Edges.tsx reads + decays it each frame. Shared mutable state
+// across components is the trade-off for decoupling Sparks from Edges'
+// component lifecycle (sparks can fire bumps even if Edges is unmounted —
+// the `get()?` guard in Sparks silently no-ops in that case).
+//
+// Caveats to be aware of:
+//   - Vitest: this Map persists across test cases in the same test module.
+//     Any future test that mutates it must clear the relevant keys in
+//     afterEach. Pure-logic tests (`edgeKey`, formula constants) are
+//     unaffected — they never touch the Map.
+//   - Vite HMR: if Edges.tsx is hot-edited during dev, the new module
+//     version gets a fresh Map while Sparks.tsx may still hold the old
+//     reference. Full page reload clears the split.
+// Promotion to a Zustand slice is a v2.1+ refactor if either caveat bites
+// in practice.
 export const EDGE_PULSE: Map<string, EdgePulseEntry> = new Map();
 
 /**
@@ -128,6 +144,20 @@ export function Edges({ dimFactor, nodesRef }: EdgesProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adjKey]);
+
+  // Component-unmount cleanup. Without this, the adjacency-GC loop above
+  // is the only path that disposes materials + geometries — which never
+  // fires if `<Edges />` itself unmounts (route change, HMR, app teardown)
+  // while adjacency pairs are still "present". Dispose everything and
+  // clear both maps so nothing GL-ref'd survives.
+  useEffect(() => {
+    return () => {
+      for (const entry of EDGE_PULSE.values()) entry.material.dispose();
+      EDGE_PULSE.clear();
+      for (const rec of linesRef.current.values()) rec.line.geometry.dispose();
+      linesRef.current.clear();
+    };
+  }, []);
 
   useFrame((_, dt) => {
     // Clamp dt — avoids an entire pulse draining in one frame after a
