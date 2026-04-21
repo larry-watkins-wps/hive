@@ -24,7 +24,8 @@ from typing import Any
 
 import pytest
 
-from region_template.errors import ConfigError, LlmError
+from region_template.appendix import AppendixStore
+from region_template.errors import LlmError
 from region_template.git_tools import GitTools
 from region_template.llm_adapter import (
     CompletionRequest,
@@ -438,7 +439,7 @@ async def test_commit_message_format_matches_spec(tmp_path: Path) -> None:
     # Filename should appear in the file list.
     assert "episodes/recap.md" in message
     assert "stm pruned: 0 slots" in message
-    assert "prompt: unchanged" in message
+    assert "appendix: unchanged" in message
     assert "handlers: unchanged" in message
     assert "restart required: no" in message
     assert "reason: why it matters" in message
@@ -581,25 +582,19 @@ async def test_short_llm_reason_uses_fallback(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_late_pipeline_exception_reverts_working_tree(
-    tmp_path: Path,
+async def test_append_appendix_failure_reverts_prior_ltm_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An oversized prompt-rewrite payload raises ``ConfigError`` from inside
-    ``edit_prompt`` — AFTER LTM writes have landed on disk. The outer
-    try/except must still revert the working tree so no partial state
-    leaks across the sleep boundary.
+    """If :meth:`AppendixStore.append` raises after LTM writes have landed
+    on disk, the outer ``try/except`` in :meth:`SleepCoordinator.run` must
+    revert the working tree so nothing partial escapes (Principle XIV).
 
     Regression: previously steps 6-8 ran OUTSIDE the try/except, so a
-    raise here left LTM files staged with no commit — a dirty tree.
-
-    Note: for Task 4 the field was renamed ``prompt_edit`` →
-    ``appendix_entry`` but the review-branch still invokes
-    ``_apply_prompt_edit`` with the value as-is; Task 7 replaces that
-    call with ``AppendixStore.append`` and this test is then re-framed
-    as an append-failure recovery test.
+    raise in the prompt-evolution step left LTM files staged with no
+    commit — a dirty tree. Task 7 replaces the old whole-file prompt
+    rewrite with :class:`AppendixStore.append`; this test is the
+    append-failure equivalent of the earlier oversized-prompt regression.
     """
-    # 200 KB of ASCII — blows past _PROMPT_MAX_BYTES=64*1024.
-    oversized_prompt = "x" * 200_000
     ltm = {
         "filename": "episodes/will_be_reverted.md",
         "content": "Written to disk but never committed.",
@@ -614,17 +609,21 @@ async def test_late_pipeline_exception_reverts_working_tree(
             _completion(
                 _review_json(
                     ltm_candidates=[ltm],
-                    appendix_entry=oversized_prompt,
-                    reason="oversize",
+                    appendix_entry="an appendix insight",
+                    reason="append failure",
                 )
             )
         ],
     )
     head_before = runtime.git.current_head_sha()
 
-    # ConfigError comes from edit_prompt._validate_utf8_size.
-    with pytest.raises(ConfigError):
-        await coord.run()
+    async def _boom(self: AppendixStore, *args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(AppendixStore, "append", _boom)
+
+    with pytest.raises(RuntimeError, match="disk full"):
+        await coord.run(trigger="explicit_request")
 
     # Revert must have happened even though the raise came AFTER ltm writes.
     assert runtime.git.status_clean()

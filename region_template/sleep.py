@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import structlog
 
+from region_template.appendix import AppendixStore
 from region_template.errors import LlmError
 from region_template.llm_adapter import CompletionRequest, Message
 from region_template.prompt_assembly import load_system_prompt
@@ -219,20 +220,14 @@ class SleepCoordinator:
             stm_pruned = await self._prune_stm(review.prune_keys)
             await self._rebuild_index()
 
-            prompt_changed = False
+            appendix_appended = False
             handlers_changed = False
 
             if review.appendix_entry:
-                # Task 7 replaces this with ``self._append_appendix(...)``.
-                # For Task 4 we reuse the old whole-file-rewrite path so the
-                # field rename is a pure data-layer change (no behaviour
-                # drift). The schema now asks the LLM for an appendix body
-                # rather than a full rewrite, but no live region emits the
-                # new shape yet — PFC was reverted in the prior session.
-                await self._apply_prompt_edit(
-                    review.appendix_entry, reason=review.reason
+                await self._append_appendix(
+                    review.appendix_entry, trigger=trigger
                 )
-                prompt_changed = True
+                appendix_appended = True
 
             if review.handler_edits:
                 ok = await self._apply_handler_edits(
@@ -262,7 +257,7 @@ class SleepCoordinator:
             anything_changed = (
                 ltm_writes > 0
                 or stm_pruned > 0
-                or prompt_changed
+                or appendix_appended
                 or handlers_changed
             )
             if not anything_changed:
@@ -286,10 +281,10 @@ class SleepCoordinator:
                     for c in review.ltm_candidates
                 ],
                 stm_pruned=stm_pruned,
-                prompt_changed=prompt_changed,
+                appendix_appended=appendix_appended,
                 handlers_changed=handlers_changed,
                 restart=review.needs_restart
-                and (handlers_changed or prompt_changed),
+                and (handlers_changed or appendix_appended),
                 reason=review.reason,
             )
             commit = await self._commit(commit_msg)
@@ -315,15 +310,15 @@ class SleepCoordinator:
             sha=commit.sha,
             ltm_writes=ltm_writes,
             stm_pruned=stm_pruned,
-            prompt_changed=prompt_changed,
+            appendix_appended=appendix_appended,
             handlers_changed=handlers_changed,
             needs_restart=review.needs_restart,
         )
 
-        # Restart is only sensible when handlers or the prompt changed —
+        # Restart is only sensible when handlers or the appendix changed —
         # STM/LTM writes on their own don't require a process bounce.
         needs_restart = review.needs_restart and (
-            handlers_changed or prompt_changed
+            handlers_changed or appendix_appended
         )
         if needs_restart:
             return SleepResult(
@@ -471,21 +466,20 @@ class SleepCoordinator:
         """
         await self._runtime.memory.build_index()
 
-    async def _apply_prompt_edit(self, new_text: str, reason: str) -> None:
-        """Step 6: persist a revised prompt via SelfModifyTools.
+    async def _append_appendix(
+        self, entry: str, *, trigger: SleepTrigger
+    ) -> None:
+        """Step 6: append an evolution-appendix section to rolling.md.
 
-        Spec §A.7.1 requires ``reason`` to be 1..200 chars — any
-        non-whitespace string is valid, so a simple ``bool`` fallback
-        is sufficient here. Long narrative reasons from the LLM are
-        truncated to the 200-char cap with an ellipsis so they don't
-        fail the whole sleep cycle.
+        The LLM emits only the entry body; the framework prepends the
+        ISO-timestamped H2 header via
+        :class:`region_template.appendix.AppendixStore`. The starter
+        ``prompt.md`` is never rewritten — this is the sole prompt-
+        evolution surface post-v0 (§A.7.1 divergence, see
+        ``docs/HANDOFF.md``).
         """
-        effective_reason = (
-            _clamp_reason(reason) if reason and reason.strip() else "sleep_revision"
-        )
-        await self._runtime.tools.edit_prompt(
-            new_text=new_text, reason=effective_reason
-        )
+        store = AppendixStore(self._runtime.region_root)
+        await store.append(entry, trigger=trigger)
 
     async def _apply_handler_edits(
         self, edits: list[dict[str, Any]], reason: str
@@ -687,7 +681,7 @@ class SleepCoordinator:
         ltm_writes: int,
         ltm_files: list[str],
         stm_pruned: int,
-        prompt_changed: bool,
+        appendix_appended: bool,
         handlers_changed: bool,
         restart: bool,
         reason: str,
@@ -700,7 +694,7 @@ class SleepCoordinator:
             f"- events reviewed: {events_reviewed}\n"
             f"- ltm writes: {ltm_writes}  files: {ltm_files}\n"
             f"- stm pruned: {stm_pruned} slots\n"
-            f"- prompt: {'changed' if prompt_changed else 'unchanged'}\n"
+            f"- appendix: {'+1 section' if appendix_appended else 'unchanged'}\n"
             f"- handlers: {'changed' if handlers_changed else 'unchanged'}\n"
             f"- restart required: {'yes' if restart else 'no'}\n"
             "\n"
