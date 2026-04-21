@@ -52,12 +52,20 @@ type State = {
 
 const RING_CAP = 5000;
 
+const MODULATOR_NAMES = ['cortisol', 'dopamine', 'serotonin', 'norepinephrine', 'oxytocin', 'acetylcholine'] as const;
+type ModulatorName = (typeof MODULATOR_NAMES)[number];
+
+function isModulatorName(name: string): name is ModulatorName {
+  return (MODULATOR_NAMES as readonly string[]).includes(name);
+}
+
 function extractAmbient(retained: Snapshot['retained']): Ambient {
   const ambient: Ambient = { modulators: {}, self: {} };
   for (const [topic, env] of Object.entries(retained)) {
     const payload = env.payload ?? {};
     if (topic.startsWith('hive/modulator/')) {
-      const name = topic.slice('hive/modulator/'.length) as keyof Ambient['modulators'];
+      const name = topic.slice('hive/modulator/'.length);
+      if (!isModulatorName(name)) continue;
       const v = Number(payload.value ?? NaN);
       if (!Number.isNaN(v)) ambient.modulators[name] = v;
     } else if (topic === 'hive/self/identity') ambient.self.identity = String(payload.value ?? '');
@@ -84,7 +92,8 @@ export function createStore(): UseBoundStore<StoreApi<State>> {
     applyRetained: (topic, payload) => {
       const ambient = { ...get().ambient, modulators: { ...get().ambient.modulators }, self: { ...get().ambient.self } };
       if (topic.startsWith('hive/modulator/')) {
-        const name = topic.slice('hive/modulator/'.length) as keyof Ambient['modulators'];
+        const name = topic.slice('hive/modulator/'.length);
+        if (!isModulatorName(name)) return;
         ambient.modulators[name] = Number(payload.value ?? 0);
       }
       set({ ambient });

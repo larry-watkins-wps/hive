@@ -22,8 +22,10 @@ export function connect(store: UseBoundStore<StoreApi<any>>, url = '/ws', onStat
   let sock: WebSocket | null = null;
   let stopped = false;
   let retry = 500;
+  let timer: ReturnType<typeof setTimeout> | null = null;
 
   const open = () => {
+    if (stopped) return;
     const fullUrl = url.startsWith('ws') ? url : `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${url}`;
     sock = new WebSocket(fullUrl);
     sock.onopen = () => { retry = 500; onStatus?.('open'); };
@@ -34,13 +36,17 @@ export function connect(store: UseBoundStore<StoreApi<any>>, url = '/ws', onStat
     sock.onclose = () => {
       onStatus?.('closed');
       if (!stopped) {
-        setTimeout(open, Math.min(retry, 10000));
-        retry *= 2;
+        timer = setTimeout(open, Math.min(retry, 10000));
+        retry = Math.min(retry * 2, 10000);
       }
     };
     sock.onerror = () => sock?.close();
   };
 
   open();
-  return () => { stopped = true; sock?.close(); };
+  return () => {
+    stopped = true;
+    if (timer) { clearTimeout(timer); timer = null; }
+    sock?.close();
+  };
 }

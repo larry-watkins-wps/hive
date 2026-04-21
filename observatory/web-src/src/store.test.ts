@@ -35,4 +35,25 @@ describe('store', () => {
     }
     expect(s.getState().envelopes.length).toBe(5000);
   });
+
+  it('drops unknown modulator names from retained snapshots', () => {
+    const s = createStore();
+    s.getState().applySnapshot({
+      regions: {},
+      retained: {
+        'hive/modulator/cortisol': { payload: { value: 0.4 } },
+        'hive/modulator/BADNAME': { payload: { value: 9.9 } },
+      },
+      recent: [],
+      server_version: '0.1.0',
+    });
+    expect(s.getState().ambient.modulators.cortisol).toBe(0.4);
+    expect(Object.keys(s.getState().ambient.modulators)).not.toContain('BADNAME');
+  });
+
+  it('drops unknown modulator names from live applyRetained', () => {
+    const s = createStore();
+    s.getState().applyRetained('hive/modulator/BADNAME', { value: 9.9 });
+    expect(Object.keys(s.getState().ambient.modulators)).not.toContain('BADNAME');
+  });
 });
