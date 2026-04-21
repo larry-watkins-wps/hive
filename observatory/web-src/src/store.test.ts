@@ -56,4 +56,15 @@ describe('store', () => {
     s.getState().applyRetained('hive/modulator/BADNAME', { value: 9.9 });
     expect(Object.keys(s.getState().ambient.modulators)).not.toContain('BADNAME');
   });
+
+  it('envelopesReceivedTotal increments monotonically past RING_CAP', () => {
+    const s = createStore();
+    for (let i = 0; i < 5100; i++) {
+      s.getState().pushEnvelope({
+        observed_at: i, topic: 't', envelope: {}, source_region: null, destinations: [],
+      });
+    }
+    expect(s.getState().envelopes.length).toBe(5000);
+    expect(s.getState().envelopesReceivedTotal).toBe(5100);
+  });
 });

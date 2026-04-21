@@ -1,6 +1,4 @@
-import { useStore } from '../store';
-
-const ORDER = ['cortisol', 'dopamine', 'serotonin', 'norepinephrine', 'oxytocin', 'acetylcholine'] as const;
+import { useStore, MODULATOR_NAMES } from '../store';
 
 function Gauge({ name, value }: { name: string; value: number }) {
   const pct = Math.max(0, Math.min(1, value)) * 100;
@@ -20,7 +18,7 @@ export function Modulators() {
   return (
     <div className="p-3 bg-hive-panel/80 backdrop-blur rounded-md w-72 space-y-1 mt-2">
       <div className="text-[10px] tracking-widest opacity-60 uppercase">Modulators</div>
-      {ORDER.map((n) => <Gauge key={n} name={n} value={mods[n] ?? 0} />)}
+      {MODULATOR_NAMES.map((n) => <Gauge key={n} name={n} value={mods[n] ?? 0} />)}
     </div>
   );
 }

@@ -1,25 +1,29 @@
-import { useStore } from '../store';
+import { useStore, type RegionMeta } from '../store';
 import { useEffect, useRef, useState } from 'react';
 
 export function Counters() {
   const regions = useStore((s) => s.regions);
   const [rate, setRate] = useState(0);
-  const samplesRef = useRef<number[]>([]); // length samples, one per second, last 6 kept
+  // Samples of `envelopesReceivedTotal` (monotonic), one per second, last 6 kept.
+  // Sampling the monotonic counter — not `envelopes.length` — avoids the
+  // plateau bug when the envelope ring caps at RING_CAP (5000): length-delta
+  // would read 0.0 msg/s during the busiest periods.
+  const samplesRef = useRef<number[]>([]);
 
   useEffect(() => {
     const id = setInterval(() => {
-      const envs = useStore.getState().envelopes;
-      samplesRef.current.push(envs.length);
+      const total = useStore.getState().envelopesReceivedTotal;
+      samplesRef.current.push(total);
       if (samplesRef.current.length > 6) samplesRef.current.shift();
       const earliest = samplesRef.current[0];
       const seconds = samplesRef.current.length - 1;
-      setRate(seconds > 0 ? (envs.length - earliest) / seconds : 0);
+      setRate(seconds > 0 ? (total - earliest) / seconds : 0);
     }, 1000);
     return () => clearInterval(id);
   }, []);
 
   const totalTokens = Object.values(regions).reduce(
-    (a, r: any) => a + (r.stats?.tokens_lifetime ?? 0),
+    (a, r: RegionMeta) => a + (r.stats?.tokens_lifetime ?? 0),
     0,
   );
   return (

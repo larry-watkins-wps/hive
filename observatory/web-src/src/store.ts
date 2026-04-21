@@ -41,6 +41,7 @@ type Snapshot = {
 type State = {
   regions: Record<string, RegionMeta>;
   envelopes: Envelope[];
+  envelopesReceivedTotal: number;
   adjacency: Array<[string, string, number]>;
   ambient: Ambient;
   applySnapshot: (s: Snapshot) => void;
@@ -52,8 +53,8 @@ type State = {
 
 const RING_CAP = 5000;
 
-const MODULATOR_NAMES = ['cortisol', 'dopamine', 'serotonin', 'norepinephrine', 'oxytocin', 'acetylcholine'] as const;
-type ModulatorName = (typeof MODULATOR_NAMES)[number];
+export const MODULATOR_NAMES = ['cortisol', 'dopamine', 'serotonin', 'norepinephrine', 'oxytocin', 'acetylcholine'] as const;
+export type ModulatorName = (typeof MODULATOR_NAMES)[number];
 
 function isModulatorName(name: string): name is ModulatorName {
   return (MODULATOR_NAMES as readonly string[]).includes(name);
@@ -80,11 +81,13 @@ export function createStore(): UseBoundStore<StoreApi<State>> {
   return create<State>((set, get) => ({
     regions: {},
     envelopes: [],
+    envelopesReceivedTotal: 0,
     adjacency: [],
     ambient: { modulators: {}, self: {} },
     applySnapshot: (s) => set({
       regions: s.regions,
       envelopes: s.recent,
+      envelopesReceivedTotal: s.recent.length,
       ambient: extractAmbient(s.retained),
     }),
     applyRegionDelta: (regions) => set({ regions }),
@@ -101,7 +104,9 @@ export function createStore(): UseBoundStore<StoreApi<State>> {
     pushEnvelope: (env) => {
       const next = get().envelopes.concat(env);
       if (next.length > RING_CAP) next.splice(0, next.length - RING_CAP);
-      set({ envelopes: next });
+      // `envelopesReceivedTotal` is monotonic (unlike `envelopes.length` which
+      // plateaus at RING_CAP); Counters HUD samples it to compute msg/s.
+      set({ envelopes: next, envelopesReceivedTotal: get().envelopesReceivedTotal + 1 });
     },
   }));
 }
