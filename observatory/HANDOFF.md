@@ -1,6 +1,6 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-21 (session 3, Tasks 9–13 complete)*
+*Last updated: 2026-04-21 (session 3, Tasks 9–14 complete)*
 
 **Canonical resume prompt:** `continue observatory v1`
 
@@ -27,8 +27,9 @@
 | v1 Task 11 — Scene shell + force graph hook | ✅ Complete | Commits `b188dcd` + `d614a48` |
 | v1 Task 12 — Region rendering (phase color + halo + size + ring) | ✅ Complete | Commits `eddc34c` + `aae715a` |
 | v1 Task 13 — Sparks (traveling particles on edges) | ✅ Complete | Commits `bac42b4` + `8e40701` |
-| v1 Task 14 — Modulator fog + rhythm pulse | ⏳ Next | |
-| v1 Tasks 15–16 — HUD + retain/ambient surfacing + integration | ⏳ Pending | |
+| v1 Task 14 — Modulator fog + rhythm pulse | ✅ Complete | Commits `f3d3e14` + `7eb7fd9` |
+| v1 Task 15 — HUD (self panel + modulators + counters) | ⏳ Next | |
+| v1 Task 16 — Integration + polish | ⏳ Pending | |
 | v2 implementation | ⏳ Pending | |
 | v3 implementation | ⏳ Pending | |
 
@@ -45,9 +46,9 @@
 
 ## What's done (session 3)
 
-Executed **Tasks 9 + 10 + 11 + 12 + 13** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each, review-fix commit on top of each. Implementer prompts stored under `observatory/prompts/`. Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–72).
+Executed **Tasks 9–14** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each, review-fix commit on top of each. Implementer prompts stored under `observatory/prompts/`. Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–79).
 
-**Session 3 totals: 5 task commits + 5 review-fix commits + HANDOFF bumps.**
+**Session 3 totals: 6 task commits + 6 review-fix commits + HANDOFF bumps.**
 
 ### Task 9 substantive fixes vs. the plan
 
@@ -89,6 +90,16 @@ Executed **Tasks 9 + 10 + 11 + 12 + 13** with `superpowers:subagent-driven-devel
 - **Review-fix 2 (Suggestion)** — Inline comments in `Sparks.tsx` documenting the freshness-priority cap (`Math.min(newCount, 100)`) and the spawn-time-position snapshot tradeoff (sparks may miss moving targets during settle).
 - **Review-fix 3 (Suggestion)** — Added empty-string and uppercase-prefix tests to `topicColors.test.ts` pinning the case-sensitivity contract (13 topicColors tests total).
 
+### Task 14 substantive fixes vs. the plan
+
+- **Drift (Fog.tsx)** — Plan's `new Color(0.03, 0.03, 0.07)` + `bg.clone()` per frame allocated ~120 Color instances/sec. Hoisted base RGB to module constants + single `targetRef` mutated in place (same pattern as Tasks 12/13 caches).
+- **Drift (Rhythm.tsx)** — Plan's `useStore((s) => s.envelopes)` reactive subscription re-rendered on every envelope push (~50–100 Hz). Replaced with `useStore.getState()` inside `useFrame` (same pattern as Task 13's Sparks).
+- **Drift (Scene.tsx)** — Third time plan code block reverts Task 11's `useMemo` memoization. Preserved.
+- **Review-fix 1 (Important)** — `RhythmPulse` never decayed — pulse continued forever once a rhythm topic arrived. Added `ts: performance.now()` capture + `RHYTHM_STALE_MS = 5000` fallback to flat ambient once stale.
+- **Review-fix 2 (Important)** — `envelopes.slice(-20)` window hid rhythm under bursts ≥20 non-rhythm envelopes/frame. Replaced with incremental `lastLenRef`-based scan of only-new envelopes (Task 13 Sparks pattern).
+- **Review-fix 3 (Suggestion)** — Fog.tsx `Object.entries(mods)` replaced with module-level `MOD_ENTRIES` tuple array; zero allocations per frame.
+- **Review-fix 4 (Suggestion)** — `scene.background = target` moved to first-frame only (aliases by reference); inline comment explaining Fog's copy-semantics vs. background's alias-semantics.
+
 ### Prior session (session 2) substantive fixes vs. the plan
 
 - **Task 2** — real `glia/regions_registry.yaml` schema (dict keyed by name with `layer`/`required_capabilities`) reconciled; plan's list-of-dicts format would have silently returned empty.
@@ -100,15 +111,15 @@ Executed **Tasks 9 + 10 + 11 + 12 + 13** with `superpowers:subagent-driven-devel
 
 ## What's next
 
-**Task 14: Modulator fog + rhythm pulse.** Scene-wide ambient channels — modulator values (from `ambient.modulators` on the store: cortisol / dopamine / serotonin / norepinephrine / oxytocin / acetylcholine) tint the scene; rhythm broadcasts (`hive/rhythm/*` retained topics) subtly pulse the ambient light amplitude.
+**Task 15: HUD — self panel + modulators + counters.** Overlay layout above the canvas: top-left self (identity / developmental stage / age / felt_state) + modulator gauges; bottom strip totals (envelope rate, region count, etc.). Pure React/Tailwind — NOT three.js.
 
-- Plan: search `### Task 14:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 2828).
+- Plan: search `### Task 15:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 2970).
 - Gotchas to carry forward:
-  - `ambient` lives on the store via `extractAmbient` (Task 10); `applyRetained` only updates `modulators` live (self fields ignore live updates — see Task 10 follow-ups). If Task 14 needs live self updates, that's a store change.
-  - For rhythm, subscribe to retained updates via `useStore((s) => s.ambient)` and animate in `useFrame`. `useFrame` body should look up colors/modulator values from refs (set via `useEffect`) to avoid re-renders.
-  - Reuse the `PHASE_COLOR_CACHE`/`COLOR_CACHE` pattern if any new color maps appear — module-level pre-build, no per-frame allocation.
-  - Spec §4.5 describes modulator→scene-tint semantics; check it before designing the blend.
-  - React component tests (if Task 14 adds any) still need `environment: 'jsdom'` + `@testing-library/react` + `jsdom` devDeps — not added preemptively.
+  - HUD is DOM, not canvas. It mounts over the `<Canvas>` via `position: absolute`. Tailwind classes like `bg-hive-panel`, `bg-hive-ink` are already defined (Task 9).
+  - Self state: `ambient.self` on the store (identity, developmental_stage, age, felt_state). Task 10 follow-up noted: `applyRetained` only handles modulators; self only updates on snapshot. HUD should still render gracefully with empty/undefined self fields.
+  - React component tests for the HUD would need vitest `environment: 'jsdom'` + `@testing-library/react` + `jsdom` devDeps — add only if the plan introduces HUD-specific tests.
+  - HUD should read zustand selectors directly (reactive) since DOM updates are cheap; the `useFrame`-pattern is only needed for per-frame canvas updates.
+  - Envelope-rate counters should derive from the existing `envelopes` ring. Don't spawn new state — compute in-place via a `useMemo` on a short window (e.g., last 5s via a simple length check against `performance.now()` timestamps).
 
 ## Follow-ups / open threads
 
@@ -137,3 +148,4 @@ Executed **Tasks 9 + 10 + 11 + 12 + 13** with `superpowers:subagent-driven-devel
 | 2026-04-21 | Session 3 continued: Task 11 complete + review-fix. `<Canvas>` + orbit controls + lights + `useForceGraph` hook. First `d3-force-3d` import — `src/types.d.ts` seeded with minimum-typed shim. Review-fix addressed 2 Important findings: sim rebuilt on every render (unstable `names` → sim-build effect churn) — split into stable single-build + sync-on-namesKey. Also: trim unused shim declarations, strict-mode safety comment in `App.tsx`. Python suite still 67 unit + 1 component passing; 8 frontend tests green; `tsc -b` + `vite build` clean. Next is Task 12 (region meshes + `useFrame`). |
 | 2026-04-21 | Session 3 continued: Task 12 complete + review-fix. Region meshes (base sphere + halo + handler torus) with `useFrame`-driven color/halo/scale. First `useFrame` usage in the project. Pre-approved plan deviations: preserved Task 11's `useMemo` in Scene.tsx and applied the same pattern to Regions.tsx (plan's `useStore((s) => Object.keys(s.regions))` would cause re-renders on every envelope push). Review-fix addressed 1 Critical + 2 Important: torus stationary (no ref), `PHASE_COLOR` missing `bootstrap`/`shutdown` (backend emits these), and per-frame `new Color()` allocation hoisted to module-level cache. Python suite still 67 unit + 1 component passing; 8 frontend tests green. Next is Task 13 (sparks — traveling particles on edges). |
 | 2026-04-21 | Session 3 continued: Task 13 complete + review-fix. Traveling sparks via `InstancedMesh` (cap 2000, 800 ms lifetime) colored by topic-prefix mapper (pure, unit-tested, TDD red-phase captured). First InstancedMesh use in the project. Pre-approved drifts: added `topicColorObject()` + module-level `COLOR_CACHE` to avoid ~50–300 `new Color()` allocations/sec under live traffic (same pattern as Task 12's `PHASE_COLOR_CACHE`); removed plan's dead `useEffect` import + unused `dt` param. Review-fix addressed 1 Important: JSDoc DO-NOT-MUTATE on cached Color return. Plus two suggestion-level comment additions and two test additions (empty-string, case-sensitivity). 21 frontend tests (was 8); Python suite 67 unit + 1 component untouched. Next is Task 14 (modulator fog + rhythm pulse). |
+| 2026-04-21 | Session 3 continued: Task 14 complete + review-fix. Scene-wide ambient channels: `ModulatorFog` tints scene.fog + scene.background from weighted modulator values; `RhythmPulse` modulates ambient-light intensity at perceptually-scaled gamma/beta/theta tempo. Pre-approved drifts: Fog.tsx hoisted BG constants + reusable targetRef (no per-frame Color alloc); Rhythm.tsx uses `useStore.getState()` non-reactively; Scene.tsx `useMemo` preserved (3rd time plan reverts it). Review-fix addressed 2 Important: rhythm pulse now decays after 5s staleness; scan window replaced with incremental lastLenRef-based scan (same as Sparks). Plus Fog's MOD_ENTRIES tuple table + scene.background moved to first-frame-only. 21 frontend tests unchanged; Python suite 67 unit + 1 component untouched. Next is Task 15 (HUD — self panel + modulators + counters). |
