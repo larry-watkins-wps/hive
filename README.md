@@ -22,7 +22,7 @@ python -m pytest tests/unit/ -q    # expect 691 passed
 Docker Desktop running is required for component tests:
 
 ```bash
-python -m pytest tests/component/ -m component -v    # expect all passed
+python -m pytest tests/component/ -m component -v    # expect 6 passed
 ```
 
 ## Running Hive
@@ -52,17 +52,20 @@ python -m pytest tests/component/ -m component -v    # expect all passed
 **Starting, checking, and stopping:**
 
 ```bash
+# The `hive` console script is deferred to post-v0 packaging. Until then,
+# run the module form, or alias it for brevity:
+#   alias hive='python -m tools.hive_cli'            # POSIX shell
+#   function hive { python -m tools.hive_cli $args } # PowerShell
+
 # Start broker + glia + 14 regions via docker compose
-python -m tools.hive_cli up
+python -m tools.hive_cli up        # or: hive up  (after aliasing)
 
 # Show heartbeat state for each region
-python -m tools.hive_cli status
+python -m tools.hive_cli status    # or: hive status
 
 # Graceful shutdown
-python -m tools.hive_cli down
+python -m tools.hive_cli down      # or: hive down
 ```
-
-> **Note on the `hive` shorthand:** the `hive up` / `hive status` / `hive down` console script is deferred to post-v0 packaging. Until then, use `python -m tools.hive_cli <subcommand>` as shown above.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) for deeper operator context, environment-variable reference, and known runtime gotchas.
 
