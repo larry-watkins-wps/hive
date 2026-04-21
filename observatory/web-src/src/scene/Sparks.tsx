@@ -4,6 +4,7 @@ import { Color, InstancedMesh, Matrix4, Vector3 } from 'three';
 import { useStore } from '../store';
 import { topicColorObject } from './topicColors';
 import type { ForceNode } from './useForceGraph';
+import { EDGE_PULSE, edgeKey } from './Edges';
 
 const MAX_SPARKS = 2000;
 const LIFETIME = 0.8; // seconds
@@ -49,6 +50,17 @@ export function Sparks({ nodesRef }: { nodesRef: React.MutableRefObject<Map<stri
             t0: state.clock.elapsedTime,
             color,
           });
+          // Task 11 / spec §5.3: bump the reactive thread between src+dst.
+          // Bump happens only for edges that Edges.tsx has materialized (i.e.
+          // pairs present in the server-side adjacency Map); sparks that
+          // travel along undeclared edges (e.g. direct-send envelopes) still
+          // render their traveling dot but don't pulse a thread.
+          const ek = edgeKey(e.source_region, dname);
+          const entry = EDGE_PULSE.get(ek);
+          if (entry) {
+            entry.pulse = 1.0;
+            entry.color.copy(color);
+          }
         }
       }
     }

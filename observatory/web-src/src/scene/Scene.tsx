@@ -7,6 +7,7 @@ import { useForceGraph } from './useForceGraph';
 import { FuzzyOrbs } from './FuzzyOrbs';
 import { Labels } from './Labels';
 import { Sparks } from './Sparks';
+import { Edges } from './Edges';
 import { ModulatorFog } from './Fog';
 import { RhythmPulse } from './Rhythm';
 
@@ -67,6 +68,11 @@ export function Scene() {
       <directionalLight position={[10, 10, 5]} intensity={0.6} />
       <ModulatorFog />
       <RhythmPulse lightRef={ambientRef} />
+      {/* Edges mount before FuzzyOrbs so reactive threads render *behind*
+          the orbs — spec §5.3. Both are additive so z-order only matters
+          for additive-over-opaque reads, but keeping threads-first makes
+          the hierarchy legible. */}
+      <Edges dimFactor={dimFactor} nodesRef={nodes} />
       <FuzzyOrbs
         dimFactor={dimFactor}
         onRegionClick={(name) => useStore.getState().select(name)}
