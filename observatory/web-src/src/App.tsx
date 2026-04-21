@@ -1,9 +1,9 @@
+import { useEffect } from 'react';
+import { Scene } from './scene/Scene';
+import { connect } from './api/ws';
+import { useStore } from './store';
+
 export function App() {
-  return (
-    <div className="relative w-full h-full">
-      <div className="absolute inset-0 flex items-center justify-center">
-        <p className="opacity-60">observatory — scaffolding</p>
-      </div>
-    </div>
-  );
+  useEffect(() => connect(useStore), []);
+  return <div className="relative w-full h-full"><Scene /></div>;
 }
