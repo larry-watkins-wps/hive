@@ -1,8 +1,8 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-21 (session 3 — v1 SHIPPED, all 16 tasks complete)*
+*Last updated: 2026-04-21 (session 4 — v2 Tasks 1–12 landed, Task 12 reviews + Tasks 13–15 remain)*
 
-**Canonical resume prompt:** `continue observatory v1`
+**Canonical resume prompt:** `continue observatory v2`
 
 ---
 
@@ -10,33 +10,46 @@
 
 | Milestone | Status | Notes |
 |---|---|---|
-| Brainstorm | ✅ Complete | 2026-04-20 — design approved |
-| Spec written | ✅ Complete | `observatory/docs/specs/2026-04-20-observatory-design.md` |
-| Plan written | ✅ Complete | `observatory/docs/plans/2026-04-20-observatory-plan.md` (16 tasks, ~3247 lines) |
-| v1 Task 1 — scaffolding + ring buffer | ✅ Complete | Commits `3896f64` + `491a36a` |
-| v1 Task 2 — retained cache + region registry | ✅ Complete | Commits `fb6b9e8` + `1978fc5` |
-| v1 Task 3 — adjacency + decimator | ✅ Complete | Commits `01ccebd` + `e260f6c` |
-| v1 Task 4 — MQTT subscriber | ✅ Complete | Commits `af892da` + `a1d9536` |
-| v1 Task 5 — REST `/api/health` + `/api/regions` | ✅ Complete | Commit `9fa2c63` |
-| v1 Task 6 — WebSocket hub + fan-out | ✅ Complete | Commits `1eec20d` + `a55ea81` |
-| v1 Task 7 — service assembly + CLI + Dockerfile | ✅ Complete | Commits `35f07a6` + `aeeb1d6` |
-| v1 Task 8 — component e2e (testcontainers) | ✅ Complete | Commits `7805de0` + `fad225c` |
-| **v1 backend — complete, end-to-end verified against real broker** | ✅ | |
-| v1 Task 9 — frontend scaffolding (Vite + React + TS + Tailwind) | ✅ Complete | Commits `8b6be24` + `fc0ce94` |
-| v1 Task 10 — WebSocket client + REST client + zustand store | ✅ Complete | Commits `4cd41aa` + `efb8397` |
-| v1 Task 11 — Scene shell + force graph hook | ✅ Complete | Commits `b188dcd` + `d614a48` |
-| v1 Task 12 — Region rendering (phase color + halo + size + ring) | ✅ Complete | Commits `eddc34c` + `aae715a` |
-| v1 Task 13 — Sparks (traveling particles on edges) | ✅ Complete | Commits `bac42b4` + `8e40701` |
-| v1 Task 14 — Modulator fog + rhythm pulse | ✅ Complete | Commits `f3d3e14` + `7eb7fd9` |
-| v1 Task 15 — HUD (self panel + modulators + counters) | ✅ Complete | Commits `79fcb4b` + `44f7c44` |
-| v1 Task 16 — Integration + polish | ✅ Complete | Commit `3f4b28f` |
-| **v1 — SHIPPED** | ✅ | All 16 tasks landed across sessions 2–3. |
-| v2 implementation | ⏳ Pending | |
+| v1 — SHIPPED | ✅ | All 16 tasks landed across sessions 2–3. See prior snapshot in git history. |
+| v2 brainstorm | ✅ Complete | 2026-04-21 — visual-companion mockups (layout A, keyboard A, handler-tree-only, reactive threads, name-always/stats-on-hover labels, fuzzy orbs) |
+| v2 spec written | ✅ Complete | `observatory/docs/specs/2026-04-21-observatory-v2-design.md` · commit `9cd4677` |
+| v2 plan written | ✅ Complete | `observatory/docs/plans/2026-04-21-observatory-v2-plan.md` (15 tasks, 3209 lines) · commit `1143258` |
+| v2 Task 1 — sandbox foundation (SandboxError, HandlerEntry, RegionReader skeleton, read_prompt, config) | ✅ Complete | `3fde4f7` + review-fix `28b751c` |
+| v2 Task 2 — read_stm + read_subscriptions + 7 boundary tests + `_deny` helper | ✅ Complete | `b9c971a` + review-fix `e1c2c74` |
+| v2 Task 3 — read_config (recursive redaction) + list_handlers (Path.walk follow_symlinks=false) | ✅ Complete | `90852d5` + review-fix `53f92a9` |
+| v2 Task 4 — 5 REST routes + flat `{error,message}` body + Cache-Control no-store on all | ✅ Complete | `66394e3` + review-fix `da6624f` |
+| v2 Task 5 — component e2e extension (seeded regions, /config redaction + /handlers tree over real broker) | ✅ Complete | `1bbed83` + review-fix `b026b3d` |
+| **v2 backend — complete, 92 unit + 2 component tests passing** | ✅ | |
+| v2 Task 6 — frontend store: selectedRegion + select + cycle | ✅ Complete | `6ea8939` (no review-fix) |
+| v2 Task 7 — REST wrappers (5 fetchers) + useRegionFetch hook + jsdom env | ✅ Complete | `b501fec` (no review-fix) |
+| v2 Task 8 — OrbitControls → drei CameraControls + dim plumbing + camera-reset event | ✅ Complete | `f6653a1` + review-fixes `bdf652d`, `bf8377f` |
+| v2 Task 9 — FuzzyOrbs (5-mesh additive-glow groups) + glowTexture + deletes Regions.tsx | ✅ Complete | `cce9149` + review-fix `f03493d` |
+| v2 Task 10 — Labels (CSS2DRenderer, name always / stats on hover, hover raycaster) | ✅ Complete | `528ee1c` + review-fix `955d75f` |
+| v2 Task 11 — Edges (reactive adjacency threads) + Sparks EDGE_PULSE bump | ✅ Complete | `59ccaaa` + review-fix `de5ec6c` |
+| v2 Task 12 — Inspector shell + useInspectorKeys + Header/Stats/ModulatorBath/Subscriptions/Handlers sections | ⚠️ Landed, **reviews deferred** | `8002732` |
+| v2 Task 13 — Prompt + STM + JsonTree sections | ⏳ Pending | |
+| v2 Task 14 — Messages section (filter + auto-scroll + row expand) | ⏳ Pending | |
+| v2 Task 15 — integration + verification + HANDOFF closure | ⏳ Pending | |
 | v3 implementation | ⏳ Pending | |
 
-## Suite + lint snapshot
+## Suite + lint snapshot (end of session 4)
 
-- `python -m pytest observatory/tests/unit/ -q` → **67 passed** (ring buffer 5 + config 4 + retained cache 4 + region registry 7 + adjacency 4 + decimator 7 + MQTT subscriber 16 + api 2 + ws 8 + service 10)
+- `python -m pytest observatory/tests/unit/ -q` → **92 passed + 1 skipped** (v1's 67 + v2's 25: region_reader 15 + api_regions_v2 10; symlink test skips on Windows without Developer Mode)
+- `python -m pytest observatory/tests/component/ -m component -v` → **2 passed** (v1 MQTT publish → WS receive + v2 `/config` redaction + `/handlers` tree against real broker)
+- `python -m ruff check observatory/` → clean
+- Frontend: `cd observatory/web-src && npm run test` → **71 passed** (store 12, ws 3, topicColors 13, rest 14, useRegionFetch 9, FuzzyOrbs 4, Labels 6, Edges 7, Header 3)
+- Frontend: `npx tsc -b` → clean; `npm run build` → `observatory/web/` emitted (~1 MB bundle, chunk-size warning pre-existing)
+
+## Next session resume protocol
+
+1. `git log --oneline -10 observatory/` should show `8002732` (Task 12 Inspector shell) at or near the top.
+2. **First order of business: run the deferred Task 12 reviews.** Spec-compliance review via `general-purpose`, then code-quality review via `superpowers:code-reviewer`. Scope: `observatory/web-src/src/inspector/` + `App.tsx` modification. Spec refs: §3.1–3.4, §5.2 (Modulator bath reuse). Check: slide-over `translate-x-full` animation, `useInspectorKeys` input-focus guard, R-key CustomEvent dispatch matches Task 8's listener, Stats tile threshold coloring, Handlers fetchHandlers `size` formatting, fallback `—` for empty `llm_model`.
+3. Then Tasks 13 (Prompt + STM + JsonTree), 14 (Messages with incremental-scan auto-scroll), 15 (integration + final HANDOFF closure).
+4. Full v2 resume prompt: `continue observatory v2`.
+
+## v1 legacy suite snapshot (session 3 baseline, unchanged)
+
+- `python -m pytest observatory/tests/unit/ -q` → 67 passed
 - `python -m pytest observatory/tests/component/ -m component -v` → **1 passed** (requires Docker Desktop; `eclipse-mosquitto:2` via testcontainers; real MQTT publish → WS receive verified)
 - `python -m ruff check observatory/` → clean
 - Smoke test: `python -c "from observatory.config import Settings; from observatory.service import build_app; build_app(Settings())"` → `ok`
