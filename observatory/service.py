@@ -22,6 +22,7 @@ from observatory.adjacency import Adjacency
 from observatory.api import build_router
 from observatory.config import Settings
 from observatory.mqtt_subscriber import MqttSubscriber, load_subscription_map
+from observatory.region_reader import RegionReader
 from observatory.region_registry import RegionRegistry
 from observatory.retained_cache import RetainedCache
 from observatory.ring_buffer import RingBuffer
@@ -61,6 +62,11 @@ def build_app(settings: Settings) -> FastAPI:  # noqa: PLR0915 — composition f
     sub_map = load_subscription_map(settings.hive_repo_root)
     subscriber = MqttSubscriber(ring, cache, registry, adjacency, sub_map)
     hub = ConnectionHub(ring, cache, registry, adjacency, max_ws_rate=settings.max_ws_rate)
+    # v2 Task 4 — sandboxed per-region filesystem reader. Built eagerly so
+    # that an invalid `regions_root` fails fast at service startup rather
+    # than on the first v2 REST request. The reader is attached to
+    # `app.state` below (alongside the registry) so tests can swap it.
+    reader = RegionReader(settings.regions_root)
 
     # Monkey-patch subscriber.dispatch so every newly ingested envelope also
     # fans out to WebSocket clients via the hub. `MqttSubscriber.run()`
@@ -139,6 +145,11 @@ def build_app(settings: Settings) -> FastAPI:  # noqa: PLR0915 — composition f
             log.info("observatory.shutdown_complete")
 
     app = FastAPI(lifespan=lifespan, title="Hive Observatory", version="0.1.0")
+    # Attach singletons to `app.state` so the v2 REST handlers (and tests
+    # that want to swap them) have a stable access point. v1's routes still
+    # use the closure-captured `registry`; v2's use `request.app.state.*`.
+    app.state.registry = registry
+    app.state.reader = reader
     # Routers MUST be registered before the `/` static mount — FastAPI
     # resolves routes in registration order and a `/` mount registered
     # first would shadow `/api/*` and `/ws`.
