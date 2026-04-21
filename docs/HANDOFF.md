@@ -1,7 +1,7 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-20 (Phase 7 COMPLETE — Observability tools)
-**Current phase:** Phase 7 (Observability) ✅; Phase 8 (14 regions) next
+**Last updated:** 2026-04-21 (Phase 8 COMPLETE — 14 regions scaffolded)
+**Current phase:** Phase 8 (Region scaffolding) ✅; Phase 9 (Integration / smoke / self-mod tests) next
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
@@ -382,8 +382,8 @@ The plan should:
 | 5. Glia (12 tasks) | ✅ | All 12 tasks done: registry, launcher, heartbeat monitor, ACL manager, rollback, codechange executor, spawn executor, metrics aggregator, supervisor, `__main__`, 6 bridges. `docker build -t hive-glia:v0 -f glia/Dockerfile .` succeeds. |
 | 6. Bootstrap CLI (2 tasks) | ✅ | `docker-compose.yaml` + `tools/hive_cli.py` (typer CLI: up/down/status/logs + --dev/--no-docker). 702 tests total (691 unit + 11 integration). |
 | 7. Observability tools (4 tasks) | ✅ | `tools/dbg/{hive_trace,hive_watch,hive_stm,hive_inject}.py` (typer CLIs). 745 tests (691 unit + 54 integration + 1 skipped on Windows non-admin). |
-| 8. Region scaffolding × 14 | ⏳ | PARALLEL-OK |
-| 9. Integration + smoke + self-mod tests | ⏳ | |
+| 8. Region scaffolding × 14 | ✅ | 14 regions scaffolded (`regions/<name>/{config.yaml,prompt.md,subscriptions.yaml,handlers/,memory/ltm/.gitkeep}`). One commit per region per P-XII. Task 8.15 integration test (`tests/integration/test_all_regions_load.py`) verifies all 14 load. 760 tests total (691 unit + 69 integration + 1 skipped). |
+| 9. Integration + smoke + self-mod tests | ⏳ **Next** | |
 | 10. Docs + HANDOFF | ⏳ | |
 
 **Phase 3 progress (17/17 tasks done — all waves):**
@@ -604,7 +604,76 @@ All 4 tools landed on `main` via parallel-dispatched implementers + consolidated
 
 ---
 
-### Prompt for next Phase-8 session (Phases 3–7 DONE)
+## Phase 8 — Region scaffolding — COMPLETE (2026-04-21)
+
+All 14 regions scaffolded, one commit per region per Principle XII. Task 8.15 integration test added. 15 new commits total. Spec review: **APPROVED** (no Critical, no Important). Code-quality review skipped (config-only per CLAUDE.md Phase 6 precedent).
+
+**Per-region status:** all 14 identical in shape — each commit creates `regions/<name>/{config.yaml, prompt.md, subscriptions.yaml, handlers/__init__.py, memory/ltm/.gitkeep}` (5 files). No `stm.json` or per-region `.git/` created at scaffolding time — those are first-bootstrap artifacts per §G.2.
+
+| Task | Region | Commit |
+|---|---|---|
+| 8.1 | medial_prefrontal_cortex | `5ef3cb3` |
+| 8.2 | prefrontal_cortex | `2194a50` |
+| 8.3 | anterior_cingulate | `6e1b0c6` |
+| 8.4 | hippocampus | `073e5e3` |
+| 8.5 | thalamus | `8fc9413` |
+| 8.6 | association_cortex | `6685567` |
+| 8.7 | visual_cortex | `5cb3bc3` |
+| 8.8 | auditory_cortex | `2db05b6` |
+| 8.9 | motor_cortex | `a26bce5` |
+| 8.10 | broca_area | `3f75e9d` |
+| 8.11 | amygdala | `506300c` |
+| 8.12 | vta | `d5300c5` |
+| 8.13 | insula | `b2cf65d` |
+| 8.14 | basal_ganglia | `f0df02a` |
+| 8.15 | `tests/integration/test_all_regions_load.py` | `9c14d53` |
+
+**Capability profile assignments** (from `glia/regions_registry.yaml` — spot-check reminders):
+- `can_spawn: true` ONLY for `anterior_cingulate`.
+- `vision: true` ONLY for `visual_cortex`.
+- `audio: true` ONLY for `auditory_cortex`.
+- `stream: true` for `prefrontal_cortex` + `broca_area`.
+- `tool_use: advanced` for cognitive regions (mpfc/pfc/acc/hippocampus) + motor (motor_cortex/broca_area); `basic` everywhere else.
+- `modalities`: `[text]` for most; `[text, vision]` for visual_cortex; `[text, audio]` for auditory_cortex; `[text, motor]` for motor_cortex + broca_area.
+
+**Model assignments** (plan rule):
+- **Haiku** (`claude-haiku-4-5-20251001`) — `motor_cortex`, `insula`, `amygdala`, `vta`. Reduced budgets: 500k in / 100k out / $10 daily.
+- **Opus** (`claude-opus-4-6-20260401`) — other 10. Full budgets: 2M in / 300k out / $50 daily.
+
+**Temperature assignments**:
+- `0.3` — thalamus (routing, should be deterministic).
+- `0.5` — prefrontal_cortex, motor_cortex, broca_area (executive/output).
+- `0.7` — other 10 (default).
+
+**subscriptions.yaml** per region: 6 base subscriptions always present (`hive/self/#`, `hive/modulator/#`, `hive/rhythm/#`, `hive/broadcast/#`, `hive/attention/#`, `hive/interoception/#`) + region-specific reads derived 1:1 from `bus/acl_templates/<name>.j2`'s `topic read` lines. QoS 1 for directed requests/responses; QoS 0 for ambient streams.
+
+**Task 8.15 verification test** (`9c14d53`): parametrized across 14 regions; asserts per region (1) `config_loader.load_config("regions/<name>/config.yaml")` returns a `RegionConfig` with matching `.name`, (2) `handlers_loader.discover("regions/<name>/handlers/")` returns empty list (stub handler dirs), (3) `regions/<name>/prompt.md` exists and non-empty. Plus one non-parametrized filesystem-completeness test asserting `sorted(p.name for p in Path('regions').iterdir() if p.is_dir())` equals the expected 14. 15 new integration tests; all pass.
+
+**Test totals after Phase 8**: 691 unit + 69 integration (1 skipped on Windows non-admin for symlink test) = **760 passing**. Ruff clean.
+
+**Spec-vs-plan deviations during Phase 8:** one low-priority **Nit** only.
+
+1. **Haiku model version.** The four Haiku regions use `claude-haiku-4-5-20251001` (matching the CLAUDE.md environment notes for the current session's model-ID list). Spec §C.14's litellm alias example uses `claude-haiku-4-6-20260401`. Config loader accepts any string, so this doesn't block validation. If Larry wants `4-6-20260401` instead, it's a one-line edit in each of the four region config files. Flagged during spec review; deferred to Larry's call.
+
+**Follow-up items worth tracking (non-blocking):**
+
+- No scaffold-time fixtures created per region (no sample `stm.json`, no seeded handlers). That's by design — each region grows its own handlers and STM on first bootstrap per §G.2. Watch for the first-boot path when Phase 9's `compose.test.yaml` boots a region.
+- The `subscriptions.yaml` files duplicate the 6 base subscriptions that `_base.j2` already grants at ACL level. Runtime uses `subscriptions.yaml` for actual subscribe calls; the duplication is intentional (subscriptions.yaml is authoritative for the runtime, not the ACL). Non-issue.
+- `modalities: [text, motor]` for motor_cortex and broca_area is a capability-honest declaration, but `motor` isn't a LiteLLM content-part type — it's the region's output channel. Purely informational metadata for now.
+- Parallel-session interleave: the observatory sub-project's Task 9 commits (`8b6be24`, `fc0ce94`, `92bf3fa`) landed between my Phase-8 scaffold batch and my Task 8.15 commit because a separate session was running concurrently on `observatory/` paths. No conflict — disjoint directories — but worth knowing that `git log --oneline` for Phase 8 is not strictly contiguous.
+- The spec-compliance reviewer's capability-matrix nit noted "stream: true for prefrontal_cortex" — the registry YAML doesn't mandate this (only broca_area has `stream: true` in `default_capabilities`). The implementer added it to PFC to allow streaming reasoning per the plan's intent. Defensible; flag here so a future spec-review doesn't treat it as drift.
+
+**Cumulative gotchas (Phase 8 additions):**
+
+- `config_loader.load_config(path)` is the actual API (the plan prose of `RegionConfig.load(...)` is informal). `handlers_loader.discover(handlers_dir)` returns a `list[HandlerModule]`; empty list = stub state. Use these exact signatures in future Phase-9 fixtures.
+- Scaffold-time files are text (YAML + markdown + empty `.gitkeep`). No binary content; no encoding traps observed on Windows.
+- Starter prompts under `docs/starter_prompts/` are LF-terminated; `git diff` between `regions/<name>/prompt.md` and the starter shows zero bytes on Windows with the repo's `.gitattributes` settings. If a future tool opens the starter with `open(..., "r")` on Windows, it gets LF content verbatim.
+- Every region got `mqtt.password_env: MQTT_PASSWORD_<NAME_UPPER>` — this must match the env var name produced by `scripts/make_passwd.sh` output. Tie `.env` generation + region configs together when wiring Phase-9's `compose.test.yaml`.
+
+---
+
+### Prompt for next Phase-9 session (Phases 3–8 DONE)
+
 
 Paste the following into a new Claude Code session:
 
@@ -612,53 +681,47 @@ Paste the following into a new Claude Code session:
 
 ```
 You are continuing Hive v0 at C:/repos/hive/ on branch `main`.
-Phases 3 (Runtime DNA), 4 (Region Docker image), 5 (Glia),
-6 (Bootstrap CLI), and 7 (Observability tools) are COMPLETE.
-Both `hive-region:v0` and `hive-glia:v0` images build; 691 unit
-tests + 54 integration tests pass (1 skipped on Windows without
-Developer Mode for symlink test); ruff clean. Next: Phase 8
-(14-region scaffolding).
+Phases 3–8 are COMPLETE. Both `hive-region:v0` and `hive-glia:v0`
+images build; 691 unit tests + 69 integration tests pass (1 skipped
+on Windows without Developer Mode for symlink test); ruff clean.
+14 regions are scaffolded under `regions/<name>/`. Next: Phase 9
+(integration + smoke + self-mod tests).
 
 ## Start here
 
-1. Read `docs/HANDOFF.md` in full. The Phase-3/4/5/6/7 progress tables are the
-   authoritative state snapshot. The "Follow-up items worth tracking"
-   sections under each phase list non-blocking cleanup candidates.
+1. Read `docs/HANDOFF.md` in full. The Phase-3/4/5/6/7/8 progress tables
+   are the authoritative state snapshot. The "Follow-up items worth
+   tracking" sections under each phase list non-blocking cleanup.
 2. Confirm git state:
-     git fetch origin && git checkout main && git log --oneline -10
-   Expected HEAD is `c223619 obs: Phase-7 tool review fixes` or newer.
+     git fetch origin && git checkout main && git log --oneline -15
+   Expected HEAD is the HANDOFF-update commit after `9c14d53 tests:
+   verify all 14 regions load` or newer.
 3. Confirm environment (assumes `.venv` on Python 3.12 from scripts/setup.sh):
      cd C:/repos/hive && source .venv/Scripts/activate
      python -m pytest tests/unit/ -q                 # 691 passed
-     python -m pytest tests/integration/ -q          # 54 passed, 1 skipped
+     python -m pytest tests/integration/ -q          # 69 passed, 1 skipped
      python -m ruff check region_template/ glia/ tools/ tests/
      docker compose config                           # validates
-4. Read the Phase-8 plan section:
-     docs/superpowers/plans/2026-04-19-hive-v0-plan.md (lines 796–831)
-   Phase 8 (Tasks 8.1-8.14): 14-region scaffolding. **PARALLEL-OK** —
-   each region is independent now that glia + CLI + dbg tools exist.
-   Good fit for `superpowers:dispatching-parallel-agents`.
+4. Read the Phase-9 plan section:
+     docs/superpowers/plans/2026-04-19-hive-v0-plan.md (lines 835–878)
+   Phase 9 (Tasks 9.1–9.7): conftest fixtures, compose.test.yaml,
+   cross-region integration flow, ACL enforcement, self-mod cycle,
+   full-boot smoke, CI workflow. 9.3/9.4/9.5 are PARALLEL-OK with
+   each other after 9.1 + 9.2 land.
 
-## Phase 8 dispatch pattern
+## Phase 9 dispatch pattern
 
-- Dispatch **3-4 region implementers at a time**, not all 14 in one go
-  (review-loop context per region + parallel-agent git-index race —
-  see Phase-7 gotcha).
-- **Use git worktrees** for isolation where possible: the harness
-  supports `isolation: "worktree"` on Agent dispatch. This avoids the
-  parallel-staging race that damaged one commit during Phase 7.
-- Per-region task shape (identical; vary only by region name):
-  - Copy starter prompt from `docs/starter_prompts/<name>.md`.
-  - Write `regions/<name>/config.yaml` per spec §F.1, F.2 (cognitive
-    regions → Opus; motor_cortex/insula/amygdala/vta → Haiku per §C.9).
-  - Write `regions/<name>/subscriptions.yaml` per spec §F.8.
-  - Empty `handlers/__init__.py`.
-  - `memory/ltm/.gitkeep` (stm.json + per-region `.git/` are created
-    by the region on first boot per §G.2; do NOT `git init` the
-    region during scaffolding).
-  - Commit `regions: scaffold <name>`.
-- After all 14 land, Task 8.15 (integration test): every region's
-  config + handlers load without error.
+- 9.1 + 9.2 are sequential prerequisites for 9.3–9.5 (fixtures + compose).
+- 9.3, 9.4, 9.5 PARALLEL-OK once fixtures are in place. Watch the
+  git-index race — either use `isolation: "worktree"` on Agent
+  dispatch, serialize the final commit step, or have each agent use
+  `git commit -o <paths>` to scope commits (Phase-7 gotcha).
+- 9.6 (smoke) and 9.7 (CI) land last.
+- Per-task shape:
+  - Read the plan's Task entry + relevant spec section (§I.4/§I.5/§I.6/§B.6/§I.9).
+  - Implement + TDD where feasible.
+  - Self-review, then dispatch spec-compliance + code-quality reviews.
+  - Fix loop until approved; commit per task with the HEREDOC format.
 
 ## Execution model — unchanged
 
@@ -672,31 +735,54 @@ Developer Mode for symlink test); ruff clean. Next: Phase 8
     Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 - Verify `python -m ruff check` clean after each task.
 
-For Phase 8's parallel scaffolding: use
-`superpowers:dispatching-parallel-agents` and dispatch 3-4 region
-implementers at a time (not all 14 — too much context to review in
-parallel). Each implementer gets the region's starter prompt +
-capability profile + a minimal test that boots against a fake broker.
-
 ## Known gotchas (inherit cumulatively)
 
-See HANDOFF.md's "Cumulative gotchas (Phase 5 additions)" section
-plus the Phase-3 "Known gotchas for future sessions" — ~25 items
-total spanning env setup, Windows platform nuances, library pins,
-docker-SDK quirks (NotFound/APIError, memory cache), aiomqtt v2,
-and repo hygiene. The `=2.6` / `=24` stray files at repo root are
-still pip-install typos, still left alone.
+See HANDOFF.md's per-phase "Cumulative gotchas" sections — ~30
+items total spanning env setup, Windows platform nuances, library
+pins, docker-SDK quirks (NotFound/APIError, memory cache), aiomqtt
+v2, config_loader.load_config signature, and repo hygiene. The
+`=2.6` / `=24` stray files at repo root are still pip-install
+typos, still left alone.
 
-Spec-vs-plan deviations are catalogued in three sections: Phase-3
-Wave C (8 items touching §C/§B/§A.7/§D.5), Phase 5 (9 items touching
-§E and §F), and Phase 6 (3 items touching §G.1/§G.3/§E.12 — v0
-CLI narrowings). Phase 7 added no spec deviations. Read all three
-before the first Phase-8 implementer dispatch.
+Spec-vs-plan deviations are catalogued per phase. Phase 8 added
+one Nit (Haiku model version — flagged, not fixed). Read the
+Phase-3 Wave C (8 items), Phase 5 (9 items), Phase 6 (3 items),
+and Phase 8 (1 Nit) deviation sections before touching regions.
+
+## Phase-9-specific pointers
+
+- **Task 9.1 fixtures:** `tmp_region_dir` should mirror the real
+  scaffold shape (config.yaml/prompt.md/subscriptions.yaml/handlers/
+  memory/ltm/.gitkeep). `broker_container` already proven via
+  testcontainers on `eclipse-mosquitto:2` (component-tests used it
+  in Phase 3). Port-8080 Ryuk probe fails on Windows Docker Desktop
+  → set `TESTCONTAINERS_RYUK_DISABLED=true`. Selector event-loop
+  required on Windows for aiomqtt.
+- **Task 9.2 compose.test.yaml:** ports need isolation from the
+  main `docker-compose.yaml` (different project name or ephemeral
+  ports). Per §I.4: broker + glia + 2 test regions + test_harness.
+- **Task 9.3 cross-region flow:** sensory input → speech intent in
+  <15s. Needs real LLM OR a fake-LLM override in config. Prefer
+  offline stub by default (mark live-LLM variant as `slow` for CI).
+- **Task 9.4 ACL enforcement:** uses `bus/acl_templates/`; glia's
+  `acl_manager.py` renders real `acl.conf`. Test asserts broker
+  rejection via aiomqtt `SubscribeError`/`PublishError`.
+- **Task 9.5 self-mod cycle:** `hive/system/sleep/force` → wait for
+  `hive/system/restart/request` → check region's per-region git
+  log for new commit → wait for next `status=wake` heartbeat.
+  `region_template/self_modify.py` already implements the sleep
+  pipeline; test is end-to-end orchestration.
+- **Task 9.6 smoke:** `hive up` → 120s → 14 heartbeats visible.
+  Real + offline variants. Expect `hive up --no-docker` path issues
+  on Windows (signal plumbing).
+- **Task 9.7 CI:** `.github/workflows/ci.yml`. Unit+component on
+  every push (<5min); integration (offline stub) on PR (<15min);
+  smoke + integration(real LLM) on nightly + labeled PR only.
 
 ## Deliverable at end of session
 
 - More tasks committed on `main`.
-- Unit + component suites passing.
+- Unit + component + integration suites passing.
 - Ruff clean.
 - HANDOFF.md updated with phase completion.
 - Clear checkpoint summary for Larry.
