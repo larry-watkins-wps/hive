@@ -113,14 +113,24 @@ async def test_publish_reaches_websocket(tmp_path) -> None:
             # skip past those. `receive_json()` blocks — retain=True
             # guarantees the envelope eventually lands.
             received = None
+            drained: list[dict] = []
             for _ in range(50):  # noqa: PLR2004 — drain budget
                 msg = ws.receive_json()
+                drained.append(
+                    {
+                        "type": msg.get("type"),
+                        "topic": msg.get("payload", {}).get("topic"),
+                    }
+                )
                 if msg["type"] == "envelope" and msg["payload"]["topic"] == (
                     "hive/cognitive/prefrontal/plan"
                 ):
                     received = msg
                     break
-            assert received is not None
+            assert received is not None, (
+                f"envelope never arrived on the WS stream; drained "
+                f"{len(drained)} messages: {drained}"
+            )
             assert received["payload"]["source_region"] == "thalamus"
     finally:
         broker.stop()
