@@ -1,6 +1,6 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-21 (session 3, Tasks 9–15 complete)*
+*Last updated: 2026-04-21 (session 3 — v1 SHIPPED, all 16 tasks complete)*
 
 **Canonical resume prompt:** `continue observatory v1`
 
@@ -29,7 +29,8 @@
 | v1 Task 13 — Sparks (traveling particles on edges) | ✅ Complete | Commits `bac42b4` + `8e40701` |
 | v1 Task 14 — Modulator fog + rhythm pulse | ✅ Complete | Commits `f3d3e14` + `7eb7fd9` |
 | v1 Task 15 — HUD (self panel + modulators + counters) | ✅ Complete | Commits `79fcb4b` + `44f7c44` |
-| v1 Task 16 — Integration + polish | ⏳ Next | |
+| v1 Task 16 — Integration + polish | ✅ Complete | Commit `<task-16-sha>` |
+| **v1 — SHIPPED** | ✅ | All 16 tasks landed across sessions 2–3. |
 | v2 implementation | ⏳ Pending | |
 | v3 implementation | ⏳ Pending | |
 
@@ -46,9 +47,19 @@
 
 ## What's done (session 3)
 
-Executed **Tasks 9–15** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each, review-fix commit on top of each. Implementer prompts stored under `observatory/prompts/`. Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–85).
+Executed **Tasks 9–16** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each (Tasks 9–15), review-fix commit on top of each. Task 16 was verification + HANDOFF closure with no production code changes. Implementer prompts stored under `observatory/prompts/`. Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–87).
 
-**Session 3 totals: 7 task commits + 7 review-fix commits + HANDOFF bumps.**
+**Session 3 totals: 8 task commits + 7 review-fix commits + HANDOFF bumps.**
+
+### Task 16 — v1 ships
+
+Verification-only task. Ran the full automated suite (67 Python unit + 1 component via real broker + 22 frontend vitest + ruff clean), produced the production bundle, and smoke-tested the FastAPI static mount end-to-end via `curl`. Visual E2E (phase colors, halos, sparks, gauges) is **deferred to Larry's human-loop review** — this environment has no GUI browser. Smoke test results captured:
+
+- `npm run build` → `observatory/web/index.html` (0.43 kB) + `assets/index-R8JuebiC.css` (7.76 kB) + `assets/index-C4B-WPRx.js` (998.04 kB; gzip 278.83 kB) in 3.38 s.
+- `curl http://127.0.0.1:8765/api/health` → `{"status":"ok","version":"0.1.0"}`.
+- `curl http://127.0.0.1:8765/` → `<!doctype html><html lang="en">…` (Vite-built index.html served from the FastAPI static mount).
+
+Smoke test **also surfaced a Windows-dev-only latent bug** in `observatory/service.py::_on_mqtt_task_done`: under `python -m observatory` the default `ProactorEventLoop` makes aiomqtt's `add_reader`/`add_writer` raise `NotImplementedError`, the MQTT task crashes, and the done-callback's `log.error(..., exc_info=exc)` then trips `UnicodeEncodeError` in structlog's ConsoleRenderer against Windows cp1252 stdout. **HTTP server keeps serving** (both smoke `curl` calls returned 200 OK after the callback crash); Linux/Docker deploy path is unaffected (no Proactor loop there). Logged as v1.1 follow-ups in decisions.md entry 87.
 
 ### Task 9 substantive fixes vs. the plan
 
@@ -120,15 +131,26 @@ Executed **Tasks 9–15** with `superpowers:subagent-driven-development` discipl
 
 ## What's next
 
-**Task 16: Final integration — production build + static mount smoke test.** The final v1 task. Wire everything together: backend FastAPI serves the frontend `observatory/web/` bundle as static content; verify against the backend running in a real deploy configuration; final polish pass.
+**v1 is complete and shipped.** All 16 tasks landed with `superpowers:subagent-driven-development` discipline across sessions 2 (backend) and 3 (frontend). Canonical resume prompt for the next phase: `continue observatory v2`.
 
-- Plan: search `### Task 16:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 3121).
-- Gotchas to carry forward:
-  - `observatory/service.py::build_app` was wired to mount `observatory/web/` as static content in Task 7; Task 16 should verify this works end-to-end (run the FastAPI app, fetch `/`, expect the built HTML).
-  - `observatory/Dockerfile` expects a `npm ci` against the committed `package-lock.json` + `npm run build`. Task 9 made this work; Task 16 should verify the Dockerfile actually builds the image end-to-end.
-  - v1 backend + frontend suite is **67 Python unit + 1 component + 22 frontend tests**. Task 16's additions (if any) should keep these green.
-  - If Task 16 wires any CI checks, add `environment: 'jsdom'` + `@testing-library/react` + `jsdom` devDeps when the first React component test lands — not preemptively.
-  - The scene's chunk size (~998 kB) is a known follow-up. If Task 16 proposes code-splitting (three.js / drei / d3-force-3d into separate chunks), that lines up with spec §Bundle goals.
+**Prereq for v2:** short brainstorming session per plan §Self-Review — spec §5.1 (region inspector details) needs refinement around panel layout, keyboard shortcuts, and handler-source deferrals before `writing-plans` runs.
+
+### Visual-E2E punch list — deferred to Larry
+
+Plan Step 3 requires a real browser + live Hive broker. The Task 16 implementer environment had neither. Once you're at a workstation with both:
+
+1. `cd observatory/web-src && npm run build && cd ../..`
+2. Start Hive regions (or publish test envelopes to your broker manually).
+3. `OBSERVATORY_MQTT_URL=mqtt://<your-broker>:1883 .venv/Scripts/python.exe -m observatory`
+4. Open `http://127.0.0.1:8765` in a browser and confirm:
+   - Force-directed scene renders; 14 region spheres settle into positions.
+   - Sphere **base colors** shift with lifecycle phase (bootstrap/wake/sleep/shutdown).
+   - **Halos** brighten during LLM activity (`llm_in_flight` or token-rate surges).
+   - **Sparks** travel along adjacency edges with topic-branch colors.
+   - **Modulator gauges** update as regions publish `hive/modulator/*`.
+   - **Self panel** reflects `hive/self/*` retained state.
+   - **Bottom strip counters** tick (Msg/s, region count, token total).
+5. Note any visual regressions in a new HANDOFF changelog entry and decide whether they're v1.1 polish or v2 scope.
 
 ## Follow-ups / open threads
 
@@ -159,3 +181,4 @@ Executed **Tasks 9–15** with `superpowers:subagent-driven-development` discipl
 | 2026-04-21 | Session 3 continued: Task 13 complete + review-fix. Traveling sparks via `InstancedMesh` (cap 2000, 800 ms lifetime) colored by topic-prefix mapper (pure, unit-tested, TDD red-phase captured). First InstancedMesh use in the project. Pre-approved drifts: added `topicColorObject()` + module-level `COLOR_CACHE` to avoid ~50–300 `new Color()` allocations/sec under live traffic (same pattern as Task 12's `PHASE_COLOR_CACHE`); removed plan's dead `useEffect` import + unused `dt` param. Review-fix addressed 1 Important: JSDoc DO-NOT-MUTATE on cached Color return. Plus two suggestion-level comment additions and two test additions (empty-string, case-sensitivity). 21 frontend tests (was 8); Python suite 67 unit + 1 component untouched. Next is Task 14 (modulator fog + rhythm pulse). |
 | 2026-04-21 | Session 3 continued: Task 14 complete + review-fix. Scene-wide ambient channels: `ModulatorFog` tints scene.fog + scene.background from weighted modulator values; `RhythmPulse` modulates ambient-light intensity at perceptually-scaled gamma/beta/theta tempo. Pre-approved drifts: Fog.tsx hoisted BG constants + reusable targetRef (no per-frame Color alloc); Rhythm.tsx uses `useStore.getState()` non-reactively; Scene.tsx `useMemo` preserved (3rd time plan reverts it). Review-fix addressed 2 Important: rhythm pulse now decays after 5s staleness; scan window replaced with incremental lastLenRef-based scan (same as Sparks). Plus Fog's MOD_ENTRIES tuple table + scene.background moved to first-frame-only. 21 frontend tests unchanged; Python suite 67 unit + 1 component untouched. Next is Task 15 (HUD — self panel + modulators + counters). |
 | 2026-04-21 | Session 3 continued: Task 15 complete + review-fix. HUD (SelfPanel / Modulators / Counters) rendered as DOM overlay above `<Canvas>` via Tailwind. Pre-approved drifts: Counters.tsx avoids cross-process clock-origin bug (plan compared `performance.now()/1000` to server-side `observed_at` = `time.monotonic()`) + `useEffect([])` instead of `[envelopes]`; App.tsx preserves Task 11's strict-mode comment. Review-fix addressed 2 Important + 1 Suggestion: added `envelopesReceivedTotal` monotonic counter to the store so Counters no longer reads 0.0 msg/s when the envelope ring plateaus at RING_CAP; typed Counters reducer accumulator as `RegionMeta` (was `any`); exported `MODULATOR_NAMES` from the store + deduped `Modulators.tsx`. 22 frontend tests (was 21, +1 regression); Python suite 67 unit + 1 component untouched. Next is Task 16 (final integration + production build + static mount smoke test). |
+| 2026-04-21 | Session 3 complete: Task 16 ships v1. All 16 tasks + review-fixes landed. Total session-3 commits: 8 task commits + 7 review-fix commits + HANDOFF bumps. Canonical resume prompt pivoted to v2. |
