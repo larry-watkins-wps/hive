@@ -89,11 +89,18 @@ class SleepResult:
 
 @dataclass(frozen=True)
 class _ReviewOutput:
-    """Parsed LLM review result — internal."""
+    """Parsed LLM review result — internal.
+
+    ``appendix_entry`` replaces the removed ``prompt_edit`` field
+    (see ``docs/superpowers/plans/2026-04-21-append-only-prompt-evolution.md``).
+    The LLM emits only the new appendix section body; the framework
+    prepends the timestamped H2 header via
+    :class:`region_template.appendix.AppendixStore`.
+    """
 
     ltm_candidates: list[dict[str, Any]] = field(default_factory=list)
     prune_keys: list[str] = field(default_factory=list)
-    prompt_edit: str | None = None
+    appendix_entry: str | None = None
     handler_edits: list[dict[str, Any]] = field(default_factory=list)
     needs_restart: bool = False
     reason: str = ""
@@ -113,7 +120,7 @@ _REVIEW_SCHEMA_STR = """{
       "emotional_tag": "str or null"}
   ],
   "prune_keys": ["str"],
-  "prompt_edit": "str or null",
+  "appendix_entry": "str or null",
   "handler_edits": [{"path": "str", "content": "str", "delete": false}],
   "needs_restart": false,
   "reason": "str"
@@ -214,9 +221,15 @@ class SleepCoordinator:
             prompt_changed = False
             handlers_changed = False
 
-            if review.prompt_edit:
+            if review.appendix_entry:
+                # Task 7 replaces this with ``self._append_appendix(...)``.
+                # For Task 4 we reuse the old whole-file-rewrite path so the
+                # field rename is a pure data-layer change (no behaviour
+                # drift). The schema now asks the LLM for an appendix body
+                # rather than a full rewrite, but no live region emits the
+                # new shape yet — PFC was reverted in the prior session.
                 await self._apply_prompt_edit(
-                    review.prompt_edit, reason=review.reason
+                    review.appendix_entry, reason=review.reason
                 )
                 prompt_changed = True
 
@@ -617,10 +630,21 @@ class SleepCoordinator:
         if not isinstance(data, dict):
             raise LlmError("review_json_decode_error", retryable=False)
 
+        appendix_raw = data.get("appendix_entry")
+        appendix_entry: str | None
+        if isinstance(appendix_raw, str) and appendix_raw.strip():
+            appendix_entry = appendix_raw
+        else:
+            appendix_entry = None
+
+        # ``data.get("prompt_edit")`` is intentionally ignored — the field
+        # was renamed to ``appendix_entry`` and a legacy LLM response may
+        # still emit the old shape during the Task 4 → Task 7 rollout.
+        # Silent-ignore (no warning log) keeps the transition quiet.
         return _ReviewOutput(
             ltm_candidates=list(data.get("ltm_candidates") or []),
             prune_keys=list(data.get("prune_keys") or []),
-            prompt_edit=data.get("prompt_edit"),
+            appendix_entry=appendix_entry,
             handler_edits=list(data.get("handler_edits") or []),
             needs_restart=bool(data.get("needs_restart", False)),
             reason=str(data.get("reason", "") or ""),

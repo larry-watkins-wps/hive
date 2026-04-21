@@ -124,7 +124,7 @@ def _empty_review_response() -> CompletionResult:
     payload = {
         "ltm_candidates": [],
         "prune_keys": [],
-        "prompt_edit": None,
+        "appendix_entry": None,
         "handler_edits": [],
         "needs_restart": False,
         "reason": "nothing to consolidate",

@@ -173,7 +173,7 @@ def _review_json(
     *,
     ltm_candidates: list[dict] | None = None,
     prune_keys: list[str] | None = None,
-    prompt_edit: str | None = None,
+    appendix_entry: str | None = None,
     handler_edits: list[dict] | None = None,
     needs_restart: bool = False,
     reason: str = "",
@@ -181,7 +181,7 @@ def _review_json(
     payload = {
         "ltm_candidates": ltm_candidates or [],
         "prune_keys": prune_keys or [],
-        "prompt_edit": prompt_edit,
+        "appendix_entry": appendix_entry,
         "handler_edits": handler_edits or [],
         "needs_restart": needs_restart,
         "reason": reason,
@@ -584,13 +584,19 @@ async def test_short_llm_reason_uses_fallback(tmp_path: Path) -> None:
 async def test_late_pipeline_exception_reverts_working_tree(
     tmp_path: Path,
 ) -> None:
-    """An oversized ``prompt_edit`` raises ``ConfigError`` from inside
+    """An oversized prompt-rewrite payload raises ``ConfigError`` from inside
     ``edit_prompt`` — AFTER LTM writes have landed on disk. The outer
     try/except must still revert the working tree so no partial state
     leaks across the sleep boundary.
 
     Regression: previously steps 6-8 ran OUTSIDE the try/except, so a
     raise here left LTM files staged with no commit — a dirty tree.
+
+    Note: for Task 4 the field was renamed ``prompt_edit`` →
+    ``appendix_entry`` but the review-branch still invokes
+    ``_apply_prompt_edit`` with the value as-is; Task 7 replaces that
+    call with ``AppendixStore.append`` and this test is then re-framed
+    as an append-failure recovery test.
     """
     # 200 KB of ASCII — blows past _PROMPT_MAX_BYTES=64*1024.
     oversized_prompt = "x" * 200_000
@@ -608,7 +614,7 @@ async def test_late_pipeline_exception_reverts_working_tree(
             _completion(
                 _review_json(
                     ltm_candidates=[ltm],
-                    prompt_edit=oversized_prompt,
+                    appendix_entry=oversized_prompt,
                     reason="oversize",
                 )
             )
@@ -698,6 +704,54 @@ async def test_compileall_does_not_leave_pycache(tmp_path: Path) -> None:
     )
     committed_paths = show_result.stdout.splitlines()
     assert not any(p.endswith(".pyc") for p in committed_paths), committed_paths
+
+
+# ---------------------------------------------------------------------------
+# _parse_review_output — appendix_entry replaces the legacy prompt_edit field.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_review_accepts_appendix_entry(tmp_path: Path) -> None:
+    """New-shape review output: ``appendix_entry`` is surfaced on ``_ReviewOutput``."""
+    coord, _ = _build_coordinator(tmp_path)
+    payload = json.dumps(
+        {
+            "ltm_candidates": [],
+            "prune_keys": [],
+            "appendix_entry": "Cycle insight: input→intent gap.",
+            "handler_edits": [],
+            "needs_restart": False,
+            "reason": "observed gap",
+        }
+    )
+    out = coord._parse_review_output(payload)
+    assert out.appendix_entry == "Cycle insight: input→intent gap."
+
+
+def test_parse_review_silently_ignores_legacy_prompt_edit(
+    tmp_path: Path,
+) -> None:
+    """Legacy-shape review output: ``prompt_edit`` key is dropped without a warning.
+
+    The field was renamed mid-rollout; an LLM might still emit the old
+    shape for a cycle or two. No persisted sleep output depends on it, so
+    silent-ignore is safe.
+    """
+    coord, _ = _build_coordinator(tmp_path)
+    payload = json.dumps(
+        {
+            "ltm_candidates": [],
+            "prune_keys": [],
+            "prompt_edit": "legacy rewrite payload",
+            "handler_edits": [],
+            "needs_restart": False,
+            "reason": "legacy shape",
+        }
+    )
+    out = coord._parse_review_output(payload)
+    assert out.appendix_entry is None
+    # _ReviewOutput must not carry a prompt_edit attribute at all.
+    assert not hasattr(out, "prompt_edit")
 
 
 # ---------------------------------------------------------------------------
