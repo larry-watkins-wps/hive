@@ -1,6 +1,6 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-20 (session 2)*
+*Last updated: 2026-04-20 (session 2, mid-session checkpoint 2)*
 
 **Canonical resume prompt:** `continue observatory v1`
 
@@ -16,15 +16,18 @@
 | v1 Task 1 — scaffolding + ring buffer | ✅ Complete | Commits `3896f64` + `491a36a` (review-fix: `ConfigError` + docstring) |
 | v1 Task 2 — retained cache + region registry | ✅ Complete | Commits `fb6b9e8` + `1978fc5` (review-fix: real glia schema + heartbeat robustness) |
 | v1 Task 3 — adjacency + decimator | ✅ Complete | Commits `01ccebd` + `e260f6c` (review-fix: window anchor + drop-count semantics) |
-| v1 Task 4 — MQTT subscriber | ⏳ Next |  |
-| v1 Tasks 5–8 — REST / WS / service / e2e | ⏳ Pending | |
+| v1 Task 4 — MQTT subscriber | ✅ Complete | Commits `af892da` + `a1d9536` (review-fix: MQTT wildcard regex + fault tolerance + source-None + heartbeat guards) |
+| v1 Task 5 — REST `/api/health` + `/api/regions` | ✅ Complete | Commit `9fa2c63` (no review-fix needed) |
+| v1 Task 6 — WebSocket hub + fan-out | ✅ Complete | Commits `1eec20d` + `a55ea81` (review-fix: `decimated` message + delta loop exception guard + `put_nowait`). Caught latent `_Client` hashability bug in plan code. |
+| v1 Task 7 — service assembly + CLI + Dockerfile | ⏳ Next | |
+| v1 Task 8 — component e2e (testcontainers) | ⏳ Pending | |
 | v1 Tasks 9–16 — frontend | ⏳ Pending | |
 | v2 implementation | ⏳ Pending | |
 | v3 implementation | ⏳ Pending | |
 
 ## Suite + lint snapshot
 
-- `python -m pytest observatory/tests/unit/ -q` → **31 passed** (ring buffer 5 + config 4 + retained cache 4 + region registry 7 + adjacency 4 + decimator 7)
+- `python -m pytest observatory/tests/unit/ -q` → **57 passed** (ring buffer 5 + config 4 + retained cache 4 + region registry 7 + adjacency 4 + decimator 7 + MQTT subscriber 16 + api 2 + ws 8)
 - `python -m ruff check observatory/` → clean
 
 Smoke-verified against production `glia/regions_registry.yaml`: 19 regions load correctly with `layer` → `role` mapping.
@@ -37,14 +40,15 @@ Notable substantive deviation from plan: Task 2's YAML parser was reconciled to 
 
 ## What's next
 
-**Task 4: MQTT subscriber.** Wire `aiomqtt` to the ring buffer, retained cache, region registry, and adjacency matrix. Parse Hive envelope JSON; infer destinations from `regions/<name>/subscriptions.yaml` snapshots at startup.
+**Task 7: service assembly + CLI entry + Dockerfile.** Put the pieces together: FastAPI app factory with `lifespan` hook that connects `aiomqtt`, starts the ConnectionHub delta loop, drains on shutdown. `python -m observatory` boots it. Multi-stage Dockerfile bundles the (still-unbuilt) frontend into the image.
 
-- Plan: search `### Task 4:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 888).
-- Expected outputs: `observatory/mqtt_subscriber.py` + `observatory/tests/unit/test_mqtt_subscriber.py`.
+- Plan: search `### Task 7:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 1569).
+- Expected outputs: `observatory/service.py` + `observatory/__main__.py` + `observatory/Dockerfile` (and possibly a small unit test for `_parse_mqtt_url` or `build_app` assembly).
 - Gotchas to carry forward:
   - `aiomqtt` version pin must stay compatible with `region_template/mqtt_client.py` (top-level CLAUDE.md).
-  - Windows needs `WindowsSelectorEventLoopPolicy` for aiomqtt (`add_reader`/`add_writer`) — component tests will hit this in Task 8.
-  - `time.monotonic()` is the clock the Decimator and Adjacency expect (anchored per review-fix).
+  - Windows needs `WindowsSelectorEventLoopPolicy` for aiomqtt (`add_reader`/`add_writer`) — component tests in Task 8 will need `tests/component/conftest.py` to force it (precedent exists at the repo root).
+  - `ConnectionHub.stop()` cancels but does not await — the lifespan should `await asyncio.wait_for(hub._delta_task, timeout=…)` for clean shutdown if we want to avoid a CancelledError trace.
+  - Service wiring will monkey-patch `subscriber.dispatch` to also fan out to the WS hub (plan's Step 1 pattern). Confirm this doesn't regress any of the subscriber tests — they test the unwrapped `dispatch()` directly.
 
 ## Follow-ups / open threads
 
@@ -58,3 +62,4 @@ Notable substantive deviation from plan: Task 2's YAML parser was reconciled to 
 |---|---|
 | 2026-04-20 | Initial handoff — spec + CLAUDE.md + HANDOFF.md created. |
 | 2026-04-20 | Session 2: Tasks 1–3 complete + review-fixes; 31 unit tests passing; next is Task 4 (MQTT subscriber). |
+| 2026-04-20 | Session 2 checkpoint 2: Tasks 4–6 complete + review-fixes; 57 unit tests passing; next is Task 7 (service assembly). Notable catches: real `glia/regions_registry.yaml` schema reconciled (Task 2), production envelope wrapper shape handled (Task 4), MQTT wildcard regex correctness fixed (Task 4), `decimated` WS message added to match spec §5.3 (Task 6). |
