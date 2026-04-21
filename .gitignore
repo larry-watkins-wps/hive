@@ -1,5 +1,6 @@
 # Claude Code session artifacts
 .claude/
+.superpowers/
 
 # Python
 __pycache__/

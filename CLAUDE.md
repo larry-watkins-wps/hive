@@ -8,6 +8,8 @@ Hive is a distributed LLM-based system modeled on the human brain. 14 brain-regi
 
 ## How to resume work
 
+**Observatory sub-project:** if the user types anything matching `continue observatory`, `continue observatory v1|v2|v3`, `resume observatory`, etc., read [observatory/CLAUDE.md](observatory/CLAUDE.md) and follow its resume protocol instead of this one. The observatory is a self-contained sub-project with its own spec, plan, prompts, and handoff tracked inside `observatory/`.
+
 When the user types something like `continue phase 4`, `continue with glia`, `start phase 8 regions`, etc.:
 
 1. Read [docs/HANDOFF.md](docs/HANDOFF.md) in full. The Phase-3 progress table is the authoritative state snapshot. The "Prompt for next Phase-4 session" at the bottom is your starting instruction.
