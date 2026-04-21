@@ -36,30 +36,39 @@ export type PhaseBase = {
  *
  * Spec §5.1 tables the exact scale/opacity/emissive numbers per layer.
  */
+// Pre-built PhaseBase singletons for the three shapes. useFrame runs at
+// ~60 Hz × 14 regions = 840 calls/sec; returning a cached object per phase
+// avoids per-frame allocation churn without masking the phase-change signal
+// (color equality still identifies a real transition).
+const _SLEEP_BASE: PhaseBase = {
+  color: PHASE_COLOR.sleep,
+  emissive: 0.15,
+  coreOpacity: 0.85,
+  outerOpacity: 0.10,
+  midOpacity: 0.28,
+  speckleOpacity: 0.20,
+  outerScale: 3.8,
+};
+const _BOOT_BASE: PhaseBase = {
+  color: PHASE_COLOR.bootstrap,
+  emissive: 0.35,
+  coreOpacity: 0.85,
+  outerOpacity: 0.18,
+  midOpacity: 0.45,
+  speckleOpacity: 0.40,
+  outerScale: 4.5,
+};
+// Wake/unknown share the same high-energy shape but with phase-looked-up
+// color. Cache by phase string so `unknown` / `shutdown` / `processing`
+// each land in their own singleton slot.
+const _DEFAULT_BASE_CACHE: Record<string, PhaseBase> = {};
+
 export function phaseBase(phase: string): PhaseBase {
-  if (phase === 'sleep') {
-    return {
-      color: PHASE_COLOR.sleep,
-      emissive: 0.15,
-      coreOpacity: 0.85,
-      outerOpacity: 0.10,
-      midOpacity: 0.28,
-      speckleOpacity: 0.20,
-      outerScale: 3.8,
-    };
-  }
-  if (phase === 'bootstrap') {
-    return {
-      color: PHASE_COLOR.bootstrap,
-      emissive: 0.35,
-      coreOpacity: 0.85,
-      outerOpacity: 0.18,
-      midOpacity: 0.45,
-      speckleOpacity: 0.40,
-      outerScale: 4.5,
-    };
-  }
-  return {
+  if (phase === 'sleep') return _SLEEP_BASE;
+  if (phase === 'bootstrap') return _BOOT_BASE;
+  const cached = _DEFAULT_BASE_CACHE[phase];
+  if (cached) return cached;
+  const built: PhaseBase = {
     color: PHASE_COLOR[phase] ?? PHASE_COLOR.unknown,
     emissive: 0.55,
     coreOpacity: 0.85,
@@ -68,6 +77,8 @@ export function phaseBase(phase: string): PhaseBase {
     speckleOpacity: 0.60,
     outerScale: 5.2,
   };
+  _DEFAULT_BASE_CACHE[phase] = built;
+  return built;
 }
 
 type FuzzyOrbsProps = {
@@ -98,6 +109,11 @@ export function FuzzyOrbs({ dimFactor, onRegionClick, refMap, nodesRef }: FuzzyO
   const regions = useStore((s) => s.regions);
   const selectedRegion = useStore((s) => s.selectedRegion);
   const names = useMemo(() => Object.keys(regions).sort(), [regions]);
+  // Stable string identity of the region set — useEffect dep arrays compare
+  // reference-equal, and `names` is a fresh array each store delta even when
+  // contents are unchanged. Keying the publish effect on the joined string
+  // stops it from re-firing every heartbeat (same pattern as useForceGraph).
+  const namesKey = names.join('|');
 
   // Per-region material / group refs, keyed by region name. Callback refs
   // populate these on mount; useFrame reads them to drive the phase lerp.
@@ -113,14 +129,17 @@ export function FuzzyOrbs({ dimFactor, onRegionClick, refMap, nodesRef }: FuzzyO
 
   // Publish group refs to the parent's Map so Scene.tsx's camera focus hook
   // (Task 8) and Labels (Task 10) can raycast / fitToBox the selected region.
-  // Re-runs when `names` changes (regions appear / disappear from the store).
+  // Re-runs only when the region set actually changes (namesKey — not names).
   useEffect(() => {
     refMap.current.clear();
     for (const name of names) {
       const g = groupRefs.current.get(name);
       if (g) refMap.current.set(name, g);
     }
-  }, [names, refMap]);
+    // namesKey is joined from names; depending on it (not `names`) stops
+    // the effect from churning on every store delta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [namesKey, refMap]);
 
   useFrame((_, dt) => {
     // Clamp dt — avoids huge lerps after a tab backgrounds for minutes.
@@ -262,9 +281,11 @@ export function FuzzyOrbs({ dimFactor, onRegionClick, refMap, nodesRef }: FuzzyO
               />
             </sprite>
             {/* Invisible picker — sole raycast target; decouples click/hover
-                from the visually soft halos. userData.name lets Labels find
-                the region name via ray.hit. stopPropagation prevents the
-                Canvas onPointerMissed from firing right after a pick. */}
+                from the visually soft halos. userData.name lets Labels (Task 10)
+                find the region name via ray.hit. stopPropagation is
+                defensive for the future case where Labels attach a sibling
+                hover-picker; r3f already suppresses onPointerMissed on a
+                successful hit, so this is a no-op today. */}
             <mesh
               onClick={(e) => {
                 e.stopPropagation();
