@@ -11,6 +11,10 @@ Checks (per region, parametrized):
 
 Additionally, a single non-parametrized test asserts the region set on-disk
 matches the expected 14 exactly (guards against future drift).
+
+Note: ``test_self_mod`` is deliberately excluded from both the completeness
+check and the parametrized list.  It is a test-only scaffold used by
+``tests/integration/test_self_mod_cycle.py`` and is NOT a production region.
 """
 from __future__ import annotations
 
@@ -28,6 +32,10 @@ pytestmark = pytest.mark.integration
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _REGIONS_DIR = _REPO_ROOT / "regions"
+
+# Directories under regions/ that are test-only scaffolds and should NOT
+# be counted among the 14 production regions.
+_TEST_ONLY_REGIONS: frozenset[str] = frozenset({"test_self_mod"})
 
 _EXPECTED_REGIONS = [
     "amygdala",
@@ -53,8 +61,16 @@ _EXPECTED_REGIONS = [
 
 
 def test_region_set_matches_expected() -> None:
-    """The regions/ directory must contain exactly the 14 expected regions."""
-    on_disk = sorted(p.name for p in _REGIONS_DIR.iterdir() if p.is_dir())
+    """The regions/ directory must contain exactly the 14 expected regions.
+
+    Test-only scaffolds listed in ``_TEST_ONLY_REGIONS`` are excluded from
+    the count so they don't cause drift failures.
+    """
+    on_disk = sorted(
+        p.name
+        for p in _REGIONS_DIR.iterdir()
+        if p.is_dir() and p.name not in _TEST_ONLY_REGIONS
+    )
     assert on_disk == _EXPECTED_REGIONS, (
         f"Region set mismatch.\n"
         f"  Expected : {_EXPECTED_REGIONS}\n"
