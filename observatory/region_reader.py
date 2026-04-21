@@ -70,12 +70,19 @@ class RegionReader:
     def _deny(self, region: str, rel: str, code: int, reason: str, message: str) -> NoReturn:
         """Log the denial and raise SandboxError.
 
-        `reason` is a short machine tag (e.g. "invalid_region_name", "traversal",
-        "symlink", "missing", "oversize", "parse_json"). Spec §6.1 requires the
-        `observatory.region_read_denied` event with keys `region`, `file`,
-        `code`, `reason`.
+        `reason` is a short machine tag. The complete taxonomy used by the
+        pipeline: ``invalid_region_name``, ``null_byte``, ``traversal``,
+        ``escape``, ``stat_failed``, ``symlink``, ``missing``, ``oversize``,
+        ``parse_json``, ``parse_yaml``. Spec §6.1 requires the
+        ``observatory.region_read_denied`` event with keys ``region``,
+        ``file``, ``code``, ``reason``.
+
+        Emitted at ``warning`` level (not ``debug``) because sandbox denials
+        are security-relevant and should surface in default production log
+        configs for prod aggregators to alert on. Successful reads still use
+        ``debug`` — they're expected, high-volume, and uninteresting.
         """
-        log.debug(
+        log.warning(
             "observatory.region_read_denied",
             region=region,
             file=rel,
