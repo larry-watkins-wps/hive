@@ -14,7 +14,7 @@ v0 is **complete** — all 10 phases done. The "DNA" (shared runtime, 14 regions
 
 | Phase | Status | Artifact location |
 |---|---|---|
-| 1. Brainstorming | ✅ Complete | `docs/principles.md`, `docs/architecture.md`, `docs/starter_prompts/` |
+| 1. Brainstorming | ✅ Complete (2026-04-19) | `docs/principles.md`, `docs/architecture.md`, `docs/starter_prompts/` |
 | 2. Design Spec | ✅ Complete (2026-04-19) | `docs/superpowers/specs/2026-04-19-hive-v0-design.md` (4,792 lines) |
 | 3. Implementation Plan | ✅ Complete (2026-04-19) | `docs/superpowers/plans/2026-04-19-hive-v0-plan.md` |
 | 4. Runtime DNA | ✅ Complete (2026-04-20) | `region_template/` — 17/17 tasks, 508 unit + 6 component tests |
@@ -758,7 +758,7 @@ All 3 tasks landed on `main`. Doc-only phase. Per CLAUDE.md Phase-6 precedent, c
 | Task | File(s) | Status | Commits |
 |---|---|---|---|
 | 10.1 | `README.md` | ✅ | `37a3ec1` impl (v0-complete status + "Running Hive" 7-step setup + honest `hive` shorthand treatment); `6647e5c` review-fix (component count + hive alias hint) |
-| 10.2 | `docs/HANDOFF.md` | ✅ | `THIS_COMMIT` — mark v0 done, restructure Quick reference, add Phase 10 + 11 sections, refresh Appendix |
+| 10.2 | `docs/HANDOFF.md` | ✅ | `fe79ab2` — mark v0 done, restructure Quick reference, add Phase 10 + 11 sections, refresh Appendix (review-fix in next commit: Phase 1 date + this SHA backfill) |
 | 10.3 | `CLAUDE.md` | Scheduled next — either updated to match the current workflow or left as-is if already sufficient |
 
 **Verification at Phase 10 close:** 691 unit + 73 integration tests passing. Ruff clean. No code was modified.
