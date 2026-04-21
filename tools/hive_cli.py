@@ -16,6 +16,7 @@ A ``hive`` console script is deferred to install-time packaging.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -168,9 +169,23 @@ def _up_no_docker(region: str) -> None:
         )
         raise typer.Exit(code=2)
 
+    # Prefer the repo-local broker config (ACLs, listeners, persistence) when
+    # available. Fall back to a bare `-p 1883` with a warning so operators know
+    # they're running without the Hive-shaped broker.
+    mosquitto_conf = repo_root() / "bus" / "mosquitto.conf"
+    if mosquitto_conf.is_file():
+        broker_argv = [mosquitto, "-c", str(mosquitto_conf)]
+    else:
+        typer.echo(
+            f"warning: {mosquitto_conf} not found; starting mosquitto with "
+            "default config on port 1883 (no Hive ACLs).",
+            err=True,
+        )
+        broker_argv = [mosquitto, "-p", "1883"]
+
     typer.echo(f"no-docker: starting local mosquitto and region {region}...")
     broker = subprocess.Popen(  # noqa: S603 - argv is literal
-        [mosquitto, "-p", "1883"],
+        broker_argv,
         cwd=repo_root(),
     )
     region_proc = subprocess.Popen(  # noqa: S603
@@ -184,17 +199,39 @@ def _up_no_docker(region: str) -> None:
         cwd=repo_root(),
     )
 
+    _already_terminated = False
+
     def _terminate(*_: object) -> None:
+        nonlocal _already_terminated
+        if _already_terminated:
+            return
+        _already_terminated = True
         for p in (region_proc, broker):
             if p.poll() is None:
                 p.terminate()
 
+    # SIGINT works on both POSIX and Windows (Ctrl-C). SIGTERM is only
+    # meaningful on POSIX; on Windows the closest equivalent is SIGBREAK
+    # (Ctrl-Break), which only exists on Windows.
     signal.signal(signal.SIGINT, _terminate)
-    signal.signal(signal.SIGTERM, _terminate)
+    if sys.platform != "win32":
+        signal.signal(signal.SIGTERM, _terminate)
+    elif hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _terminate)
 
-    rc = region_proc.wait()
-    _terminate()
-    raise typer.Exit(code=rc)
+    try:
+        rc = region_proc.wait()
+        raise typer.Exit(code=rc)
+    finally:
+        _terminate()
+        # Ensure the broker doesn't outlive the CLI invocation.
+        if broker.poll() is None:
+            try:
+                broker.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                broker.kill()
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    broker.wait(timeout=5)
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +244,10 @@ def down(
     fast: bool = typer.Option(
         False,
         "--fast",
-        help="Skip graceful shutdown (SIGKILL after 1s). Spec §G.3 dev iteration.",
+        help=(
+            "Skip 30s shutdown grace (SIGTERM then SIGKILL after 1s). "
+            "Spec §G.3 dev iteration."
+        ),
     ),
 ) -> None:
     args = ["down", "--timeout", "1"] if fast else ["down"]
@@ -234,15 +274,20 @@ def status() -> None:
         if not line:
             continue
         try:
-            rows.append(json.loads(line))
+            payload = json.loads(line)
         except json.JSONDecodeError:
-            # Older docker may emit a single JSON array; be lenient.
-            try:
-                payload = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(payload, list):
-                rows.extend(payload)
+            typer.echo(
+                f"warning: skipping unparseable line: {line[:80]}",
+                err=True,
+            )
+            continue
+        # Newer `docker compose ps --format json` emits one JSON object per
+        # line (NDJSON); older versions occasionally emit a single JSON array.
+        # Handle both without crashing downstream `.get(...)` on a list.
+        if isinstance(payload, list):
+            rows.extend(payload)
+        else:
+            rows.append(payload)
 
     if not rows:
         typer.echo("Hive is not running.")

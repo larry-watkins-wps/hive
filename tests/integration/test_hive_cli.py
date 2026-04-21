@@ -29,15 +29,11 @@ EXIT_USAGE = 2
 
 
 def _runner() -> CliRunner:
-    """Build a ``CliRunner`` with split stdout/stderr when supported.
+    """Build a ``CliRunner`` with split stdout/stderr.
 
-    Typer 0.23 forwards ``mix_stderr`` to Click 8.  If a future Click drops
-    the flag, the fallback just uses combined output.
+    Typer 0.23+ reliably supports ``mix_stderr=False`` via Click 8.
     """
-    try:
-        return CliRunner(mix_stderr=False)
-    except TypeError:  # pragma: no cover - defensive
-        return CliRunner()
+    return CliRunner(mix_stderr=False)
 
 
 def _completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> MagicMock:
@@ -46,17 +42,6 @@ def _completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> Magic
     m.stdout = stdout
     m.stderr = stderr
     return m
-
-
-def _stderr_of(result) -> str:
-    """Return stderr text from a typer/click ``Result``.
-
-    Falls back to combined output when ``mix_stderr=False`` isn't supported.
-    """
-    try:
-        return result.stderr
-    except (ValueError, AttributeError):  # pragma: no cover - defensive
-        return result.output
 
 
 # ---------------------------------------------------------------------------
@@ -95,15 +80,15 @@ def test_up_dev_rejected_in_prod(monkeypatch):
         result = runner.invoke(app, ["up", "--dev"])
     assert result.exit_code == EXIT_USAGE
     assert m_run.call_count == 0
-    assert "--dev" in _stderr_of(result)
-    assert "prod" in _stderr_of(result).lower()
+    assert "--dev" in result.stderr
+    assert "prod" in result.stderr.lower()
 
 
 def test_up_no_docker_without_mosquitto_binary(monkeypatch):
     monkeypatch.delenv("HIVE_ENV", raising=False)
     runner = _runner()
     with (
-        patch("tools.hive_cli.shutil.which", return_value=None),
+        patch("tools.hive_cli.shutil.which", return_value=None) as mock_which,
         patch("tools.hive_cli.subprocess.Popen") as m_popen,
         patch("tools.hive_cli.subprocess.run") as m_run,
     ):
@@ -111,7 +96,10 @@ def test_up_no_docker_without_mosquitto_binary(monkeypatch):
     assert result.exit_code == EXIT_USAGE
     assert m_popen.call_count == 0
     assert m_run.call_count == 0
-    assert "mosquitto" in _stderr_of(result).lower()
+    assert "mosquitto" in result.stderr.lower()
+    # Guard against the check ever moving: mosquitto-binary probe must have run.
+    assert mock_which.called
+    assert mock_which.call_args.args[0] == "mosquitto"
 
 
 # ---------------------------------------------------------------------------
@@ -213,5 +201,19 @@ def test_logs_rejects_unknown_service():
         result = runner.invoke(app, ["logs", "notaservice"])
     assert result.exit_code == EXIT_USAGE
     assert m_run.call_count == 0
-    err = _stderr_of(result).lower()
+    err = result.stderr.lower()
     assert "broker" in err and "glia" in err
+
+
+def test_logs_no_follow_omits_follow_flag():
+    runner = _runner()
+    with patch("tools.hive_cli.subprocess.run") as m_run:
+        m_run.return_value = _completed(0)
+        result = runner.invoke(app, ["logs", "broker", "--no-follow"])
+    assert result.exit_code == EXIT_OK, result.output
+    args, _ = m_run.call_args
+    argv = args[0]
+    assert "--follow" not in argv
+    # Sanity: the compose `logs` command is still constructed normally.
+    assert argv[:3] == ["docker", "compose", "logs"]
+    assert "broker" in argv
