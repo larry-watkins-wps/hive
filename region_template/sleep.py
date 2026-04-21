@@ -123,6 +123,24 @@ _REVIEW_SCHEMA_STR = """{
 # Strips ```json ... ``` fences from LLM output.
 _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*(.+?)\s*```", re.DOTALL)
 
+# Debug-slice size for the review-decode failure log. Big enough to see the
+# response opening + the tail that broke parsing.
+_REVIEW_DEBUG_HEAD = 400
+_REVIEW_DEBUG_TAIL = 200
+
+
+def _clamp_reason(reason: str, max_len: int = 200) -> str:
+    """Truncate an LLM-produced reason to fit the §A.7.1 cap.
+
+    A narrative reason longer than ``max_len`` gets cut to ``max_len - 3``
+    characters with a ``...`` suffix — preserves the gist while keeping the
+    field validator happy. Short reasons pass through unchanged.
+    """
+    s = reason.strip()
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 3] + "..."
+
 
 # ---------------------------------------------------------------------------
 # Runtime protocol
@@ -438,10 +456,12 @@ class SleepCoordinator:
 
         Spec §A.7.1 requires ``reason`` to be 1..200 chars — any
         non-whitespace string is valid, so a simple ``bool`` fallback
-        is sufficient here.
+        is sufficient here. Long narrative reasons from the LLM are
+        truncated to the 200-char cap with an ellipsis so they don't
+        fail the whole sleep cycle.
         """
         effective_reason = (
-            reason if reason and reason.strip() else "sleep_revision"
+            _clamp_reason(reason) if reason and reason.strip() else "sleep_revision"
         )
         await self._runtime.tools.edit_prompt(
             new_text=new_text, reason=effective_reason
@@ -460,14 +480,12 @@ class SleepCoordinator:
             ``True`` on success; ``False`` if either gate failed.
         """
         writes, deletes = self._split_handler_edits(edits)
-        # Spec §A.7.3: handler reasons must be >= _HANDLER_REASON_MIN chars.
-        # A truthy-only fallback (``reason or ...``) would pass a short LLM
-        # reason like "ok" straight through to ``edit_handlers``, which
-        # would reject it and silently degrade the whole cycle to
-        # ``no_change``. Use a length-aware fallback instead so short LLM
-        # reasons don't drop otherwise-valid handler edits.
+        # Spec §A.7.3: handler reasons must be >= _HANDLER_REASON_MIN chars
+        # AND <= 200 chars (§A.7.1). A truthy-only fallback would pass a
+        # short LLM reason like "ok" straight through and fail validation.
+        # A long narrative reason similarly fails. Length-clamp on both ends.
         effective_reason = (
-            reason
+            _clamp_reason(reason)
             if reason and len(reason.strip()) >= _HANDLER_REASON_MIN
             else "sleep_handler_revision"
         )
@@ -577,6 +595,22 @@ class SleepCoordinator:
         try:
             data = json.loads(payload)
         except json.JSONDecodeError as exc:
+            # Surface enough context to diagnose common failure modes
+            # (unescaped newlines, stray trailing commas, LLM preamble text
+            # outside the ```json fence). structlog caps long fields; the
+            # head/tail slices here are the minimum useful cross-section.
+            self._log.warning(
+                "review_json_decode_debug",
+                text_len=len(text),
+                text_head=text[:_REVIEW_DEBUG_HEAD],
+                text_tail=(
+                    text[-_REVIEW_DEBUG_TAIL:]
+                    if len(text) > _REVIEW_DEBUG_HEAD
+                    else ""
+                ),
+                has_fence=match is not None,
+                parse_error=str(exc),
+            )
             raise LlmError(
                 "review_json_decode_error", retryable=False
             ) from exc

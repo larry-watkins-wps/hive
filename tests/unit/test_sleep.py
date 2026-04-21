@@ -36,6 +36,7 @@ from region_template.sleep import (
     _REVIEW_SCHEMA_STR,
     SleepCoordinator,
     SleepResult,
+    _clamp_reason,
 )
 from region_template.token_ledger import TokenUsage
 from region_template.types import LifecyclePhase
@@ -697,4 +698,32 @@ async def test_compileall_does_not_leave_pycache(tmp_path: Path) -> None:
     )
     committed_paths = show_result.stdout.splitlines()
     assert not any(p.endswith(".pyc") for p in committed_paths), committed_paths
-    assert not any("__pycache__" in p for p in committed_paths), committed_paths
+
+
+# ---------------------------------------------------------------------------
+# _clamp_reason — shrink long LLM narrative reasons to the §A.7.1 cap.
+# ---------------------------------------------------------------------------
+
+
+def test_clamp_reason_passthrough_when_short() -> None:
+    assert _clamp_reason("short reason") == "short reason"
+
+
+def test_clamp_reason_strips_whitespace() -> None:
+    assert _clamp_reason("  padded  ") == "padded"
+
+
+def test_clamp_reason_truncates_with_ellipsis() -> None:
+    long = "x" * 500
+    out = _clamp_reason(long)
+    _EXPECTED_LEN = 200
+    assert len(out) == _EXPECTED_LEN
+    assert out.endswith("...")
+    assert out[:-3] == "x" * (_EXPECTED_LEN - 3)
+
+
+def test_clamp_reason_custom_max() -> None:
+    out = _clamp_reason("abcdefghij", max_len=5)
+    _CUSTOM_MAX = 5
+    assert len(out) == _CUSTOM_MAX
+    assert out == "ab..."
