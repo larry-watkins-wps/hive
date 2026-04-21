@@ -46,7 +46,7 @@ def _parse_mqtt_url(url: str) -> tuple[str, int]:
     return host, int(port_s or "1883")
 
 
-def build_app(settings: Settings) -> FastAPI:
+def build_app(settings: Settings) -> FastAPI:  # noqa: PLR0915 — composition factory
     """Construct the observatory FastAPI app.
 
     The factory is synchronous and does not touch the network — it merely
@@ -105,6 +105,23 @@ def build_app(settings: Settings) -> FastAPI:
                 await subscriber.run(client, stop_event)
 
         task = asyncio.create_task(_run())
+
+        def _on_mqtt_task_done(t: asyncio.Task) -> None:
+            """Surface broker failures loudly.
+
+            Without this callback, an exception inside ``_run`` (e.g. broker
+            unreachable at startup) would only appear as an "unretrieved task
+            exception" warning at GC time — by which point the user has
+            already hit ``/api/health`` and seen a misleading 200 OK.
+            """
+            if t.cancelled():
+                return
+            exc = t.exception()
+            if exc is not None:
+                log.error("observatory.mqtt_task_crashed", exc_info=exc)
+
+        task.add_done_callback(_on_mqtt_task_done)
+
         try:
             yield
         finally:

@@ -6,21 +6,22 @@ by ``build_app``.
 """
 from __future__ import annotations
 
-import sys
-
+import structlog
 import uvicorn
 
 from observatory.config import Settings
 from observatory.service import build_app
 
+log = structlog.get_logger(__name__)
+
 
 def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     settings = Settings.from_env()
     if settings.bind_host != "127.0.0.1":
-        print(
-            f"observatory: binding to non-loopback host {settings.bind_host!r} — "
-            "make sure this is intentional.",
-            file=sys.stderr,
+        log.warning(
+            "observatory.non_loopback_bind",
+            host=settings.bind_host,
+            note="binding to non-loopback host — make sure this is intentional",
         )
     app = build_app(settings)
     uvicorn.run(app, host=settings.bind_host, port=settings.bind_port)
