@@ -759,7 +759,7 @@ All 3 tasks landed on `main`. Doc-only phase. Per CLAUDE.md Phase-6 precedent, c
 |---|---|---|---|
 | 10.1 | `README.md` | ✅ | `37a3ec1` impl (v0-complete status + "Running Hive" 7-step setup + honest `hive` shorthand treatment); `6647e5c` review-fix (component count + hive alias hint) |
 | 10.2 | `docs/HANDOFF.md` | ✅ | `fe79ab2` — mark v0 done, restructure Quick reference, add Phase 10 + 11 sections, refresh Appendix (review-fix in next commit: Phase 1 date + this SHA backfill) |
-| 10.3 | `CLAUDE.md` | Scheduled next — either updated to match the current workflow or left as-is if already sufficient |
+| 10.3 | `CLAUDE.md` | ✅ | `3f8d494` — post-v0 refresh: resume-protocol examples (phase 11 / runtime evolution), branch `main`, 691 unit test count, expanded ruff scope, pointer to Quick-reference + Phase-11 prompt, added two workflow reminders (never edit across region boundaries; self-modification is sleep-only). Cumulative gotchas preserved verbatim. |
 
 **Verification at Phase 10 close:** 691 unit + 73 integration tests passing. Ruff clean. No code was modified.
 
