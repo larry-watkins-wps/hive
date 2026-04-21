@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            "aiomqtt>=2.0,<3" \
+            "litellm>=1.54,<2" \
+            "ruamel.yaml" \
+            "structlog>=24" \
+            "jsonschema>=4.20" \
+            "pydantic>=2.6" \
+            "GitPython>=3.1" \
+            "docker>=7" \
+            "jinja2" \
+            "prometheus-client" \
+            "paho-mqtt<3" \
+            "typer" \
+            "pytest" \
+            "pytest-asyncio" \
+            "testcontainers>=4" \
+            "ruff"
+
+      - name: Ruff
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m ruff check region_template/ glia/ tools/ tests/ shared/
+
+      - name: Unit tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m pytest tests/unit/ -q

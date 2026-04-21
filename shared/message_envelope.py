@@ -4,12 +4,12 @@ Spec: §B.2, §B.2.1, §B.2.2, §B.12, §B.14
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Literal
 import json
 import uuid
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, Literal
 
 from jsonschema import Draft202012Validator, ValidationError
 
@@ -52,7 +52,7 @@ class Envelope:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: str = field(
         default_factory=lambda: (
-            datetime.now(timezone.utc)
+            datetime.now(UTC)
             .isoformat(timespec="milliseconds")
             .replace("+00:00", "Z")
         )
@@ -73,7 +73,7 @@ class Envelope:
         reply_to: str | None = None,
         correlation_id: str | None = None,
         attention_hint: float = 0.5,
-    ) -> "Envelope":
+    ) -> Envelope:
         """Factory method: creates an Envelope with auto-generated id and timestamp."""
         return cls(
             source_region=source_region,
@@ -89,7 +89,7 @@ class Envelope:
         return json.dumps(asdict(self)).encode("utf-8")
 
     @classmethod
-    def from_json(cls, data: bytes) -> "Envelope":
+    def from_json(cls, data: bytes) -> Envelope:
         """Deserialize from UTF-8 JSON bytes, validating against the envelope schema.
 
         Raises:

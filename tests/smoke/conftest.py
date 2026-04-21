@@ -7,8 +7,9 @@ a special smoke-test suite rather than a regular unit/integration suite.
 """
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 def pytest_collect_file(
