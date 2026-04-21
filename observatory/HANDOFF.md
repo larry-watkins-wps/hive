@@ -1,6 +1,6 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-21 (session 3, Tasks 9–12 complete)*
+*Last updated: 2026-04-21 (session 3, Tasks 9–13 complete)*
 
 **Canonical resume prompt:** `continue observatory v1`
 
@@ -26,8 +26,9 @@
 | v1 Task 10 — WebSocket client + REST client + zustand store | ✅ Complete | Commits `4cd41aa` + `efb8397` |
 | v1 Task 11 — Scene shell + force graph hook | ✅ Complete | Commits `b188dcd` + `d614a48` |
 | v1 Task 12 — Region rendering (phase color + halo + size + ring) | ✅ Complete | Commits `eddc34c` + `aae715a` |
-| v1 Task 13 — Sparks (traveling particles on edges) | ⏳ Next | |
-| v1 Tasks 14–16 — HUD + retain/ambient surfacing + integration | ⏳ Pending | |
+| v1 Task 13 — Sparks (traveling particles on edges) | ✅ Complete | Commits `bac42b4` + `8e40701` |
+| v1 Task 14 — Modulator fog + rhythm pulse | ⏳ Next | |
+| v1 Tasks 15–16 — HUD + retain/ambient surfacing + integration | ⏳ Pending | |
 | v2 implementation | ⏳ Pending | |
 | v3 implementation | ⏳ Pending | |
 
@@ -39,14 +40,14 @@
 - Smoke test: `python -c "from observatory.config import Settings; from observatory.service import build_app; build_app(Settings())"` → `ok`
 - Smoke-verified against production `glia/regions_registry.yaml`: 19 regions load correctly (`layer` → `role` mapping).
 - Frontend: `cd observatory/web-src && npm run build` → `observatory/web/index.html` + `assets/index-*.{js,css}` emitted in ~800 ms.
-- Frontend: `cd observatory/web-src && npm run test` → **8 passed** (5 store + 3 ws). Typecheck via `npx tsc -b` clean.
+- Frontend: `cd observatory/web-src && npm run test` → **21 passed** (5 store + 3 ws + 13 topicColors). Typecheck via `npx tsc -b` clean.
 - Frontend: `cd observatory/web-src && npm run build` → `observatory/web/` emitted; bundle ~991 kB (three.js + drei + fiber + d3-force-3d); chunk-size warning expected, Task 16 polish.
 
 ## What's done (session 3)
 
-Executed **Tasks 9 + 10 + 11 + 12** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each, review-fix commit on top of each. Implementer prompts stored under `observatory/prompts/`. Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–66).
+Executed **Tasks 9 + 10 + 11 + 12 + 13** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each, review-fix commit on top of each. Implementer prompts stored under `observatory/prompts/`. Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–72).
 
-**Session 3 totals: 4 task commits (`8b6be24`, `4cd41aa`, `b188dcd`, `eddc34c`) + 4 review-fix commits (`fc0ce94`, `efb8397`, `d614a48`, `aae715a`) + HANDOFF bumps.**
+**Session 3 totals: 5 task commits + 5 review-fix commits + HANDOFF bumps.**
 
 ### Task 9 substantive fixes vs. the plan
 
@@ -80,6 +81,14 @@ Executed **Tasks 9 + 10 + 11 + 12** with `superpowers:subagent-driven-developmen
 - **Review-fix 2 (Important)** — `PHASE_COLOR` only covered `sleep|wake|processing|unknown`, but backend `LifecyclePhase` StrEnum emits `bootstrap|wake|sleep|shutdown`. Added `bootstrap` (dim blue-green) and `shutdown` (desaturated red); kept `processing` for a future `llm_in_flight`-derived signal.
 - **Review-fix 3 (Important)** — Per-frame `new Color(...)` allocated ~840 instances/sec. Hoisted a module-level `PHASE_COLOR_CACHE` pre-constructed once; `useFrame` now looks up cached Color instances. `.lerp` mutates the target material's color, not the source, so sharing cached colors is safe.
 
+### Task 13 substantive fixes vs. the plan
+
+- **Drift (Sparks.tsx)** — Plan's `new Color(topicColor(e.topic))` per envelope would allocate 50–300 Color instances/sec under live traffic. Added `topicColorObject()` + module-level `COLOR_CACHE` in `topicColors.ts`; Sparks.tsx looks up cached Color instances instead of allocating. Same pattern as Task 12's `PHASE_COLOR_CACHE`.
+- **Drift (Sparks.tsx)** — Plan imports `useEffect` but never uses it (would fail `noUnusedLocals` under strict mode). Removed the import. Also removed the unused `dt` parameter from `useFrame((state, dt) => ...)` for the same reason.
+- **Review-fix 1 (Important)** — `topicColorObject` returns cached shared Color instances; a future caller mutating them (`.multiplyScalar`, `.lerp`) would corrupt every other spark of that branch. Added JSDoc DO-NOT-MUTATE contract.
+- **Review-fix 2 (Suggestion)** — Inline comments in `Sparks.tsx` documenting the freshness-priority cap (`Math.min(newCount, 100)`) and the spawn-time-position snapshot tradeoff (sparks may miss moving targets during settle).
+- **Review-fix 3 (Suggestion)** — Added empty-string and uppercase-prefix tests to `topicColors.test.ts` pinning the case-sensitivity contract (13 topicColors tests total).
+
 ### Prior session (session 2) substantive fixes vs. the plan
 
 - **Task 2** — real `glia/regions_registry.yaml` schema (dict keyed by name with `layer`/`required_capabilities`) reconciled; plan's list-of-dicts format would have silently returned empty.
@@ -91,15 +100,15 @@ Executed **Tasks 9 + 10 + 11 + 12** with `superpowers:subagent-driven-developmen
 
 ## What's next
 
-**Task 13: Sparks — traveling particles on edges.** Envelopes emit one particle per (source, destination) pair. Particles travel from source to destination over ~800 ms then expire. Color comes from a pure prefix mapper (topic → color).
+**Task 14: Modulator fog + rhythm pulse.** Scene-wide ambient channels — modulator values (from `ambient.modulators` on the store: cortisol / dopamine / serotonin / norepinephrine / oxytocin / acetylcholine) tint the scene; rhythm broadcasts (`hive/rhythm/*` retained topics) subtly pulse the ambient light amplitude.
 
-- Plan: search `### Task 13:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 2661).
+- Plan: search `### Task 14:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 2828).
 - Gotchas to carry forward:
-  - Task 12's `PHASE_COLOR_CACHE` pattern is the template: module-level caches for colors, no per-frame allocation. When Task 13 maps topic prefixes to spark colors, use the same pattern.
-  - Don't add a new per-envelope React component — that would create + destroy components at ~50–100 Hz. Use a single `<points>` (three.js `Points` / `BufferGeometry`) or instanced meshes driven by `useFrame` imperatively.
-  - `store.ts` has `envelopes: Envelope[]` (5000-cap ring). Task 13's spark emitter should subscribe to the newest envelope index and spawn sparks only for fresh ones — NOT replay the entire ring on every update.
-  - The torus-stationary pattern (Task 12 Critical bug) applies generally: any mesh whose position depends on `node.x/y/z` MUST have a ref updated in `useFrame`. If a spark's position is a prop, it will be stuck.
-  - Component tests for the pure color mapper are worth adding — switch `vitest.config.ts` to `environment: 'jsdom'` if any test renders React. Don't do it preemptively; only when needed.
+  - `ambient` lives on the store via `extractAmbient` (Task 10); `applyRetained` only updates `modulators` live (self fields ignore live updates — see Task 10 follow-ups). If Task 14 needs live self updates, that's a store change.
+  - For rhythm, subscribe to retained updates via `useStore((s) => s.ambient)` and animate in `useFrame`. `useFrame` body should look up colors/modulator values from refs (set via `useEffect`) to avoid re-renders.
+  - Reuse the `PHASE_COLOR_CACHE`/`COLOR_CACHE` pattern if any new color maps appear — module-level pre-build, no per-frame allocation.
+  - Spec §4.5 describes modulator→scene-tint semantics; check it before designing the blend.
+  - React component tests (if Task 14 adds any) still need `environment: 'jsdom'` + `@testing-library/react` + `jsdom` devDeps — not added preemptively.
 
 ## Follow-ups / open threads
 
@@ -127,3 +136,4 @@ Executed **Tasks 9 + 10 + 11 + 12** with `superpowers:subagent-driven-developmen
 | 2026-04-21 | Session 3 continued: Task 10 complete + review-fix. Zustand store + WS client (5 message types, auto-reconnect) + REST wrappers. TDD discipline: red-phase for both `store.test.ts` and `ws.test.ts` captured. 8 frontend tests passing (5 store + 3 ws). Review-fix addressed 3 Important findings: WS reconnect race on stop, unsafe modulator name cast (now type-guarded), opaque REST error messages. Python suite still 67 unit + 1 component passing. Next is Task 11 (scene shell + force graph — first `d3-force-3d` import; create `src/types.d.ts`). |
 | 2026-04-21 | Session 3 continued: Task 11 complete + review-fix. `<Canvas>` + orbit controls + lights + `useForceGraph` hook. First `d3-force-3d` import — `src/types.d.ts` seeded with minimum-typed shim. Review-fix addressed 2 Important findings: sim rebuilt on every render (unstable `names` → sim-build effect churn) — split into stable single-build + sync-on-namesKey. Also: trim unused shim declarations, strict-mode safety comment in `App.tsx`. Python suite still 67 unit + 1 component passing; 8 frontend tests green; `tsc -b` + `vite build` clean. Next is Task 12 (region meshes + `useFrame`). |
 | 2026-04-21 | Session 3 continued: Task 12 complete + review-fix. Region meshes (base sphere + halo + handler torus) with `useFrame`-driven color/halo/scale. First `useFrame` usage in the project. Pre-approved plan deviations: preserved Task 11's `useMemo` in Scene.tsx and applied the same pattern to Regions.tsx (plan's `useStore((s) => Object.keys(s.regions))` would cause re-renders on every envelope push). Review-fix addressed 1 Critical + 2 Important: torus stationary (no ref), `PHASE_COLOR` missing `bootstrap`/`shutdown` (backend emits these), and per-frame `new Color()` allocation hoisted to module-level cache. Python suite still 67 unit + 1 component passing; 8 frontend tests green. Next is Task 13 (sparks — traveling particles on edges). |
+| 2026-04-21 | Session 3 continued: Task 13 complete + review-fix. Traveling sparks via `InstancedMesh` (cap 2000, 800 ms lifetime) colored by topic-prefix mapper (pure, unit-tested, TDD red-phase captured). First InstancedMesh use in the project. Pre-approved drifts: added `topicColorObject()` + module-level `COLOR_CACHE` to avoid ~50–300 `new Color()` allocations/sec under live traffic (same pattern as Task 12's `PHASE_COLOR_CACHE`); removed plan's dead `useEffect` import + unused `dt` param. Review-fix addressed 1 Important: JSDoc DO-NOT-MUTATE on cached Color return. Plus two suggestion-level comment additions and two test additions (empty-string, case-sensitivity). 21 frontend tests (was 8); Python suite 67 unit + 1 component untouched. Next is Task 14 (modulator fog + rhythm pulse). |
