@@ -1,0 +1,30 @@
+name: broca_area
+role: "speech production: turning intent into streamed language output"
+schema_version: 1
+
+llm:
+  provider: anthropic
+  model: claude-opus-4-6-20260401
+  params:
+    temperature: 0.5
+    max_tokens: 4096
+  budgets:
+    per_call_max_tokens: 4096
+    per_hour_input_tokens: 2000000
+    per_hour_output_tokens: 300000
+    per_day_cost_usd: 50
+  caching:
+    strategy: system_and_messages
+    ttl_hint_s: 300
+
+capabilities:
+  self_modify: true
+  tool_use: advanced
+  vision: false
+  audio: false
+  stream: true
+  can_spawn: false
+  modalities: [text, motor]
+
+mqtt:
+  password_env: MQTT_PASSWORD_BROCA_AREA
