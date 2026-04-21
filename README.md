@@ -6,7 +6,7 @@ Hive's design follows a single tiebreaker rule: **biology is the default** (Prin
 
 ## Status
 
-**Phase 3 (Runtime DNA) complete.** 17/17 tasks done; 508 unit tests + 6 component tests passing against a real `eclipse-mosquitto:2` broker via testcontainers; ruff clean. Next: Phase 4 (Docker image), Phase 5 (Glia), or Phase 8 (14-region scaffolding). See [docs/HANDOFF.md](docs/HANDOFF.md) for the authoritative state snapshot and the "what to do next" prompt.
+**v0 implementation complete (2026-04-21).** All 10 phases done; 691 unit tests + 73 integration tests (3 option-b skips + 1 Windows non-admin skip) + 1 smoke-collectable pass; ruff clean. All 14 regions scaffolded; `glia/`, `bus/`, `region_template/`, `shared/`, `tools/` implemented; `docker-compose.yaml` at repo root. Next: Phase 11 (runtime evolution — first self-modification cycles). See [docs/HANDOFF.md](docs/HANDOFF.md) for the authoritative state snapshot and the "what to do next" prompt.
 
 ## Quickstart (new machine)
 
@@ -16,14 +16,55 @@ cd hive
 bash scripts/setup.sh        # creates .venv, installs deps, copies .env.example → .env
 source .venv/bin/activate    # Windows: .venv\Scripts\activate
 # Edit .env and fill in ANTHROPIC_API_KEY at minimum.
-python -m pytest tests/unit/ -q    # expect 508 passed
+python -m pytest tests/unit/ -q    # expect 691 passed
 ```
 
-Docker Desktop running is required for the 6 component tests:
+Docker Desktop running is required for component tests:
 
 ```bash
-python -m pytest tests/component/ -m component -v    # expect 6 passed
+python -m pytest tests/component/ -m component -v    # expect all passed
 ```
+
+## Running Hive
+
+> **Windows users:** the setup scripts are bash — use Git Bash or WSL.
+
+**One-time setup:**
+
+1. Run setup (creates `.venv`, installs deps, seeds `.env`):
+   ```bash
+   bash scripts/setup.sh
+   ```
+2. Activate the virtual environment:
+   ```bash
+   # POSIX
+   source .venv/bin/activate
+   # Windows (Git Bash / PowerShell)
+   .venv/Scripts/activate
+   ```
+3. Edit `.env` — fill in at minimum `ANTHROPIC_API_KEY` and all 15 `MQTT_PASSWORD_*` entries (14 regions + glia).
+
+4. Regenerate `bus/passwd` from the env vars (requires `mosquitto_passwd` on PATH):
+   ```bash
+   bash scripts/make_passwd.sh
+   ```
+
+**Starting, checking, and stopping:**
+
+```bash
+# Start broker + glia + 14 regions via docker compose
+python -m tools.hive_cli up
+
+# Show heartbeat state for each region
+python -m tools.hive_cli status
+
+# Graceful shutdown
+python -m tools.hive_cli down
+```
+
+> **Note on the `hive` shorthand:** the `hive up` / `hive status` / `hive down` console script is deferred to post-v0 packaging. Until then, use `python -m tools.hive_cli <subcommand>` as shown above.
+
+See [docs/HANDOFF.md](docs/HANDOFF.md) for deeper operator context, environment-variable reference, and known runtime gotchas.
 
 ## Continuing work in Claude Code
 
@@ -33,7 +74,7 @@ Open Claude Code in the repo root:
 claude-code
 ```
 
-Then type `continue phase 4` (or 5 or 8, your preference). The agent will read `CLAUDE.md` → `docs/HANDOFF.md` automatically and resume work following the documented execution model.
+Then type `continue phase 11` (runtime evolution — first self-modification cycles). The agent will read `CLAUDE.md` → `docs/HANDOFF.md` automatically and resume work following the documented execution model.
 
 ## Documentation
 
@@ -81,7 +122,7 @@ Separate from regions:
 ## Development
 
 - Python 3.11+ required (`LifecyclePhase` uses `StrEnum`).
-- Lint: `python -m ruff check region_template/ tests/`.
+- Lint: `python -m ruff check region_template/ glia/ tools/ tests/ shared/`.
 - Unit tests: `python -m pytest tests/unit/ -q`.
 - Component tests (require Docker): `python -m pytest tests/component/ -m component -v`.
 - Commit-per-task is mandated by Principle XII; commits end with the `Co-Authored-By: Claude Opus 4.7 (1M context)` trailer.
