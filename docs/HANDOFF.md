@@ -1,7 +1,7 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-21 (Phase 9 COMPLETE — integration + smoke + self-mod + CI)
-**Current phase:** Phase 9 ✅; Phase 10 (Docs + HANDOFF polish) next
+**Last updated:** 2026-04-21 (v0 COMPLETE — all 10 phases ✅; Phase 11 runtime evolution next)
+**Current phase:** v0 DNA complete; Phase 11 (Runtime evolution — first self-mod cycles, post-v0 region additions) next
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
@@ -10,12 +10,23 @@ This document is the **source of truth for session-to-session continuity.** Any 
 
 ## Quick reference
 
+v0 is **complete** — all 10 phases done. The "DNA" (shared runtime, 14 regions, glia, bus, CLI, observability, tests, CI) is in place. Hive can now boot, heartbeat, sleep, self-modify, and roll back. The next era is **growth**: regions evolve their own handlers and memory via sleep cycles, and post-v0 regions (raphe_nuclei, locus_coeruleus, hypothalamus, basal_forebrain, cerebellum) get added when developmental stage warrants.
+
 | Phase | Status | Artifact location |
 |---|---|---|
 | 1. Brainstorming | ✅ Complete | `docs/principles.md`, `docs/architecture.md`, `docs/starter_prompts/` |
 | 2. Design Spec | ✅ Complete (2026-04-19) | `docs/superpowers/specs/2026-04-19-hive-v0-design.md` (4,792 lines) |
-| 3. Implementation Plan | ✅ Complete (2026-04-19) | `docs/superpowers/plans/2026-04-19-hive-v0-plan.md` (3 review iterations) |
-| 4. Implementation | ⏳ **Next** | `region_template/`, `regions/`, `glia/`, `bus/`, `shared/` (code) |
+| 3. Implementation Plan | ✅ Complete (2026-04-19) | `docs/superpowers/plans/2026-04-19-hive-v0-plan.md` |
+| 4. Runtime DNA | ✅ Complete (2026-04-20) | `region_template/` — 17/17 tasks, 508 unit + 6 component tests |
+| 5. Glia | ✅ Complete (2026-04-20) | `glia/` — 12 tasks, `hive-glia:v0` image builds |
+| 6. Bootstrap CLI | ✅ Complete (2026-04-20) | `docker-compose.yaml` + `tools/hive_cli.py` |
+| 7. Observability tools | ✅ Complete (2026-04-20) | `tools/dbg/{hive_trace,hive_watch,hive_stm,hive_inject}.py` |
+| 8. Region scaffolding ×14 | ✅ Complete (2026-04-21) | `regions/<14 names>/` |
+| 9. Integration + smoke + CI | ✅ Complete (2026-04-21) | `tests/integration/`, `tests/smoke/`, `.github/workflows/ci.yml` |
+| 10. Docs + HANDOFF polish | ✅ Complete (2026-04-21) | `README.md`, `docs/HANDOFF.md`, `CLAUDE.md` |
+| 11. Runtime evolution | ⏳ **Next era** | See Phase 11 section below |
+
+**Totals:** 691 unit + 73 integration (3 option-b skips + 1 Windows non-admin skip) + 1 smoke-collectable. Ruff clean. Minimal CI green on every push + PR.
 
 ---
 
@@ -96,7 +107,7 @@ c6a738f Add starter prompt: motor_cortex
 
 ---
 
-## Phase 2: Design Spec — NEXT
+## Phase 2: Design Spec — COMPLETE (2026-04-19)
 
 ### Goal
 
@@ -273,7 +284,7 @@ The spec must address every item in section A through K of the prompt above. Not
 
 ---
 
-## Phase 3: Implementation Plan — PENDING
+## Phase 3: Implementation Plan — COMPLETE (2026-04-19)
 
 ### Goal
 
@@ -368,9 +379,9 @@ The plan should:
 
 ---
 
-## Phase 4: Implementation — IN PROGRESS (branch `impl/v0`)
+## Phase 4: Runtime DNA — COMPLETE (2026-04-20)
 
-### Status as of 2026-04-19 (Phase 3 Wave A complete)
+### Final status (2026-04-20)
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -384,7 +395,7 @@ The plan should:
 | 7. Observability tools (4 tasks) | ✅ | `tools/dbg/{hive_trace,hive_watch,hive_stm,hive_inject}.py` (typer CLIs). 745 tests (691 unit + 54 integration + 1 skipped on Windows non-admin). |
 | 8. Region scaffolding × 14 | ✅ | 14 regions scaffolded (`regions/<name>/{config.yaml,prompt.md,subscriptions.yaml,handlers/,memory/ltm/.gitkeep}`). One commit per region per P-XII. Task 8.15 integration test (`tests/integration/test_all_regions_load.py`) verifies all 14 load. 760 tests total (691 unit + 69 integration + 1 skipped). |
 | 9. Integration + smoke + self-mod tests | ✅ | All 7 tasks landed. 773 tests total (691 unit + 73 integration + 9 smoke-collectable + 1 Windows skip + 3 option-b skips). Ruff clean. Minimal CI workflow on `push` + `pull_request`. |
-| 10. Docs + HANDOFF | ⏳ **Next** | |
+| 10. Docs + HANDOFF | ✅ Complete (2026-04-21) | `README.md`, `docs/HANDOFF.md` updated. See Phase 10 section. |
 
 **Phase 3 progress (17/17 tasks done — all waves):**
 
@@ -738,125 +749,191 @@ All 7 tasks landed on `main` in a 9-commit slice. Ruff clean. 773 tests total (6
 
 ---
 
-### Prompt for next Phase-10 session (Phases 3–9 DONE)
+## Phase 10 — Docs + HANDOFF polish — COMPLETE (2026-04-21)
 
+All 3 tasks landed on `main`. Doc-only phase. Per CLAUDE.md Phase-6 precedent, code-quality review was skipped for all tasks; spec-compliance review was run on each.
+
+**Per-task status:**
+
+| Task | File(s) | Status | Commits |
+|---|---|---|---|
+| 10.1 | `README.md` | ✅ | `37a3ec1` impl (v0-complete status + "Running Hive" 7-step setup + honest `hive` shorthand treatment); `6647e5c` review-fix (component count + hive alias hint) |
+| 10.2 | `docs/HANDOFF.md` | ✅ | `THIS_COMMIT` — mark v0 done, restructure Quick reference, add Phase 10 + 11 sections, refresh Appendix |
+| 10.3 | `CLAUDE.md` | Scheduled next — either updated to match the current workflow or left as-is if already sufficient |
+
+**Verification at Phase 10 close:** 691 unit + 73 integration tests passing. Ruff clean. No code was modified.
+
+---
+
+### Prompt for next Phase-11 session (v0 DNA complete)
 
 Paste the following into a new Claude Code session:
 
 ---
 
 ```
-You are continuing Hive v0 at C:/repos/hive/ on branch `main`.
-Phases 3–9 are COMPLETE. Both `hive-region:v0` and `hive-glia:v0`
-images build; 691 unit + 73 integration (3 option-b skips + 1
-Windows non-admin skip) + 1 smoke-collectable. Ruff clean. Minimal
-GitHub Actions CI on every push + PR. Next: Phase 10 (README +
-HANDOFF polish + optional CLAUDE.md).
+You are continuing Hive at C:/repos/hive/ on branch `main`.
+v0 is DNA-complete. All 10 phases are done and committed. Both
+`hive-region:v0` and `hive-glia:v0` images build; 691 unit + 73
+integration (3 option-b skips + 1 Windows non-admin skip) + 1
+smoke-collectable. Ruff clean. Minimal GitHub Actions CI green.
+
+All 14 regions boot, sleep, self-modify, and roll back. Phase 11
+is not a construction phase — it is runtime evolution: letting
+regions grow their own handlers and memory via sleep cycles, and
+eventually adding post-v0 regions when developmental stage warrants.
 
 ## Start here
 
-1. Read `docs/HANDOFF.md` in full. The Phase-3..9 tables are the
-   authoritative state snapshot. The "Follow-up items worth
-   tracking" sections per phase list non-blocking cleanup candidates.
+1. Read `docs/HANDOFF.md` in full — the Quick-reference table and
+   the Phase 11 section (at the bottom) lay out the two tracks.
 2. Confirm git state:
-     git fetch origin && git checkout main && git log --oneline -15
-   Expected HEAD is the HANDOFF-update commit after the Phase-9 CI
-   commit `9c477b7 ci: minimal pipeline` or newer.
-3. Confirm environment (assumes `.venv` on Python 3.12):
-     cd C:/repos/hive && source .venv/Scripts/activate
-     python -m pytest tests/unit/ -q                 # 691 passed
-     python -m pytest tests/integration/ -q          # 73 passed, 3 skipped
-     python -m ruff check region_template/ glia/ tools/ tests/ shared/
-4. Read the Phase-10 plan section:
-     docs/superpowers/plans/2026-04-19-hive-v0-plan.md (lines 880+)
-   Phase 10 (Tasks 10.1–10.3): README, HANDOFF polish, CLAUDE.md.
-   All doc-only.
+     git fetch origin && git checkout main && git log --oneline -10
+   Expected HEAD is the Phase 10 HANDOFF update commit or newer.
+3. Confirm runtime state: bring up broker + glia + 14 regions
+   (`hive up`), check that heartbeats are visible
+   (`hive watch hive/heartbeat/#`), and confirm `hive status` is
+   clean. Then `hive down`.
+4. Read the Phase 11 section of this file — it describes Track A
+   (growth in place) and Track B (post-v0 region additions) and
+   how to choose between them at any given moment.
 
-## Phase 10 scope
+## Phase 11 scope
 
-- **Task 10.1 README.md**: replace "Status: Design phase" with "v0
-  implementation complete (YYYY-MM-DD)"; add a "Running Hive"
-  section covering `scripts/setup.sh` → fill `.env` → `hive up` →
-  `hive status`. Link to HANDOFF for deeper context.
-- **Task 10.2 HANDOFF.md**: mark all v0 phases ✅; add a "Phase 11 —
-  Runtime evolution" section describing what comes after v0 (first
-  self-mod cycles, developmental_stage transitions, post-v0 region
-  additions: raphe_nuclei / locus_coeruleus / hypothalamus /
-  basal_forebrain / cerebellum). The authoritative progress table
-  should shift from "Phase N was done" to "v0 is the DNA, v1 is
-  growth."
-- **Task 10.3 CLAUDE.md** (optional — check if it still needs a
-  substantive update vs. the one that was generated at Phase-1):
-  per spec §F.4 — repo-level Claude Code context; read principles.md,
-  architecture.md, HANDOFF.md on session start; respect sleep-only
-  self-modification; never edit across region boundaries; commit
-  per Principle XII. Current CLAUDE.md may already cover this; scan
-  and decide whether to edit or skip.
+See the Phase 11 section of this HANDOFF file. The full description
+of Track A (growth in place), Track B (region additions),
+developmental_stage transitions, observables, and red flags is there.
+Do not duplicate it here; treat it as the authoritative reference.
 
-## Execution model — unchanged
+## Execution model — observation first
 
-`superpowers:subagent-driven-development`:
-- Fresh implementer subagent per task.
-- Spec-compliance review after each implementer.
-- Code-quality review skipped (all doc-only).
-- Fix loop until approved.
-- One commit per plan task.
-- HEREDOC commit messages with trailer:
-    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Larry's preference for Phase 11 is to run the first self-mod cycle
+**manually-observed** before enabling autonomous runs:
 
-## After Phase 10
+1. Boot the full system (`hive up`).
+2. Watch a single region's sleep log (`hive watch hive/<name>/#`)
+   as it enters its first sleep cycle.
+3. Read the self-mod proposal the region's LLM draft — inspect
+   `regions/<name>/memory/stm.json` and the per-region git log.
+4. Verify the code change it proposed is sensible (no infinite loop,
+   no cross-modality ACL violation, handler compiles cleanly).
+5. Confirm the commit landed in `regions/<name>/.git/`.
+6. Only after one clean cycle per region should you consider
+   enabling autonomous sleep scheduling.
 
-Per spec §I, the final verification checklist lives at
-`docs/superpowers/plans/2026-04-19-hive-v0-plan.md` lines 901–915.
-Go through it item by item. Items requiring a live Hive (hive up
-→ 14 heartbeats, self-mod cycle passing, ACL enforcement passing,
-rollback test passing) are gated on LLM key + Docker + `bus/passwd`
-rendered. The tests exist and are ready; the checklist item passes
-as soon as preconditions are met.
+Do not silently dispatch subagents to "start Phase 11 implementation."
+Phase 11 is empirical observation of Hive living, not a task-driven
+build. When a region's handler library grows to the point where
+Track B (a new region addition) becomes appropriate, that is a
+deliberate Larry + ACC decision — not an automatic dispatch.
 
-## Known gotchas (inherit cumulatively)
+## Known open tasks for Phase 11
 
-Read HANDOFF.md's per-phase "Cumulative gotchas" sections — ~40+
-items total spanning env setup, Windows platform nuances, library
-pins, docker-SDK quirks, aiomqtt v2, mosquitto 2.x passwd
-permissions, silently-denied ACLs, envelope ContentType Literals,
-source_region regex constraints, `sleep_quiet_window_s` minimum 30,
-flat-layout flit install still broken (CI uses PYTHONPATH
-workaround). The `=2.6` / `=24` stray files at repo root are still
-pip-install typos, still left alone.
+Pull these from the per-phase "Follow-up items" sections:
 
-Spec-vs-plan deviations are catalogued per phase: Phase-3 Wave C
-(8), Phase 5 (9), Phase 6 (3), Phase 8 (1 Nit), Phase 9 (9). Read
-all sections before touching code in those areas.
-
-## Open test scaffolding (for later un-skipping)
-
-- **Task 9.3 / 9.6 speech-intent assertion**: PFC needs a handler
-  for `hive/sensory/input/text` → `hive/motor/speech/intent`.
-  Handlers grow via self-modification; tests gated on handler
-  presence.
-- **Task 9.3 / 9.5 / 9.6 LLM assertions**: gated on
-  `ANTHROPIC_API_KEY`. Option-b skip strategy (Larry's choice) — no
-  offline stub in v0. Post-v0: teach `region_template/llm_adapter.py`
-  factory to route to `FakeLlmAdapter` when `HIVE_TEST_OFFLINE=1`.
-- **Task 9.5 second-wake-heartbeat assertion**: relaxed because glia
-  isn't wired in the test. Post-v0: add glia as a test container +
-  teach it about test-only regions.
-- **Task 9.6 smoke_operator MQTT credential**: needed for the smoke
-  test observer to connect to the production broker (which is
-  `allow_anonymous false`). Small hardening pass — add
-  `smoke_operator` entry to `bus/acl_templates/_base.j2` + `.env`.
+- **Offline LLM stub** (`HIVE_TEST_OFFLINE=1`). Un-gates Tasks 9.3 /
+  9.5 / 9.6 in CI without an API key. Small code change in
+  `region_template/llm_adapter.py` factory.
+- **`smoke_operator` MQTT credential.** Add a dedicated entry to
+  `bus/acl_templates/_base.j2` + `MQTT_PASSWORD_SMOKE_OPERATOR` in
+  `.env`. Needed for smoke-test observer connectivity.
+- **`compose.test.yaml` `test_harness` service** (spec §I.4). Currently
+  pytest itself acts as the harness. Wire once Phase 11 integration
+  tests need a dedicated test-harness container.
+- **Bridge wiring in `glia/__main__.py`.** `RhythmGenerator` +
+  `InputTextBridge` (the two enabled-by-default bridges) are
+  implemented but not started in `_main()`. Wire them in alongside
+  supervisor + stop in the finally block. `SpeakerBridge` and
+  `MotorBridge` are a second pass once motor regions have handlers.
+- **Docker-events listener for exit-code-based restart** (§E.3). Wire
+  a `docker.events.listen()` call in `glia/__main__.py`; supervisor's
+  `on_region_exit(region, exit_code)` already exists.
+- **Flat-layout flit install cleanup.** CI uses `PYTHONPATH` workaround.
+  A proper setuptools package-dir or nested module dir would remove the
+  paper cut from every developer environment.
+- **Type-checking job in CI.** Mypy was deferred post-v0. A `mypy
+  region_template/ glia/ shared/` run in CI would surface drift early.
 
 ## Reminders
 
 - Larry designs before coding; the spec + plan are authoritative.
-- Biology is the tiebreaker (P-I).
+  Phase 11 is organic growth, not spec-driven construction.
+- Biology is the tiebreaker (Principle I).
 - Infrastructure does not deliberate; cognition does not execute
   infrastructure. Glia is a mechanism; regions are the cognition.
-- Commit-per-task is mandated by Principle XII.
-- Auto mode may be active — execute on routine decisions; pause only
-  for spec conflicts, risky ops, or Larry's explicit checkpoints.
+- Commit-per-task is mandated by Principle XII. Per-region `.git/`
+  commits are made by the region itself; `region_template/` and
+  `glia/` commits must go through the code-change gate.
+- Auto mode may be active — execute on routine decisions; pause for
+  spec conflicts, risky ops, or Larry's explicit checkpoints.
+- Read the per-phase "Cumulative gotchas" sections (~40+ items):
+  env setup, Windows platform nuances, library pins, docker-SDK
+  quirks, aiomqtt v2, mosquitto 2.x passwd permissions, silently-
+  denied ACLs, envelope ContentType Literals, source_region regex,
+  `sleep_quiet_window_s` minimum 30, flat-layout flit broken.
 ```
+
+---
+
+## Phase 11 — Runtime evolution
+
+### Framing
+
+v0 was construction — building the DNA. v1 is growth. The shared runtime (`region_template/`), 14 region scaffolds (`regions/`), glia, bus, CLI, observability tools, tests, and CI are now frozen-ish. Regions own their evolution from here. The repo's role shifts from "build infrastructure" to "observe and curate." A successful Phase 11 produces no changes to `region_template/` or `glia/`; all meaningful changes happen inside `regions/<name>/.git/` as each region authors its own commits during sleep cycles.
+
+### Track A — Growth in place
+
+The 14 v0 regions start with empty handler directories, starter prompts, and empty `memory/ltm/`. Expect the first wave of self-modification to produce:
+
+- **prefrontal_cortex**: a handler for `hive/sensory/input/text` → `hive/motor/speech/intent`. Currently absent; blocks Tasks 9.3 / 9.6's speech-intent assertions. The most important first handler in the system.
+- **hippocampus**: first `stm.json → memory/ltm/` consolidations during sleep. Watch `hive_stm hippocampus` before and after the first sleep.
+- **amygdala / vta**: first emitted modulator values replacing the null-valued startup state. Use `hive watch hive/modulator/#` to observe.
+- **insula**: first `hive/interoception/*` topics populated from real runtime metrics (token budgets, region health, compute pressure).
+- **association_cortex**: first cross-modal bindings once visual_cortex and auditory_cortex start producing features.
+
+Each self-modification is a region-authored commit in its own `regions/<name>/.git/`. Observability budget per cycle: `hive trace <correlation_id>` to follow envelope chains; `hive watch hive/modulator/#` for modulator drift; `hive_stm <region>` before and after sleep to verify STM evolution. Approve each iteration before the region's next sleep fires.
+
+### Track B — Post-v0 region additions
+
+When developmental_stage crosses a threshold (or Larry explicitly decides), these regions join in likely order:
+
+- **raphe_nuclei** — serotonin modulator. Stabilizes mood; counterweights amygdala under sustained stress. First addition because it calms a teenager-era system that may oscillate.
+- **locus_coeruleus** — norepinephrine modulator (shared production with amygdala rather than amygdala owning it alone). Arousal and vigilance. Second addition; pairs with raphe for a balanced two-source economy.
+- **hypothalamus** — homeostatic set-points. Body-temp / hunger analogs for compute pressure, quota, and token budget. Third; grounds the system in resource reality.
+- **basal_forebrain** — acetylcholine modulator. Attention and learning gain. Fourth; boosts hippocampal consolidation quality.
+- **cerebellum** — motor timing and skill refinement. Couples with motor_cortex and broca_area to smooth output. Fifth; meaningful only after motor regions have grown handlers.
+
+Each addition flows through ACC's metacognitive spawn gate → glia's `spawn_executor` → new per-region git repo → new ACL grants via template render → heartbeat verification. The mechanism is already built (Phase 5 Task 5.7a); Phase 11 exercises it for real.
+
+### Developmental stage transitions
+
+mPFC owns the retained topic `hive/self/developmental_stage`. v0 ships at stage `teenager` — all 14 regions present, minimal handlers, empty memory, exploratory behavior. Expected transitions:
+
+- **teenager → early_adult**: handler libraries non-trivial, STM retention meaningful, cross-modal chains functional, modulator values fluctuating beyond boot defaults.
+- **early_adult → adult**: handler libraries stable, LTM consolidation routine, rollback events rare, post-v0 regions added and integrated.
+
+Stages map to larger handler libraries, richer STM retention, and lower curiosity exploration bonus on VTA. Stage is a retained MQTT topic — every region reads it at wake and adapts behavior. Transitions are mPFC decisions; no automatic trigger exists in v0. Larry and mPFC agree when growth is sufficient.
+
+### How to know Phase 11 is going well
+
+Not a checklist — observables:
+
+- Per-region `.git/` log grows beyond the birth commit. Each region is authoring its own real code changes, not just timestamp updates.
+- `hive/modulator/*` retained values fluctuate meaningfully over days — not stuck at boot-default nulls.
+- Cross-region envelope chains via `correlation_id` extend beyond the original sensory→cognitive→motor triad as regions develop richer subscription sets.
+- Rollback events remain rare (fewer than one per region per week). When they happen, the rollback mechanism unblocks cleanly and the region re-enters with a corrected handler.
+- Token + compute budgets hold. Insula alerts catch runaway regions before they exhaust quota.
+
+### Red flags that would halt Phase 11 autonomy
+
+- Silent regressions in the shared runtime. `region_template/` is DNA — a faulty handler could produce infinite-loop behavior. Symptom: a region never exits its wake phase, heartbeats stop.
+- ACL leaks — cross-modality access that should be denied. Watch the broker logs for unexpected publish/subscribe attempts.
+- Self-mod commits that do not compile. `compileall` guard should catch this; if a region commits broken Python, the guard produces a rollback. If rollback itself fails, Phase 11 autonomy pauses.
+- Budget blowouts. Token overspend without insula catching it signals a handler loop or a misconfigured budget cap. Check daily-budget alerts.
+
+### What this means for the repo
+
+The `region_template/` directory is DNA and should rarely change in Phase 11. Any edits to shared runtime code must flow through the code-change gate (`glia/codechange_executor.py`) just like any region self-modification — cosign-gated by design, not a casual edit. The `regions/<name>/` directories are gene expression and change continuously; those changes belong to the regions themselves. The `glia/` and `tools/` directories may receive small wiring fixes (bridge wiring, offline LLM stub) but should not see architectural changes without Larry's explicit direction.
 
 ---
 
@@ -877,9 +954,12 @@ Every session that completes significant work must update this HANDOFF.md:
 
 ## Open questions / known gaps
 
-As Phase 2 proceeds, add observations here:
+High-signal items Phase 11 will grapple with (full detail in per-phase "Follow-up items" sections):
 
-- *(none yet — populated during spec writing)*
+- **Offline LLM stub.** The `HIVE_TEST_OFFLINE=1` flag is wired at the env level but the runtime's `llm_adapter.py` factory doesn't route to a `FakeLlmAdapter` when it's set. Un-blocking CI for full-flow integration tests (Tasks 9.3 / 9.5 / 9.6) without real API spend is the highest-leverage infrastructure item for Phase 11.
+- **Bridge wiring.** `RhythmGenerator` and `InputTextBridge` are implemented in `glia/bridges/` but not started in `glia/__main__.py`. No region currently receives rhythm ticks or externally-injected text from the glia layer. Wiring is a small `_main()` edit; deferred because no region has a handler for those signals yet.
+- **Developmental_stage transition triggers.** mPFC owns `hive/self/developmental_stage` (retained, starts at `teenager`). There is no automated trigger for advancing to `early_adult`. The transition policy — what observable thresholds count as "enough growth" — must be designed by Larry and encoded in mPFC's prompt or handlers before the first transition occurs. This is an open design question, not an implementation gap.
+- **Post-v0 region authoring pattern.** When Track B kicks in (raphe_nuclei, locus_coeruleus, etc.), glia's `spawn_executor` scaffolds the region, but the region's starter prompt must be authored and reviewed before the spawn. The authoring pattern (who writes the prompt, what review loop it goes through, how it gets committed to `docs/starter_prompts/`) is undecided. Decide before spawning the first post-v0 region.
 
 ---
 
@@ -887,8 +967,20 @@ As Phase 2 proceeds, add observations here:
 
 ```
 C:/repos/hive/
-├── README.md                      # Project overview
+├── README.md                      # Project overview (v0-complete, Running Hive section)
+├── CLAUDE.md                      # Claude Code project guide — resume protocol + gotchas
+├── pyproject.toml                 # Root ruff + pytest config (all packages inherit)
+├── docker-compose.yaml            # Phase 6 — broker + glia services (regions launched by glia)
+├── conftest.py                    # Root conftest (import shim)
 ├── .gitignore
+├── .env.example                   # Template for MQTT passwords + ANTHROPIC_API_KEY
+├── .github/
+│   └── workflows/
+│       └── ci.yml                 # Phase 9 — minimal CI (ruff + unit tests on push + PR)
+├── scripts/
+│   ├── bootstrap_env.sh           # Phase 0 — venv setup helper
+│   ├── make_passwd.sh             # Phase 0 — mosquitto_passwd generator
+│   └── setup.sh                   # Phase 0 — full dev environment setup
 ├── docs/
 │   ├── HANDOFF.md                 # This file — session continuity
 │   ├── principles.md              # 16 constitutional principles
@@ -911,12 +1003,92 @@ C:/repos/hive/
 │   │   └── vta.md
 │   └── superpowers/
 │       ├── specs/
-│       │   └── 2026-04-19-hive-v0-design.md   # [to be written in Phase 2]
+│       │   └── 2026-04-19-hive-v0-design.md   # Phase 2 — authoritative design spec (4,792 lines)
 │       └── plans/
-│           └── 2026-04-19-hive-v0-plan.md     # [to be written in Phase 3]
-├── region_template/               # [to be written in Phase 4 — DNA]
-├── regions/                       # [to be written in Phase 4 — 14 regions]
-├── glia/                          # [to be written in Phase 4 — infrastructure]
-├── bus/                           # [to be written in Phase 4 — broker config]
-└── shared/                        # [to be written in Phase 4 — utilities]
+│           └── 2026-04-19-hive-v0-plan.md     # Phase 3 — task-level implementation plan
+├── region_template/               # Phase 4 — Shared runtime DNA (17 modules, ruff clean)
+│   ├── __init__.py
+│   ├── __main__.py                # Entry point; Windows signal handling
+│   ├── types.py                   # LifecyclePhase StrEnum + core types
+│   ├── errors.py                  # Error hierarchy (ConnectionError shadows stdlib — qualify)
+│   ├── logging_setup.py           # structlog setup; warn→warning remap
+│   ├── config_loader.py           # RegionConfig Pydantic model + YAML loader
+│   ├── capability.py              # Capability enforcement
+│   ├── mqtt_client.py             # aiomqtt v2 wrapper + fake for tests
+│   ├── llm_adapter.py             # LiteLLM integration + budget tracking
+│   ├── llm_cache.py               # Anthropic cache_control markers
+│   ├── llm_stream.py              # Streaming delta accumulator
+│   ├── memory.py                  # MemoryStore — STM + LTM
+│   ├── git_tools.py               # Per-region git integration
+│   ├── self_modify.py             # Self-modification tools
+│   ├── handlers_loader.py         # Handler module discovery
+│   ├── heartbeat.py               # Heartbeat publisher
+│   ├── sleep.py                   # Sleep cycle + self-mod pipeline
+│   ├── runtime.py                 # RegionRuntime integrator
+│   ├── litellm.config.yaml        # LiteLLM provider defaults
+│   ├── defaults.yaml              # Config defaults
+│   ├── config_schema.json         # JSON schema for config.yaml
+│   ├── Dockerfile                 # hive-region:v0 image (python:3.11-slim + git + tini)
+│   └── pyproject.toml             # Package metadata (no [tool.ruff] — root wins)
+├── regions/                       # Phase 8 — 14 scaffolded region directories
+│   ├── medial_prefrontal_cortex/  # Each contains: config.yaml, prompt.md,
+│   ├── prefrontal_cortex/         #   subscriptions.yaml, handlers/__init__.py,
+│   ├── anterior_cingulate/        #   memory/ltm/.gitkeep
+│   ├── hippocampus/               # Per-region .git/ created on first boot (§G.2)
+│   ├── thalamus/
+│   ├── association_cortex/
+│   ├── visual_cortex/
+│   ├── auditory_cortex/
+│   ├── motor_cortex/
+│   ├── broca_area/
+│   ├── amygdala/
+│   ├── vta/
+│   ├── insula/
+│   ├── basal_ganglia/
+│   └── test_self_mod/             # Phase 9 — dedicated self-mod test target (not in registry)
+├── glia/                          # Phase 5 — Infrastructure (no LLM, no cognition)
+│   ├── __init__.py
+│   ├── __main__.py                # glia entry point
+│   ├── registry.py                # RegionRegistry — regions_registry.yaml loader
+│   ├── regions_registry.yaml      # 14 region definitions + capabilities
+│   ├── launcher.py                # Docker region launcher
+│   ├── heartbeat_monitor.py       # Heartbeat miss detection
+│   ├── acl_manager.py             # ACL template renderer + mosquitto reload
+│   ├── rollback.py                # Per-region git rollback
+│   ├── codechange_executor.py     # Code-change gate (cosign + apply + rollback)
+│   ├── spawn_executor.py          # Neurogenesis executor
+│   ├── metrics.py                 # System metrics aggregator
+│   ├── supervisor.py              # Circuit breaker + restart policy
+│   ├── bridges/                   # 6 bridges (rhythm, input-text, speaker, motor, ...)
+│   └── Dockerfile                 # hive-glia:v0 image
+├── bus/                           # Phase 2 — MQTT broker config
+│   ├── mosquitto.conf             # Broker config
+│   ├── topic_schema.md            # Full topic catalog with ACL rules
+│   └── acl_templates/             # Jinja2 ACL templates
+│       ├── _base.j2               # Shared grants for all regions
+│       ├── _new_region_stub.j2    # Template for spawned regions
+│       └── <14 per-region>.j2     # One per v0 region
+├── shared/                        # Phase 1 — Shared library (envelope + topics)
+│   ├── message_envelope.py        # Envelope schema + factory + parser
+│   ├── topics.py                  # Topic constant catalog
+│   ├── envelope_schema.json       # JSON schema for envelope validation
+│   └── metric_schemas.json        # JSON schemas for system metrics
+├── tools/                         # Phase 6 + 7 — CLI + debug tools
+│   ├── hive_cli.py                # `hive` command (up/down/status/logs)
+│   └── dbg/
+│       ├── hive_trace.py          # Trace a correlation_id across the bus
+│       ├── hive_watch.py          # Watch a topic pattern (or alias)
+│       ├── hive_stm.py            # Inspect a region's STM from filesystem
+│       └── hive_inject.py         # Publish a crafted envelope
+├── tests/
+│   ├── unit/                      # 691 unit tests — fast, no external deps
+│   ├── component/                 # Component tests (real mosquitto via testcontainers)
+│   ├── integration/               # 73 integration tests (real broker + compose fixtures)
+│   │   ├── compose.test.yaml      # Phase 9 test compose (broker + glia + mpfc + pfc)
+│   │   ├── mosquitto.test.conf    # Anonymous auth for integration tests
+│   │   └── test_*.py              # Per-phase integration tests
+│   └── smoke/
+│       └── boot_all.py            # Full-system smoke gate (requires hive up + LLM key)
+└── observatory/                   # Self-contained sub-project (see observatory/CLAUDE.md)
+    └── ...
 ```
