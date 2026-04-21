@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import asyncio
-import fnmatch
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -33,8 +33,9 @@ _HEARTBEAT_PREFIX = "hive/system/heartbeat/"
 def load_subscription_map(hive_repo_root: Path) -> dict[str, list[str]]:
     """Scan regions/<name>/subscriptions.yaml and return {region: [topic, ...]}.
 
-    Missing files are skipped silently — regions may not have landed yet. This
-    is read once at startup; dynamic sub changes are out of scope for v1.
+    Malformed YAML in one region is logged and skipped — one bad file must
+    not poison the observatory for the rest of the tree. Non-string items
+    in `topics:` are filtered out. Missing files are skipped silently.
     """
     out: dict[str, list[str]] = {}
     regions_dir = hive_repo_root / "regions"
@@ -44,18 +45,66 @@ def load_subscription_map(hive_repo_root: Path) -> dict[str, list[str]]:
         sub_file = region_dir / "subscriptions.yaml"
         if not sub_file.exists():
             continue
-        data = _YAML.load(sub_file.read_text(encoding="utf-8")) or {}
-        topics = data.get("topics") or []
+        try:
+            data = _YAML.load(sub_file.read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001 — never let one region's typo kill startup
+            log.exception("observatory.bad_subscriptions_yaml", path=str(sub_file))
+            continue
+        if not isinstance(data, dict):
+            log.debug("observatory.subscriptions_non_mapping", path=str(sub_file))
+            continue
+        topics_raw = data.get("topics") or []
+        if not isinstance(topics_raw, list):
+            log.debug("observatory.subscriptions_topics_non_list", path=str(sub_file))
+            continue
+        topics = [t for t in topics_raw if isinstance(t, str)]
         if topics:
-            out[region_dir.name] = list(topics)
+            out[region_dir.name] = topics
     return out
 
 
+def _mqtt_pattern_to_regex(pattern: str) -> re.Pattern[str]:
+    """Compile an MQTT topic filter to a regex.
+
+    MQTT wildcards (single-level `+`, multi-level `#` at end only) are
+    *not* fnmatch semantics — `+` must match exactly one topic segment
+    (no ``/``) and `#` must match one or more full segments at the end
+    of the filter. ``fnmatch`` treats ``*`` as "any chars including
+    ``/``" which over-matches (e.g. ``hive/+/plan`` would incorrectly
+    match ``hive/a/b/plan``). So we go direct to a regex.
+    """
+    parts: list[str] = []
+    segments = pattern.split("/")
+    for i, seg in enumerate(segments):
+        is_last = i == len(segments) - 1
+        if seg == "#":
+            if not is_last:
+                # Malformed filter (# only valid at end). Translate to match
+                # nothing — caller's higher-level validation is out of scope.
+                parts.append(r"$.^")  # never matches
+                break
+            # `hive/#` should match `hive/a`, `hive/a/b`, ...; `#` alone
+            # matches any non-empty topic. Add an optional leading `/`
+            # consumed already by the join above — so just `.+`.
+            parts.append(r".+")
+            break
+        if seg == "+":
+            parts.append(r"[^/]+")
+        else:
+            parts.append(re.escape(seg))
+    return re.compile(r"\A" + r"/".join(parts) + r"\Z")
+
+
+_PATTERN_CACHE: dict[str, re.Pattern[str]] = {}
+
+
 def _matches(topic: str, pattern: str) -> bool:
-    # MQTT wildcards: + single level, # multi level. Convert to fnmatch.
-    return fnmatch.fnmatchcase(
-        topic, pattern.replace("+", "*").replace("/#", "/*").replace("#", "*")
-    )
+    """MQTT-correct topic-filter match. Compiled patterns are cached."""
+    rx = _PATTERN_CACHE.get(pattern)
+    if rx is None:
+        rx = _mqtt_pattern_to_regex(pattern)
+        _PATTERN_CACHE[pattern] = rx
+    return rx.match(topic) is not None
 
 
 class MqttSubscriber:
@@ -74,6 +123,10 @@ class MqttSubscriber:
         self._sub_map = subscription_map
 
     def _inferred_destinations(self, topic: str, source: str | None) -> tuple[str, ...]:
+        if source is None:
+            # No source → no trustworthy destination inference. Record an
+            # empty tuple; the envelope still lands in the ring for display.
+            return ()
         dests: list[str] = []
         for region, patterns in self._sub_map.items():
             if region == source:
@@ -96,6 +149,8 @@ class MqttSubscriber:
             return
 
         source = envelope.get("source_region")
+        if source is None:
+            log.debug("observatory.envelope_missing_source", topic=topic)
         destinations = self._inferred_destinations(topic, source)
 
         # Retained state (modulators, self, interoception, attention, metrics).
@@ -105,14 +160,9 @@ class MqttSubscriber:
         # Heartbeats update the registry in place.
         if topic.startswith(_HEARTBEAT_PREFIX):
             region_name = topic[len(_HEARTBEAT_PREFIX):]
-            payload = envelope.get("payload", {})
-            # Real envelopes wrap heartbeat stats under payload.data per
-            # shared/message_envelope.py; the plan's test fixtures pass them
-            # flat. Accept both shapes.
-            if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
-                payload = payload["data"]
-            if isinstance(payload, dict):
-                self.registry.apply_heartbeat(region_name, payload)
+            heartbeat = self._extract_heartbeat_stats(envelope.get("payload"), topic=topic)
+            if heartbeat is not None:
+                self.registry.apply_heartbeat(region_name, heartbeat)
 
         # Record in ring + adjacency for traffic viz.
         now = time.monotonic()
@@ -128,6 +178,24 @@ class MqttSubscriber:
         if source and destinations:
             self.adjacency.record(source, list(destinations), now=now)
 
+    @staticmethod
+    def _extract_heartbeat_stats(payload: Any, *, topic: str) -> dict[str, Any] | None:
+        """Return the heartbeat-stats dict from either the flat plan shape
+        (``payload`` IS the stats dict) or the production shape (stats live
+        under ``payload.data``). Anything else is skipped with a debug log.
+        """
+        if not isinstance(payload, dict):
+            log.debug("observatory.skip_heartbeat_non_dict_payload", topic=topic)
+            return None
+        if isinstance(payload.get("data"), dict):
+            return payload["data"]
+        if "data" in payload:
+            # Wrapped shape with non-dict `data` — no heartbeat stats here.
+            log.debug("observatory.skip_heartbeat_wrapped_non_dict_data", topic=topic)
+            return None
+        # Flat shape: the payload IS the stats dict (plan format).
+        return payload
+
     async def run(self, client: Any, stop_event: asyncio.Event) -> None:
         """Main loop — consume messages until ``stop_event`` fires.
 
@@ -140,4 +208,8 @@ class MqttSubscriber:
             try:
                 await self.dispatch(message)
             except Exception:  # noqa: BLE001 — don't kill the subscriber on one bad message
-                log.exception("observatory.dispatch_failed", topic=str(message.topic))
+                log.exception(
+                    "observatory.dispatch_failed",
+                    topic=str(message.topic),
+                    bytes=len(getattr(message, "payload", b"")),
+                )
