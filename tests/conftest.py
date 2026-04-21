@@ -300,12 +300,12 @@ def compose_stack() -> Generator[_ComposeStack, None, None]:
             [*compose_cmd_base, "up", "-d"],
             check=True,
         )
-        # Task 9.2 will document the broker port; default MQTT port for now.
+        # Broker is bound to host port 11883 (see compose.test.yaml).
         yield _ComposeStack(
             compose_file=_COMPOSE_FILE,
             project_name=project,
             broker_host="127.0.0.1",
-            broker_port=1883,
+            broker_port=11883,
         )
     finally:
         subprocess.run(

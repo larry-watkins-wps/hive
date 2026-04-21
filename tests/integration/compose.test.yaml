@@ -1,0 +1,109 @@
+# tests/integration/compose.test.yaml
+#
+# Minimal test Hive per spec §I.4.  Services:
+# - broker (eclipse-mosquitto:2.0.20 with anonymous auth, non-default port 11883)
+# - glia (hive-glia:v0; present for metrics/heartbeat aggregation paths)
+# - mpfc (hive-region:v0 with HIVE_REGION=medial_prefrontal_cortex)
+# - prefrontal_cortex (hive-region:v0 with HIVE_REGION=prefrontal_cortex)
+#
+# Deviation from spec §I.4: the `test_harness` container service is not
+# defined here.  Integration tests act as the harness from the pytest
+# process on the host, connecting to 127.0.0.1:11883.  A dedicated harness
+# image does not yet exist; this decision can be revisited when Task 9.3+
+# require container-side assertion logic.
+#
+# Prerequisites (images must be built before `docker compose up`):
+#   docker build -t hive-region:v0 -f region_template/Dockerfile .
+#   docker build -t hive-glia:v0   -f glia/Dockerfile .
+#
+# Project name is `hive_test` (matches tests/conftest.py's compose_stack
+# fixture which passes `-p hive_test`).  Container names are prefixed with
+# `hive-test-` to avoid collisions with the production `hive-<name>` names
+# used by glia's supervisor.
+#
+# Port 11883 (host) → 1883 (container) isolates this stack from any
+# running production compose (which binds 127.0.0.1:1883:1883).
+#
+# HIVE_TEST_OFFLINE=1 is passed to region containers as a signal for a
+# future deterministic LLM stub (the runtime does not yet check this flag;
+# it is documented here so Task 9.3 test code can reference it).
+
+version: "3.9"
+name: hive_test
+
+networks:
+  hive_net:
+    driver: bridge
+
+services:
+  broker:
+    image: eclipse-mosquitto:2.0.20
+    container_name: hive-test-broker
+    ports:
+      - "127.0.0.1:11883:1883"
+    volumes:
+      - ./tests/integration/mosquitto.test.conf:/mosquitto/config/mosquitto.conf:ro
+    networks: [hive_net]
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-W", "5"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  glia:
+    build:
+      context: .
+      dockerfile: glia/Dockerfile
+    image: hive-glia:v0
+    container_name: hive-test-glia
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      - HIVE_ENV=test
+      - MQTT_HOST=broker
+      - MQTT_PORT=1883
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./regions:/hive/regions:rw
+      - ./region_template:/hive/region_template:ro
+      - ./shared:/hive/shared:ro
+      - ./bus:/hive/bus:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [hive_net]
+
+  mpfc:
+    image: hive-region:v0
+    container_name: hive-test-mpfc
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      - HIVE_REGION=medial_prefrontal_cortex
+      - MQTT_HOST=broker
+      - MQTT_PORT=1883
+      - HIVE_TEST_OFFLINE=${HIVE_TEST_OFFLINE:-1}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./regions/medial_prefrontal_cortex:/hive/region:rw
+      - ./region_template:/hive/region_template:ro
+      - ./shared:/hive/shared:ro
+    networks: [hive_net]
+
+  prefrontal_cortex:
+    image: hive-region:v0
+    container_name: hive-test-prefrontal_cortex
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      - HIVE_REGION=prefrontal_cortex
+      - MQTT_HOST=broker
+      - MQTT_PORT=1883
+      - HIVE_TEST_OFFLINE=${HIVE_TEST_OFFLINE:-1}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./regions/prefrontal_cortex:/hive/region:rw
+      - ./region_template:/hive/region_template:ro
+      - ./shared:/hive/shared:ro
+    networks: [hive_net]
