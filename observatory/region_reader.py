@@ -6,12 +6,14 @@ malformed region names, missing files, and files larger than MAX_FILE_BYTES.
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import structlog
+import yaml
 
 log = structlog.get_logger(__name__)
 
@@ -46,16 +48,18 @@ class RegionReader:
             raise FileNotFoundError(f"regions_root does not exist: {self._root}")
 
     def read_prompt(self, region: str) -> str:
-        path = self._validate(region, "prompt.md")
+        path = self._validate(region, "prompt.md", method="read_prompt")
         return path.read_text(encoding="utf-8")
 
-    # --- stubs for Task 2/3 ---
     def read_stm(self, region: str) -> dict[str, Any]:
-        raise NotImplementedError
+        path = self._validate(region, "memory/stm.json", method="read_stm")
+        return self._parse_json(region, "memory/stm.json", path)
 
     def read_subscriptions(self, region: str) -> dict[str, Any]:
-        raise NotImplementedError
+        path = self._validate(region, "subscriptions.yaml", method="read_subscriptions")
+        return self._parse_yaml(region, "subscriptions.yaml", path)
 
+    # --- stubs for Task 3 ---
     def read_config(self, region: str) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -63,21 +67,43 @@ class RegionReader:
         raise NotImplementedError
 
     # --- internal ---
-    def _validate(self, region: str, rel: str) -> Path:
-        """Run the full sandbox pipeline; return an absolute, safe Path."""
+    def _deny(self, region: str, rel: str, code: int, reason: str, message: str) -> NoReturn:
+        """Log the denial and raise SandboxError.
+
+        `reason` is a short machine tag (e.g. "invalid_region_name", "traversal",
+        "symlink", "missing", "oversize", "parse_json"). Spec §6.1 requires the
+        `observatory.region_read_denied` event with keys `region`, `file`,
+        `code`, `reason`.
+        """
+        log.debug(
+            "observatory.region_read_denied",
+            region=region,
+            file=rel,
+            code=code,
+            reason=reason,
+        )
+        raise SandboxError(message, code)
+
+    def _validate(self, region: str, rel: str, *, method: str) -> Path:
+        """Run the full sandbox pipeline; return an absolute, safe Path.
+
+        `method` is the reader method name (e.g. "read_prompt"); spec §6.1
+        requires it as a key on the success log event.
+        """
         if not _REGION_NAME_RE.fullmatch(region):
-            raise SandboxError(f"invalid region name: {region!r}", 404)
-        # Pre-resolve component checks
+            self._deny(region, rel, 404, "invalid_region_name",
+                       f"invalid region name: {region!r}")
         if "\x00" in rel or "\x00" in region:
-            raise SandboxError("null byte in path", 403)
+            self._deny(region, rel, 403, "null_byte", "null byte in path")
         if ".." in Path(rel).parts or Path(rel).is_absolute():
-            raise SandboxError("traversal or absolute path rejected", 403)
+            self._deny(region, rel, 403, "traversal",
+                       "traversal or absolute path rejected")
 
         candidate = (self._root / region / rel).resolve()
         try:
             candidate.relative_to(self._root)
-        except ValueError as e:
-            raise SandboxError("path escapes sandbox", 403) from e
+        except ValueError:
+            self._deny(region, rel, 403, "escape", "path escapes sandbox")
 
         # Reject if the leaf component is a symlink. This is a defense-in-depth
         # check on top of the `relative_to` guard above: any symlink that points
@@ -88,23 +114,41 @@ class RegionReader:
         # will run through this same pipeline one-by-one.
         unresolved = self._root / region / rel
         try:
-            if unresolved.is_symlink():
-                raise SandboxError("symlink rejected", 403)
+            is_link = unresolved.is_symlink()
         except OSError as e:
-            raise SandboxError(f"stat failed: {e}", 403) from e
+            self._deny(region, rel, 403, "stat_failed", f"stat failed: {e}")
+        if is_link:
+            self._deny(region, rel, 403, "symlink", "symlink rejected")
 
         if not candidate.exists() or not candidate.is_file():
-            raise SandboxError(f"file not found: {region}/{rel}", 404)
+            self._deny(region, rel, 404, "missing",
+                       f"file not found: {region}/{rel}")
 
-        if candidate.stat().st_size > MAX_FILE_BYTES:
-            raise SandboxError(
-                f"file exceeds {MAX_FILE_BYTES} bytes: {region}/{rel}", 413,
-            )
+        size = candidate.stat().st_size
+        if size > MAX_FILE_BYTES:
+            self._deny(region, rel, 413, "oversize",
+                       f"file exceeds {MAX_FILE_BYTES} bytes: {region}/{rel}")
 
         log.debug(
             "observatory.region_read",
             region=region,
             file=rel,
-            size_bytes=candidate.stat().st_size,
+            size_bytes=size,
+            method=method,
         )
         return candidate
+
+    def _parse_json(self, region: str, rel: str, path: Path) -> dict[str, Any]:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            self._deny(region, rel, 502, "parse_json",
+                       f"JSON parse failure in {path.name}: {e}")
+
+    def _parse_yaml(self, region: str, rel: str, path: Path) -> dict[str, Any]:
+        try:
+            parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as e:
+            self._deny(region, rel, 502, "parse_yaml",
+                       f"YAML parse failure in {path.name}: {e}")
+        return parsed if parsed is not None else {}
