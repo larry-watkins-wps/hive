@@ -1,7 +1,7 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-20 (Phase 6 COMPLETE — Bootstrap CLI)
-**Current phase:** Phase 6 (Bootstrap CLI) ✅; Phase 7 (Observability) or Phase 8 (14 regions) next
+**Last updated:** 2026-04-20 (Phase 7 COMPLETE — Observability tools)
+**Current phase:** Phase 7 (Observability) ✅; Phase 8 (14 regions) next
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
@@ -381,7 +381,7 @@ The plan should:
 | 4. Region Docker image | ✅ | `region_template/Dockerfile` (commit `f79c91a`). Builds `hive-region:v0` from `python:3.11-slim-bookworm@sha256:9c6f908…`. `docker run --rm hive-region:v0 --help` prints usage. |
 | 5. Glia (12 tasks) | ✅ | All 12 tasks done: registry, launcher, heartbeat monitor, ACL manager, rollback, codechange executor, spawn executor, metrics aggregator, supervisor, `__main__`, 6 bridges. `docker build -t hive-glia:v0 -f glia/Dockerfile .` succeeds. |
 | 6. Bootstrap CLI (2 tasks) | ✅ | `docker-compose.yaml` + `tools/hive_cli.py` (typer CLI: up/down/status/logs + --dev/--no-docker). 702 tests total (691 unit + 11 integration). |
-| 7. Observability tools (4 tasks) | ⏳ | |
+| 7. Observability tools (4 tasks) | ✅ | `tools/dbg/{hive_trace,hive_watch,hive_stm,hive_inject}.py` (typer CLIs). 745 tests (691 unit + 54 integration + 1 skipped on Windows non-admin). |
 | 8. Region scaffolding × 14 | ⏳ | PARALLEL-OK |
 | 9. Integration + smoke + self-mod tests | ⏳ | |
 | 10. Docs + HANDOFF | ⏳ | |
@@ -559,7 +559,52 @@ Both tasks landed on `main` in a 3-commit slice (impl + review fixes per task). 
 - `hive up --no-docker` on Windows: `signal.signal(SIGTERM, ...)` is a no-op for anything other than process-termination-from-console; use `SIGBREAK` instead. SIGINT works on both platforms.
 - Integration tests live under `tests/integration/`; the `integration` pytest marker already existed in root `pyproject.toml`. `testpaths = ["tests"]` picks them up automatically, so `python -m pytest tests/unit/` is the correct invocation to run unit-only.
 
-### Prompt for next Phase-7/8 session (Phases 3–6 DONE)
+---
+
+## Phase 7 — Observability tools — COMPLETE (2026-04-20)
+
+All 4 tools landed on `main` via parallel-dispatched implementers + consolidated fix-loop. 5 commits total. 54 integration tests (10 CLI + 6 trace + 10 watch + 10 stm + 11 inject + 7 new from fix-loop; 1 skipped on Windows without Developer Mode). 691 unit tests unchanged. Ruff clean.
+
+**Per-task status:**
+
+| Task | File | Status | Commits |
+|---|---|---|---|
+| 7.1 | `tools/dbg/hive_trace.py` + tests | ✅ | `2698267` impl; fixes in `c223619` |
+| 7.2 | `tools/dbg/hive_watch.py` + tests + `__init__.py` | ✅ | `e02bc4e` impl; fixes in `c223619` |
+| 7.3 | `tools/dbg/hive_stm.py` + tests | ✅ | `7121883` impl; fixes in `c223619` |
+| 7.4 | `tools/dbg/hive_inject.py` + tests | ✅ | `81f8d6b` impl; fixes in `c223619` |
+
+**V0 surface delivered:**
+
+- `hive trace <correlation_id>` — subscribes to `hive/#`, filters by `correlation_id`, prints sorted timeline (timestamp-safe for mixed `Z`/`+00:00` suffixes). Warns on chain-gap envelopes per §H.4. Best-effort on broker failure per §H.7.
+- `hive watch <pattern>` — subscribes to topic pattern (aliases: `modulators`, `attention`, `self`, `metrics`; or literal MQTT wildcard). `--retained` one-shot dump; `--timeout` cap; graceful `aiomqtt.MqttError` handling.
+- `hive stm <region>` — reads `regions/<name>/memory/stm.json` from filesystem (bypasses §D.6 MQTT query per §H.3 operator authorization). `--raw`, `--slots-only`, `--events-only`, `--limit`, `--root` flags. Symlink escape rejected via resolved `is_relative_to` check. Type-guards `slots` (dict) and `recent_events` (list) with graceful degrade.
+- `hive inject <topic> <payload_or_file>` — publishes a crafted envelope. Full-envelope mode (JSON with nested `payload`) or payload-shorthand (`{"data": ..., "content_type": ...}` → synthesized envelope with `source_region="hive_inject"`). Accepts file path, inline JSON, or `-` for stdin. `--qos`, `--retain`, `--correlation-id`, `--reply-to` flags.
+
+**Review outcome:** all 4 tools APPROVED by combined spec+code reviews. 13 Important items consolidated into a single fix-pass commit (`c223619`). No Critical issues.
+
+**Cumulative gotchas (Phase 7 additions):**
+
+- **Parallel-agent git-index race.** Dispatching 4 implementers in parallel with `run_in_background=true` works for file authorship (non-overlapping paths) but `git add`/`git commit` share a single index per working tree. Concurrent staging in different agents can interleave and produce mislabeled commits. Mitigations for future parallel dispatches: (a) use `git worktree add` per agent (CLAUDE.md `isolation: "worktree"` option), or (b) serialize the final commit step, or (c) have each agent use `git commit -o <paths>` to scope the commit to explicitly named files. Fallout this session: one commit (`8fdbaa1`, discarded by a subsequent soft-reset) was mislabeled; hive_watch's initial commit was lost and had to be re-committed as `e02bc4e` during reconciliation. No work lost, but commit-per-task granularity degraded.
+- **aiomqtt 2.5.1 `identifier=` kwarg** (not v1's `client_id=`). All four Phase-7 tools and `region_template/mqtt_client.py` use it; broker-log grepability depends on setting a meaningful identifier. Pattern: `f"hive-<tool>-{uuid4().hex[:8]}"`.
+- **`asyncio.get_event_loop()` deprecated in 3.12.** Use `asyncio.get_running_loop()` when inside an already-running loop. Both call patterns work today but only the latter survives future Python versions.
+- **ISO-8601 timestamp sort edge case.** Lexicographic sort on a mix of `Z` and `+00:00` suffixes misorders. `hive_trace` normalizes Z→+00:00 and parses with `datetime.fromisoformat`; use the same pattern anywhere cross-region timestamps are ordered.
+- **Windows symlink tests require Developer Mode** (or admin). Phase-7's symlink-escape test in `test_hive_stm.py` probes `_can_symlink(tmp_path)` and skips gracefully; Linux CI will exercise the guard.
+- **`aiomqtt.MqttError`** — broker-down / auth-fail exception class. All Phase-7 tools that connect catch it at the outermost async scope and emit a stderr message + non-zero exit (vs. crashing with a traceback). §H.7 mandates best-effort observability.
+- **Envelope schema regex `^[a-z][a-z0-9_]{2,30}$` forbids hyphens** in `source_region`. Tools that mint envelopes on behalf of an operator must use underscore (`hive_inject`), not hyphen.
+
+**Follow-up items worth tracking (non-blocking, from reviews):**
+
+- `hive_trace`: tests don't exercise the typer CLI flag-plumbing for `--live`/`--host`/`--port`/`--timeout`. Add a single `CliRunner` test with patched client factory when time allows.
+- `hive_watch`: class-level fake-client state cleared by a reset at the top of each test, but no `autouse` fixture enforces it — drift-prone; add when convenient. Docstring mentions "colored timeline" per spec §H.3 but implementation is plain text (aspirational spec wording). A `rich`-based prettifier is a post-v0 ergonomics win.
+- `hive_stm`: `@lru_cache` on `_discover_root` makes repeated in-process invocations stick to the first answer; fine for one-shot CLI but flag for test reuse. `_format_slot_value` has a dead `isinstance(value, str)` branch that duplicates the fallthrough. Magic tuple of timestamp keys could become a module constant.
+- `hive_inject`: no size-cap warning for large payloads (JSON-bomb); broker has its own limit so non-blocking. Em-dash in topic-mismatch error renders on UTF-8 terminals but may mangle in `cp1252`.
+
+**Spec-vs-plan deviations from Phase 7:** none. The tools sit entirely within §H.3 / §H.4 / §K.2. Plan Task 7.1–7.4 shapes and spec §H.3 row descriptions match the delivered surface.
+
+---
+
+### Prompt for next Phase-8 session (Phases 3–7 DONE)
 
 Paste the following into a new Claude Code session:
 
@@ -567,46 +612,53 @@ Paste the following into a new Claude Code session:
 
 ```
 You are continuing Hive v0 at C:/repos/hive/ on branch `main`.
-Phases 3 (Runtime DNA), 4 (Region Docker image), 5 (Glia), and
-6 (Bootstrap CLI) are COMPLETE. Both `hive-region:v0` and
-`hive-glia:v0` images build; 691 unit tests + 11 integration
-tests pass; ruff clean. Next: Phase 7 (Observability) or
-Phase 8 (14-region scaffolding). Larry picks.
+Phases 3 (Runtime DNA), 4 (Region Docker image), 5 (Glia),
+6 (Bootstrap CLI), and 7 (Observability tools) are COMPLETE.
+Both `hive-region:v0` and `hive-glia:v0` images build; 691 unit
+tests + 54 integration tests pass (1 skipped on Windows without
+Developer Mode for symlink test); ruff clean. Next: Phase 8
+(14-region scaffolding).
 
 ## Start here
 
-1. Read `docs/HANDOFF.md` in full. The Phase-3/4/5/6 progress tables are the
+1. Read `docs/HANDOFF.md` in full. The Phase-3/4/5/6/7 progress tables are the
    authoritative state snapshot. The "Follow-up items worth tracking"
    sections under each phase list non-blocking cleanup candidates.
 2. Confirm git state:
      git fetch origin && git checkout main && git log --oneline -10
-   Expected HEAD is `2ef219f cli: hive_cli review fixes` or newer.
+   Expected HEAD is `c223619 obs: Phase-7 tool review fixes` or newer.
 3. Confirm environment (assumes `.venv` on Python 3.12 from scripts/setup.sh):
      cd C:/repos/hive && source .venv/Scripts/activate
      python -m pytest tests/unit/ -q                 # 691 passed
-     python -m pytest tests/integration/ -q          # 11 passed
+     python -m pytest tests/integration/ -q          # 54 passed, 1 skipped
      python -m ruff check region_template/ glia/ tools/ tests/
      docker compose config                           # validates
-4. Pick the next phase and read its plan section:
-     docs/superpowers/plans/2026-04-19-hive-v0-plan.md
-   - Phase 7 (Tasks 7.1-7.4): observability — log aggregator, traffic
-     inspector, metric dashboards, debug tooling. Small. PARALLEL-OK.
-   - Phase 8 (Tasks 8.1-8.14): 14-region scaffolding. **PARALLEL-OK** —
-     each region is independent now that glia + CLI exist. Good fit
-     for `superpowers:dispatching-parallel-agents`.
+4. Read the Phase-8 plan section:
+     docs/superpowers/plans/2026-04-19-hive-v0-plan.md (lines 796–831)
+   Phase 8 (Tasks 8.1-8.14): 14-region scaffolding. **PARALLEL-OK** —
+   each region is independent now that glia + CLI + dbg tools exist.
+   Good fit for `superpowers:dispatching-parallel-agents`.
 
-## Suggested order (Larry's call)
+## Phase 8 dispatch pattern
 
-- **Phase 8 first** — the big push: 14 regions scaffolded in parallel
-  dispatches (3-4 at a time per handoff). Each region is independent
-  and can be tested against the real `hive-region:v0` + `hive-glia:v0`
-  images. `hive up` + `hive status` now exist for smoke-testing. The
-  component tests deferred in Phase 5 can be unblocked here.
-- **Phase 7 first** — observability is nice-to-have before Phase 8
-  regions start behaving strangely. Optional; can defer.
-
-Recommendation: **Phase 8 next** — CLI is landed; compose lets you
-smoke-test each region as it lands; Phase 7 is backfillable anytime.
+- Dispatch **3-4 region implementers at a time**, not all 14 in one go
+  (review-loop context per region + parallel-agent git-index race —
+  see Phase-7 gotcha).
+- **Use git worktrees** for isolation where possible: the harness
+  supports `isolation: "worktree"` on Agent dispatch. This avoids the
+  parallel-staging race that damaged one commit during Phase 7.
+- Per-region task shape (identical; vary only by region name):
+  - Copy starter prompt from `docs/starter_prompts/<name>.md`.
+  - Write `regions/<name>/config.yaml` per spec §F.1, F.2 (cognitive
+    regions → Opus; motor_cortex/insula/amygdala/vta → Haiku per §C.9).
+  - Write `regions/<name>/subscriptions.yaml` per spec §F.8.
+  - Empty `handlers/__init__.py`.
+  - `memory/ltm/.gitkeep` (stm.json + per-region `.git/` are created
+    by the region on first boot per §G.2; do NOT `git init` the
+    region during scaffolding).
+  - Commit `regions: scaffold <name>`.
+- After all 14 land, Task 8.15 (integration test): every region's
+  config + handlers load without error.
 
 ## Execution model — unchanged
 
@@ -638,8 +690,8 @@ still pip-install typos, still left alone.
 Spec-vs-plan deviations are catalogued in three sections: Phase-3
 Wave C (8 items touching §C/§B/§A.7/§D.5), Phase 5 (9 items touching
 §E and §F), and Phase 6 (3 items touching §G.1/§G.3/§E.12 — v0
-CLI narrowings). Read all three before the first Phase-7/8
-implementer dispatch.
+CLI narrowings). Phase 7 added no spec deviations. Read all three
+before the first Phase-8 implementer dispatch.
 
 ## Deliverable at end of session
 
