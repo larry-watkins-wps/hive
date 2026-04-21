@@ -1,6 +1,6 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-21 (session 3, Tasks 9–14 complete)*
+*Last updated: 2026-04-21 (session 3, Tasks 9–15 complete)*
 
 **Canonical resume prompt:** `continue observatory v1`
 
@@ -28,8 +28,8 @@
 | v1 Task 12 — Region rendering (phase color + halo + size + ring) | ✅ Complete | Commits `eddc34c` + `aae715a` |
 | v1 Task 13 — Sparks (traveling particles on edges) | ✅ Complete | Commits `bac42b4` + `8e40701` |
 | v1 Task 14 — Modulator fog + rhythm pulse | ✅ Complete | Commits `f3d3e14` + `7eb7fd9` |
-| v1 Task 15 — HUD (self panel + modulators + counters) | ⏳ Next | |
-| v1 Task 16 — Integration + polish | ⏳ Pending | |
+| v1 Task 15 — HUD (self panel + modulators + counters) | ✅ Complete | Commits `79fcb4b` + `44f7c44` |
+| v1 Task 16 — Integration + polish | ⏳ Next | |
 | v2 implementation | ⏳ Pending | |
 | v3 implementation | ⏳ Pending | |
 
@@ -41,14 +41,14 @@
 - Smoke test: `python -c "from observatory.config import Settings; from observatory.service import build_app; build_app(Settings())"` → `ok`
 - Smoke-verified against production `glia/regions_registry.yaml`: 19 regions load correctly (`layer` → `role` mapping).
 - Frontend: `cd observatory/web-src && npm run build` → `observatory/web/index.html` + `assets/index-*.{js,css}` emitted in ~800 ms.
-- Frontend: `cd observatory/web-src && npm run test` → **21 passed** (5 store + 3 ws + 13 topicColors). Typecheck via `npx tsc -b` clean.
+- Frontend: `cd observatory/web-src && npm run test` → **22 passed** (6 store + 3 ws + 13 topicColors). Typecheck via `npx tsc -b` clean.
 - Frontend: `cd observatory/web-src && npm run build` → `observatory/web/` emitted; bundle ~991 kB (three.js + drei + fiber + d3-force-3d); chunk-size warning expected, Task 16 polish.
 
 ## What's done (session 3)
 
-Executed **Tasks 9–14** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each, review-fix commit on top of each. Implementer prompts stored under `observatory/prompts/`. Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–79).
+Executed **Tasks 9–15** with `superpowers:subagent-driven-development` discipline: fresh implementer per task, two-stage review (spec-compliance + code-quality) after each, review-fix commit on top of each. Implementer prompts stored under `observatory/prompts/`. Non-obvious calls logged in `observatory/memory/decisions.md` (entries 46–85).
 
-**Session 3 totals: 6 task commits + 6 review-fix commits + HANDOFF bumps.**
+**Session 3 totals: 7 task commits + 7 review-fix commits + HANDOFF bumps.**
 
 ### Task 9 substantive fixes vs. the plan
 
@@ -100,6 +100,15 @@ Executed **Tasks 9–14** with `superpowers:subagent-driven-development` discipl
 - **Review-fix 3 (Suggestion)** — Fog.tsx `Object.entries(mods)` replaced with module-level `MOD_ENTRIES` tuple array; zero allocations per frame.
 - **Review-fix 4 (Suggestion)** — `scene.background = target` moved to first-frame only (aliases by reference); inline comment explaining Fog's copy-semantics vs. background's alias-semantics.
 
+### Task 15 substantive fixes vs. the plan
+
+- **Drift (Counters.tsx)** — Plan compared `performance.now()/1000` (browser monotonic, origin = page load) against `observed_at` (Python `time.monotonic()`, origin = Python process start). Cross-process clock-origin mismatch produces garbage rate. Replaced with a monotonic-counter sample ring.
+- **Drift (Counters.tsx)** — Plan's `useEffect([envelopes])` re-created the `setInterval` on every envelope push. Fixed to `useEffect([])` with `useStore.getState()` inside the interval.
+- **Drift (App.tsx)** — Preserved Task 11's strict-mode-safety comment that plan Step 5 omitted.
+- **Review-fix 1 (Important)** — Counters Msg/s read 0.0 during the busiest periods once `envelopes.length` plateaued at `RING_CAP=5000`. Added `envelopesReceivedTotal: number` to the store (monotonic, incremented in `pushEnvelope`, seeded from `s.recent.length` in `applySnapshot`). Counters samples the monotonic counter instead. Regression test pins the contract across RING_CAP (22 frontend tests now).
+- **Review-fix 2 (Important)** — Replaced `(a, r: any) => ...` with `(a, r: RegionMeta) => ...` in Counters' reducer. Compile-time guard on `tokens_lifetime` rename.
+- **Review-fix 3 (Suggestion)** — Dedup: exported `MODULATOR_NAMES` + `ModulatorName` type from the store; `Modulators.tsx` imports them instead of maintaining a duplicate local `ORDER` tuple.
+
 ### Prior session (session 2) substantive fixes vs. the plan
 
 - **Task 2** — real `glia/regions_registry.yaml` schema (dict keyed by name with `layer`/`required_capabilities`) reconciled; plan's list-of-dicts format would have silently returned empty.
@@ -111,15 +120,15 @@ Executed **Tasks 9–14** with `superpowers:subagent-driven-development` discipl
 
 ## What's next
 
-**Task 15: HUD — self panel + modulators + counters.** Overlay layout above the canvas: top-left self (identity / developmental stage / age / felt_state) + modulator gauges; bottom strip totals (envelope rate, region count, etc.). Pure React/Tailwind — NOT three.js.
+**Task 16: Final integration — production build + static mount smoke test.** The final v1 task. Wire everything together: backend FastAPI serves the frontend `observatory/web/` bundle as static content; verify against the backend running in a real deploy configuration; final polish pass.
 
-- Plan: search `### Task 15:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 2970).
+- Plan: search `### Task 16:` in `observatory/docs/plans/2026-04-20-observatory-plan.md` (~line 3121).
 - Gotchas to carry forward:
-  - HUD is DOM, not canvas. It mounts over the `<Canvas>` via `position: absolute`. Tailwind classes like `bg-hive-panel`, `bg-hive-ink` are already defined (Task 9).
-  - Self state: `ambient.self` on the store (identity, developmental_stage, age, felt_state). Task 10 follow-up noted: `applyRetained` only handles modulators; self only updates on snapshot. HUD should still render gracefully with empty/undefined self fields.
-  - React component tests for the HUD would need vitest `environment: 'jsdom'` + `@testing-library/react` + `jsdom` devDeps — add only if the plan introduces HUD-specific tests.
-  - HUD should read zustand selectors directly (reactive) since DOM updates are cheap; the `useFrame`-pattern is only needed for per-frame canvas updates.
-  - Envelope-rate counters should derive from the existing `envelopes` ring. Don't spawn new state — compute in-place via a `useMemo` on a short window (e.g., last 5s via a simple length check against `performance.now()` timestamps).
+  - `observatory/service.py::build_app` was wired to mount `observatory/web/` as static content in Task 7; Task 16 should verify this works end-to-end (run the FastAPI app, fetch `/`, expect the built HTML).
+  - `observatory/Dockerfile` expects a `npm ci` against the committed `package-lock.json` + `npm run build`. Task 9 made this work; Task 16 should verify the Dockerfile actually builds the image end-to-end.
+  - v1 backend + frontend suite is **67 Python unit + 1 component + 22 frontend tests**. Task 16's additions (if any) should keep these green.
+  - If Task 16 wires any CI checks, add `environment: 'jsdom'` + `@testing-library/react` + `jsdom` devDeps when the first React component test lands — not preemptively.
+  - The scene's chunk size (~998 kB) is a known follow-up. If Task 16 proposes code-splitting (three.js / drei / d3-force-3d into separate chunks), that lines up with spec §Bundle goals.
 
 ## Follow-ups / open threads
 
@@ -149,3 +158,4 @@ Executed **Tasks 9–14** with `superpowers:subagent-driven-development` discipl
 | 2026-04-21 | Session 3 continued: Task 12 complete + review-fix. Region meshes (base sphere + halo + handler torus) with `useFrame`-driven color/halo/scale. First `useFrame` usage in the project. Pre-approved plan deviations: preserved Task 11's `useMemo` in Scene.tsx and applied the same pattern to Regions.tsx (plan's `useStore((s) => Object.keys(s.regions))` would cause re-renders on every envelope push). Review-fix addressed 1 Critical + 2 Important: torus stationary (no ref), `PHASE_COLOR` missing `bootstrap`/`shutdown` (backend emits these), and per-frame `new Color()` allocation hoisted to module-level cache. Python suite still 67 unit + 1 component passing; 8 frontend tests green. Next is Task 13 (sparks — traveling particles on edges). |
 | 2026-04-21 | Session 3 continued: Task 13 complete + review-fix. Traveling sparks via `InstancedMesh` (cap 2000, 800 ms lifetime) colored by topic-prefix mapper (pure, unit-tested, TDD red-phase captured). First InstancedMesh use in the project. Pre-approved drifts: added `topicColorObject()` + module-level `COLOR_CACHE` to avoid ~50–300 `new Color()` allocations/sec under live traffic (same pattern as Task 12's `PHASE_COLOR_CACHE`); removed plan's dead `useEffect` import + unused `dt` param. Review-fix addressed 1 Important: JSDoc DO-NOT-MUTATE on cached Color return. Plus two suggestion-level comment additions and two test additions (empty-string, case-sensitivity). 21 frontend tests (was 8); Python suite 67 unit + 1 component untouched. Next is Task 14 (modulator fog + rhythm pulse). |
 | 2026-04-21 | Session 3 continued: Task 14 complete + review-fix. Scene-wide ambient channels: `ModulatorFog` tints scene.fog + scene.background from weighted modulator values; `RhythmPulse` modulates ambient-light intensity at perceptually-scaled gamma/beta/theta tempo. Pre-approved drifts: Fog.tsx hoisted BG constants + reusable targetRef (no per-frame Color alloc); Rhythm.tsx uses `useStore.getState()` non-reactively; Scene.tsx `useMemo` preserved (3rd time plan reverts it). Review-fix addressed 2 Important: rhythm pulse now decays after 5s staleness; scan window replaced with incremental lastLenRef-based scan (same as Sparks). Plus Fog's MOD_ENTRIES tuple table + scene.background moved to first-frame-only. 21 frontend tests unchanged; Python suite 67 unit + 1 component untouched. Next is Task 15 (HUD — self panel + modulators + counters). |
+| 2026-04-21 | Session 3 continued: Task 15 complete + review-fix. HUD (SelfPanel / Modulators / Counters) rendered as DOM overlay above `<Canvas>` via Tailwind. Pre-approved drifts: Counters.tsx avoids cross-process clock-origin bug (plan compared `performance.now()/1000` to server-side `observed_at` = `time.monotonic()`) + `useEffect([])` instead of `[envelopes]`; App.tsx preserves Task 11's strict-mode comment. Review-fix addressed 2 Important + 1 Suggestion: added `envelopesReceivedTotal` monotonic counter to the store so Counters no longer reads 0.0 msg/s when the envelope ring plateaus at RING_CAP; typed Counters reducer accumulator as `RegionMeta` (was `any`); exported `MODULATOR_NAMES` from the store + deduped `Modulators.tsx`. 22 frontend tests (was 21, +1 regression); Python suite 67 unit + 1 component untouched. Next is Task 16 (final integration + production build + static mount smoke test). |
