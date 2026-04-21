@@ -39,3 +39,51 @@ async def test_append_lazy_creates_file_and_parent(tmp_path: Path) -> None:
     body = rolling.read_text(encoding="utf-8")
     assert "## 2026-04-22T03:14:00+00:00 — quiet_window" in body
     assert "Observed that text input produced no speech intent." in body
+
+
+@pytest.mark.asyncio
+async def test_two_appends_produce_two_sections_in_order(tmp_path: Path) -> None:
+    region_root = tmp_path / "regions" / "test_region"
+    region_root.mkdir(parents=True)
+    store = AppendixStore(region_root)
+
+    await store.append(
+        "first cycle insight",
+        when=datetime(2026, 4, 22, 3, 14, 0, tzinfo=UTC),
+        trigger="quiet_window",
+    )
+    await store.append(
+        "second cycle insight",
+        when=datetime(2026, 4, 22, 9, 41, 0, tzinfo=UTC),
+        trigger="quiet_window",
+    )
+
+    body = store.path.read_text(encoding="utf-8")
+    first_idx = body.index("first cycle insight")
+    second_idx = body.index("second cycle insight")
+    assert first_idx < second_idx
+    assert body.count("## 2026-04-22T03:14:00+00:00") == 1
+    assert body.count("## 2026-04-22T09:41:00+00:00") == 1
+
+
+@pytest.mark.asyncio
+async def test_external_content_is_preserved(tmp_path: Path) -> None:
+    region_root = tmp_path / "regions" / "test_region"
+    (region_root / "memory" / "appendices").mkdir(parents=True)
+    rolling = region_root / "memory" / "appendices" / "rolling.md"
+    rolling.write_text(
+        "# Rolling appendix\n\nSome notes I pasted in by hand.\n",
+        encoding="utf-8",
+    )
+
+    store = AppendixStore(region_root)
+    await store.append(
+        "scheduled insight",
+        when=datetime(2026, 4, 22, 12, 0, 0, tzinfo=UTC),
+        trigger="sleep",
+    )
+
+    body = rolling.read_text(encoding="utf-8")
+    assert "Some notes I pasted in by hand." in body
+    assert "scheduled insight" in body
+    assert body.index("Some notes I pasted in by hand.") < body.index("scheduled insight")
