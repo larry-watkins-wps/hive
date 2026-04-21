@@ -25,11 +25,18 @@ class Decimator:
         if max_rate <= 0:
             raise ValueError("max_rate must be positive")
         self._max = max_rate
-        self._window_start: float = 0.0
+        # `None` until the first call — avoids the phantom "window ending at
+        # now=0.0" that would let callers with small `now` values accidentally
+        # rotate on their first event.
+        self._window_start: float | None = None
         self._kept_in_window: int = 0
         self._dropped_in_window: int = 0
+        self._total_dropped: int = 0
 
     def _maybe_rotate(self, now: float) -> None:
+        if self._window_start is None:
+            self._window_start = now
+            return
         if now - self._window_start >= 1.0:
             self._window_start = now
             self._kept_in_window = 0
@@ -43,7 +50,25 @@ class Decimator:
         # Over budget. V1: drop unconditionally; count the drop.
         # (v1.1 will differentiate via _is_low_priority — see module docstring.)
         self._dropped_in_window += 1
+        self._total_dropped += 1
         return False
 
+    def drops_in_current_window(self) -> int:
+        """Drops since the current 1 s window began.
+
+        Resets to 0 on every window rotation. Use ``total_dropped`` for a
+        cumulative counter.
+        """
+        return self._dropped_in_window
+
+    def total_dropped(self) -> int:
+        """Cumulative drops since the Decimator was constructed."""
+        return self._total_dropped
+
     def drop_count(self) -> int:
+        """Deprecated alias for :meth:`drops_in_current_window`.
+
+        Retained so existing callers don't break; new code should call
+        ``drops_in_current_window()`` or ``total_dropped()`` explicitly.
+        """
         return self._dropped_in_window

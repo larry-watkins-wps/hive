@@ -24,6 +24,13 @@ class Adjacency:
                 del self._events[pair]
 
     def snapshot(self, now: float) -> list[tuple[str, str, float]]:
+        """Return ``[(src, dst, mean_msgs_per_second_over_window), ...]``.
+
+        The third tuple element is the mean rate over the full window
+        (``len(events_in_window) / window_seconds``), not an instantaneous
+        rate. Consumers expecting smooth edge-thickness values want this;
+        a burst-detector would need a separate shorter window.
+        """
         self._evict(now)
         return [
             (src, dst, len(events) / self._window)
