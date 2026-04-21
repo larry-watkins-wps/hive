@@ -104,11 +104,17 @@ class RegionReader:
         if not handlers_dir.exists() or not handlers_dir.is_dir():
             return []
 
+        # Walk with follow_symlinks=False so in-sandbox symlinked directories
+        # do not silently cause infinite traversal (cycle / DoS) and do not
+        # yield .py files whose path string hides a symlink hop. `_validate`
+        # in the per-entry loop below also rejects leaf symlinks.
         entries: list[HandlerEntry] = []
-        for py in sorted(handlers_dir.rglob("*.py")):
-            # Run each through validation: relative-to-region-dir, not a symlink,
-            # size cap. We do not reject based on region existence here
-            # (region_dir exists by virtue of handlers_dir being under it).
+        py_paths: list[Path] = []
+        for dirpath, _dirnames, filenames in handlers_dir.walk(follow_symlinks=False):
+            for fname in filenames:
+                if fname.endswith(".py"):
+                    py_paths.append(dirpath / fname)
+        for py in sorted(py_paths):
             try:
                 rel = py.relative_to(region_dir).as_posix()
             except ValueError:

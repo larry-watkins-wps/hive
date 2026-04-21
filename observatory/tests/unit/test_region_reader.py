@@ -101,6 +101,23 @@ def test_read_config_redacts_secrets(regions_root: Path) -> None:
     assert cfg["nested"]["aws_secret"] == "***"
 
 
+def test_read_config_list_of_dicts_recurses(regions_root: Path) -> None:
+    """Spec §6.1 promises 'lists of dicts too'. Verify inner dicts with secret
+    keys inside a non-secret-keyed list are still walked and redacted."""
+    (regions_root / "testregion" / "config.yaml").write_text(
+        "upstreams:\n"
+        "  - name: primary\n"
+        "    api_key: live-key-1\n"
+        "  - name: backup\n"
+        "    auth_token: live-token-2\n",
+        encoding="utf-8",
+    )
+    reader = RegionReader(regions_root)
+    cfg = reader.read_config("testregion")
+    assert cfg["upstreams"][0] == {"name": "primary", "api_key": "***"}
+    assert cfg["upstreams"][1] == {"name": "backup", "auth_token": "***"}
+
+
 def test_read_config_case_insensitive_suffix(regions_root: Path) -> None:
     (regions_root / "testregion" / "config.yaml").write_text(
         "Session_Key: abc\nSESSION_KEY: def\napi_password: ok\n", encoding="utf-8",
