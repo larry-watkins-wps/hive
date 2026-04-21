@@ -1,0 +1,37 @@
+schema_version: 1
+subscriptions:
+  # Base subscriptions (all regions)
+  - topic: hive/self/#
+    qos: 1
+    description: "Global identity state"
+  - topic: hive/modulator/#
+    qos: 0
+    description: "Ambient modulator fields"
+  - topic: hive/rhythm/#
+    qos: 0
+    description: "System rhythms"
+  - topic: hive/broadcast/#
+    qos: 1
+    description: "System broadcasts (sleep, shutdown, etc.)"
+  - topic: hive/attention/#
+    qos: 0
+    description: "Attention focus state"
+  - topic: hive/interoception/#
+    qos: 0
+    description: "Internal body state"
+  # Region-specific subscriptions
+  - topic: hive/sensory/visual/processed
+    qos: 0
+    description: "Processed visual frames for threat detection"
+  - topic: hive/sensory/visual/features
+    qos: 0
+    description: "Visual feature vectors for threat detection"
+  - topic: hive/sensory/auditory/features
+    qos: 0
+    description: "Auditory features for threat detection"
+  - topic: hive/sensory/auditory/events
+    qos: 0
+    description: "Auditory events for threat detection"
+  - topic: hive/cognitive/hippocampus/response
+    qos: 1
+    description: "Memory responses for emotional context"
