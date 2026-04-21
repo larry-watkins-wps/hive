@@ -4,3 +4,9 @@ __pycache__/
 node_modules/
 web/
 .pytest_cache/
+# TypeScript project-reference build artifacts (tsc -b for vite/tailwind configs)
+*.tsbuildinfo
+web-src/vite.config.js
+web-src/vite.config.d.ts
+web-src/tailwind.config.js
+web-src/tailwind.config.d.ts
