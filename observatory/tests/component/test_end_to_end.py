@@ -96,6 +96,17 @@ def broker_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
 
     Module scope keeps the container alive across both the v1 WS test and
     the v2 REST test — mosquitto startup is the dominant cost of this file.
+
+    Known cross-test coupling: ``test_publish_reaches_websocket`` publishes
+    ``hive/cognitive/prefrontal/plan`` with ``retain=True``. That retained
+    message persists on the broker into any subsequent test in this module,
+    so a later test's observatory lifespan will receive it when the
+    subscriber does ``subscribe("hive/#")``. The current v2 test only hits
+    ``/config`` and ``/handlers`` (filesystem-backed), so ring/cache bleed
+    is invisible to its assertions. New tests that inspect ring contents,
+    adjacency state, or a pristine WS snapshot must either reset the
+    retained topic in setup (publish empty payload with ``retain=True``) or
+    move to a function-scoped fixture.
     """
     conf_dir = tmp_path_factory.mktemp("mosquitto_conf")
     conf_path = conf_dir / "mosquitto.conf"
@@ -231,5 +242,14 @@ def test_v2_endpoints_over_real_service(tmp_path, broker_url) -> None:
 
         r = client.get("/api/regions/testregion/handlers")
         assert r.status_code == 200  # noqa: PLR2004
-        assert len(r.json()) == 1
+        entries = r.json()
+        # Spec §8.2 requires path + size assertions (not just count).
+        # Compare size against the actual on-disk bytes rather than a hard-
+        # coded literal — Python's `write_text` on Windows translates `\n`
+        # to `\r\n` so the same source string ships 25 B on Windows, 23 B
+        # on POSIX. Self-verifying assertion sidesteps that.
+        assert len(entries) == 1
+        assert entries[0]["path"] == "handlers/on_wake.py"
+        on_disk = (regions_root / "testregion" / "handlers" / "on_wake.py").stat().st_size
+        assert entries[0]["size"] == on_disk
         assert r.headers["cache-control"] == "no-store"
