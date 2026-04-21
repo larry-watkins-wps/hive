@@ -20,6 +20,7 @@ that is intentionally component-scoped.
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import socket
 import subprocess
@@ -102,9 +103,12 @@ _MINIMAL_HANDLERS_INIT = '"""Test region handlers package (stub)."""\n'
 
 @pytest.fixture
 def tmp_region_dir(tmp_path: Path) -> Generator[Path, None, None]:
-    """Create a minimal on-disk region that ``config_loader.load_config`` accepts.
+    """Create a minimal on-disk region for tests that need a real region tree.
 
-    Yields the region directory path: ``<tmp_path>/regions/test_region``.
+    Yields the region **directory** path: ``<tmp_path>/regions/test_region``.
+    To load the config, callers pass ``region_dir / "config.yaml"`` to
+    :func:`region_template.config_loader.load_config` — the loader takes a
+    file path, not a directory.
 
     Layout::
 
@@ -217,14 +221,18 @@ def broker_container(
     try:
         container.start()
         wait_for_logs(container, "mosquitto version", timeout=30)
-        host = container.get_container_host_ip()
-        yield _BrokerInfo(host=host, port=host_port)
     except Exception as exc:  # noqa: BLE001
+        # Only the *start-up* path converts to a skip. Once we yield, any
+        # exception is a real test failure and must propagate unchanged.
+        with contextlib.suppress(Exception):
+            container.stop()
         pytest.skip(f"broker_container failed to start: {exc}")
         return
-    finally:
-        import contextlib  # noqa: PLC0415
 
+    host = container.get_container_host_ip()
+    try:
+        yield _BrokerInfo(host=host, port=host_port)
+    finally:
         with contextlib.suppress(Exception):
             container.stop()
 
@@ -287,12 +295,11 @@ def compose_stack() -> Generator[_ComposeStack, None, None]:
         project,
     ]
 
-    subprocess.run(
-        [*compose_cmd_base, "up", "-d"],
-        check=True,
-    )
-
     try:
+        subprocess.run(
+            [*compose_cmd_base, "up", "-d"],
+            check=True,
+        )
         # Task 9.2 will document the broker port; default MQTT port for now.
         yield _ComposeStack(
             compose_file=_COMPOSE_FILE,
