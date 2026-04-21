@@ -60,6 +60,7 @@ from region_template.llm_adapter import (
     StreamChunk,
     Tool,
     ToolCall,
+    _replace_stream,
 )
 from region_template.token_ledger import TokenLedger, TokenUsage
 from region_template.types import CapabilityProfile
@@ -865,6 +866,62 @@ class TestProviderRouting:
         req = CompletionRequest(messages=[Message(role="user", content="hi")])
         await adapter.complete(req)
         assert state["calls"][0]["model"] == "ollama/llama3"
+
+
+# ---------------------------------------------------------------------------
+# Sampling parameter hygiene (spec §C — avoid temperature+top_p collision)
+# ---------------------------------------------------------------------------
+
+
+_EXPLICIT_TOP_P = 0.9
+
+
+class TestSamplingParameters:
+    """Anthropic 2025+ models reject simultaneous ``temperature`` + ``top_p``.
+
+    Hive's default is to send temperature only; top_p is opt-in.
+    """
+
+    async def test_default_request_omits_top_p(
+        self, anthropic_env: None, monkeypatch: pytest.MonkeyPatch  # noqa: ARG002
+    ) -> None:
+        state = _patch_litellm(
+            monkeypatch, lambda **kw: _make_success_response()  # noqa: ARG005
+        )
+        adapter = _make_adapter()
+        req = CompletionRequest(messages=[Message(role="user", content="hi")])
+        await adapter.complete(req)
+        kwargs = state["calls"][0]
+        assert "temperature" in kwargs
+        assert "top_p" not in kwargs
+
+    async def test_explicit_top_p_is_forwarded(
+        self, anthropic_env: None, monkeypatch: pytest.MonkeyPatch  # noqa: ARG002
+    ) -> None:
+        state = _patch_litellm(
+            monkeypatch, lambda **kw: _make_success_response()  # noqa: ARG005
+        )
+        adapter = _make_adapter()
+        req = CompletionRequest(
+            messages=[Message(role="user", content="hi")],
+            top_p=_EXPLICIT_TOP_P,
+        )
+        await adapter.complete(req)
+        assert state["calls"][0]["top_p"] == _EXPLICIT_TOP_P
+
+    async def test_stream_replaced_request_preserves_top_p_none(
+        self, anthropic_env: None, monkeypatch: pytest.MonkeyPatch  # noqa: ARG002
+    ) -> None:
+        """The internal _replace_stream helper must carry top_p=None through.
+
+        Regression guard: an earlier default of ``top_p=1.0`` silently
+        injected the field; make sure the None default survives the
+        stream/non-stream transform used during streaming calls.
+        """
+        req = CompletionRequest(messages=[Message(role="user", content="hi")])
+        assert req.top_p is None
+        transformed = _replace_stream(req, stream=True)
+        assert transformed.top_p is None
 
 
 # ---------------------------------------------------------------------------

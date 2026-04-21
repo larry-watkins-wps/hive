@@ -138,7 +138,11 @@ class CompletionRequest:
     tools: Sequence[Tool] = ()
     max_tokens: int = 2048
     temperature: float = 0.7
-    top_p: float = 1.0
+    # top_p defaults to ``None`` (omit the field from the API call). Anthropic
+    # models 2025+ reject setting both ``temperature`` and ``top_p``; setting a
+    # default of 1.0 here would silently break every call. Callers that truly
+    # need top_p should set it explicitly and leave ``temperature`` unset.
+    top_p: float | None = None
     stop: Sequence[str] = ()
     stream: bool = False
     cache_strategy: CacheStrategy = "system"
@@ -417,8 +421,11 @@ class LlmAdapter:
             "messages": messages_dicts,
             "max_tokens": req.max_tokens,
             "temperature": req.temperature,
-            "top_p": req.top_p,
         }
+        # Omit top_p unless the caller explicitly set one — Anthropic rejects
+        # simultaneous temperature + top_p on 2025+ models.
+        if req.top_p is not None:
+            kwargs["top_p"] = req.top_p
         if req.stop:
             kwargs["stop"] = list(req.stop)
         if req.stream:
