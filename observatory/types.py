@@ -8,7 +8,7 @@ from typing import Any
 @dataclass(frozen=True)
 class RingRecord:
     """One observed MQTT envelope plus derived fields."""
-    observed_at: float              # monotonic seconds since epoch
+    observed_at: float              # monotonic seconds (time.monotonic()); origin is process-local
     topic: str
     envelope: dict[str, Any]        # parsed Envelope JSON
     source_region: str | None       # from envelope.source_region if present
