@@ -68,3 +68,55 @@ describe('store', () => {
     expect(s.getState().envelopesReceivedTotal).toBe(5100);
   });
 });
+
+function withRegions(store: ReturnType<typeof createStore>, ...names: string[]) {
+    const regions = Object.fromEntries(
+        names.map((n) => [n, { role: 'x', llm_model: '', stats: {
+            phase: 'wake', queue_depth: 0, stm_bytes: 0, tokens_lifetime: 0,
+            handler_count: 0, last_error_ts: null, msg_rate_in: 0, msg_rate_out: 0,
+            llm_in_flight: false,
+        } }]),
+    );
+    store.getState().applyRegionDelta(regions);
+}
+
+describe('selection', () => {
+  it('select(name) sets selectedRegion', () => {
+    const store = createStore();
+    store.getState().select('mpfc');
+    expect(store.getState().selectedRegion).toBe('mpfc');
+  });
+  it('select(null) clears selectedRegion', () => {
+    const store = createStore();
+    store.getState().select('mpfc');
+    store.getState().select(null);
+    expect(store.getState().selectedRegion).toBeNull();
+  });
+  it('cycle is a no-op when selectedRegion is null', () => {
+    const store = createStore();
+    withRegions(store, 'a', 'b', 'c');
+    store.getState().cycle(1);
+    expect(store.getState().selectedRegion).toBeNull();
+  });
+  it('cycle(+1) steps forward alphabetically', () => {
+    const store = createStore();
+    withRegions(store, 'charlie', 'alpha', 'bravo');
+    store.getState().select('alpha');
+    store.getState().cycle(1);
+    expect(store.getState().selectedRegion).toBe('bravo');
+  });
+  it('cycle(+1) wraps from last to first', () => {
+    const store = createStore();
+    withRegions(store, 'alpha', 'bravo', 'charlie');
+    store.getState().select('charlie');
+    store.getState().cycle(1);
+    expect(store.getState().selectedRegion).toBe('alpha');
+  });
+  it('cycle(-1) wraps from first to last', () => {
+    const store = createStore();
+    withRegions(store, 'alpha', 'bravo', 'charlie');
+    store.getState().select('alpha');
+    store.getState().cycle(-1);
+    expect(store.getState().selectedRegion).toBe('charlie');
+  });
+});

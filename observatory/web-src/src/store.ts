@@ -44,11 +44,14 @@ type State = {
   envelopesReceivedTotal: number;
   adjacency: Array<[string, string, number]>;
   ambient: Ambient;
+  selectedRegion: string | null;
   applySnapshot: (s: Snapshot) => void;
   applyRegionDelta: (regions: Record<string, RegionMeta>) => void;
   applyAdjacency: (pairs: Array<[string, string, number]>) => void;
   applyRetained: (topic: string, payload: Record<string, unknown>) => void;
   pushEnvelope: (env: Envelope) => void;
+  select: (name: string | null) => void;
+  cycle: (direction: 1 | -1) => void;
 };
 
 const RING_CAP = 5000;
@@ -84,6 +87,7 @@ export function createStore(): UseBoundStore<StoreApi<State>> {
     envelopesReceivedTotal: 0,
     adjacency: [],
     ambient: { modulators: {}, self: {} },
+    selectedRegion: null,
     applySnapshot: (s) => set({
       regions: s.regions,
       envelopes: s.recent,
@@ -107,6 +111,17 @@ export function createStore(): UseBoundStore<StoreApi<State>> {
       // `envelopesReceivedTotal` is monotonic (unlike `envelopes.length` which
       // plateaus at RING_CAP); Counters HUD samples it to compute msg/s.
       set({ envelopes: next, envelopesReceivedTotal: get().envelopesReceivedTotal + 1 });
+    },
+    select: (name) => set({ selectedRegion: name }),
+    cycle: (direction) => {
+      const s = get();
+      if (s.selectedRegion == null) return;
+      const names = Object.keys(s.regions).sort();
+      if (names.length === 0) return;
+      const idx = names.indexOf(s.selectedRegion);
+      if (idx < 0) return;
+      const next = (idx + direction + names.length) % names.length;
+      set({ selectedRegion: names[next] });
     },
   }));
 }
