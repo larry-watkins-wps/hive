@@ -649,7 +649,7 @@ All 14 regions scaffolded, one commit per region per Principle XII. Task 8.15 in
 
 **Model assignments** (plan rule):
 - **Haiku** (`claude-haiku-4-5-20251001`) — `motor_cortex`, `insula`, `amygdala`, `vta`. Reduced budgets: 500k in / 100k out / $10 daily.
-- **Opus** (`claude-opus-4-6-20260401`) — other 10. Full budgets: 2M in / 300k out / $50 daily.
+- **Opus** (`claude-sonnet-4-6`) — other 10. Full budgets: 2M in / 300k out / $50 daily.
 
 **Temperature assignments**:
 - `0.3` — thalamus (routing, should be deterministic).

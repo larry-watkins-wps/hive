@@ -9,13 +9,13 @@
 # vars — never in this file. See spec §C.10 for the standard names.
 
 model_list:
-  - model_name: claude-opus
+  - model_name: claude-sonnet
     litellm_params:
-      model: anthropic/claude-opus-4-6-20260401
+      model: anthropic/claude-sonnet-4-6
       max_tokens: 4096
   - model_name: claude-haiku
     litellm_params:
-      model: anthropic/claude-haiku-4-6-20260401
+      model: anthropic/claude-haiku-4-5-20251001
   - model_name: llama-local
     litellm_params:
       model: ollama/llama3.3:70b

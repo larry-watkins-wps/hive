@@ -2008,7 +2008,7 @@ Each region's `config.yaml` declares its LLM choice:
 name: auditory_cortex
 llm:
   provider: anthropic
-  model: claude-opus-4-6-20260401
+  model: claude-sonnet-4-6
   params:
     temperature: 0.3
     max_tokens: 4096
@@ -2308,7 +2308,7 @@ For per-region router settings beyond env, `region_template/litellm.config.yaml`
 model_list:
   - model_name: claude-opus
     litellm_params:
-      model: anthropic/claude-opus-4-6-20260401
+      model: anthropic/claude-sonnet-4-6
       max_tokens: 4096
   - model_name: claude-haiku
     litellm_params:
@@ -3267,7 +3267,7 @@ schema_version: 1
 # LLM choice (see C.4)
 llm:
   provider: anthropic
-  model: claude-opus-4-6-20260401
+  model: claude-sonnet-4-6
   params:
     temperature: 0.5
     max_tokens: 4096
