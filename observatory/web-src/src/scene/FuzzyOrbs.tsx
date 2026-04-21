@@ -18,6 +18,16 @@ const PHASE_COLOR: Record<string, number> = {
   unknown: 0x6aa8ff,
 };
 
+/**
+ * Per-region base orb size. Executive (mPFC) gets 1.8× to visually pin
+ * the center of the force graph; everything else is unit. Exported so
+ * Labels (Task 10) can position its CSS2DObject above the actual orb
+ * height instead of a hardcoded offset.
+ */
+export function regionSize(meta: RegionMeta | undefined): number {
+  return meta?.role === 'executive' ? 1.8 : 1.0;
+}
+
 export type PhaseBase = {
   color: number;
   emissive: number;
@@ -206,7 +216,7 @@ export function FuzzyOrbs({ dimFactor, onRegionClick, refMap, nodesRef }: FuzzyO
         const meta = regions[name];
         // Placeholder size heuristic — v1 did not differentiate region size.
         // Executive (mPFC) renders larger so the center-pin stands out.
-        const size = meta?.role === 'executive' ? 1.8 : 1.0;
+        const size = regionSize(meta);
         const initial = phaseBase(meta?.stats?.phase ?? 'unknown');
         const outerScale = size * initial.outerScale;
         const midScale = size * 2.6;

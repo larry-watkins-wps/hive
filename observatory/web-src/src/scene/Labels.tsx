@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { useStore, type RegionMeta } from '../store';
+import { regionSize } from './FuzzyOrbs';
 
 // -----------------------------------------------------------------------------
 // Formatting helpers
@@ -174,6 +175,16 @@ export function Labels({ refMap }: LabelsProps) {
       window.removeEventListener('resize', onResize);
       renderer.domElement.remove();
       rendererRef.current = null;
+      // If the renderer is ever recreated (Canvas `gl` swap, HMR, WebGL
+      // context loss), the DOM overlay goes with it — but the CSS2DObjects
+      // attached to FuzzyOrb groups in the scene would dangle. Tear them
+      // down here so the per-region mount effect can rebuild cleanly next
+      // render. In steady state `gl` is stable and this path never fires.
+      for (const [name, entry] of labelObjRefs.current.entries()) {
+        entry.obj.parent?.remove(entry.obj);
+        entry.els.root.remove();
+        labelObjRefs.current.delete(name);
+      }
     };
   }, [gl]);
 
@@ -195,14 +206,18 @@ export function Labels({ refMap }: LabelsProps) {
         labelObjRefs.current.delete(name);
       }
     }
-    // Add new
+    // Add new — y-offset scales with region size (spec §5.2: `r.size × 1.6`)
+    // so executive (mPFC, size=1.8) labels sit above the larger orb instead
+    // of midway through it.
     for (const name of names) {
       if (labelObjRefs.current.has(name)) continue;
       const parent = refMap.current.get(name);
       if (!parent) continue;
+      const meta = regions[name];
+      const size = regionSize(meta);
       const els = buildLabelEl();
       const obj = new CSS2DObject(els.root);
-      obj.position.set(0, 1.6, 0);
+      obj.position.set(0, 1.6 * size, 0);
       parent.add(obj);
       labelObjRefs.current.set(name, { obj, els });
     }
@@ -221,29 +236,55 @@ export function Labels({ refMap }: LabelsProps) {
   // We traverse lazily on each move rather than caching the picker list so
   // mid-session region churn (regions enter / leave / re-register) stays
   // correct without a separate invalidation path.
+  // Picker list cached per `namesKey`. FuzzyOrbs' picker meshes are stable
+  // for the lifetime of a region in the store, so rebuilding this list on
+  // every pointermove (14 × ~5 mesh traversal) was unnecessary GC churn.
+  const pickersRef = useRef<THREE.Object3D[]>([]);
+  useEffect(() => {
+    const pickers: THREE.Object3D[] = [];
+    for (const obj of refMap.current.values()) {
+      obj.traverse((child) => {
+        if ((child as THREE.Object3D).userData?.name) pickers.push(child);
+      });
+    }
+    pickersRef.current = pickers;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [namesKey, refMap]);
+
   useEffect(() => {
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
+    // Track prior cursor so we only touch it on hover-in / hover-out, not
+    // every pointer move. Setting `cursor: 'grab'` each move would fight
+    // CameraControls' grab→grabbing state transition during orbit drags.
+    let lastHover: string | null = null;
     const onMove = (ev: PointerEvent) => {
       const rect = gl.domElement.getBoundingClientRect();
       mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(mouse, camera);
-      const pickers: THREE.Object3D[] = [];
-      for (const obj of refMap.current.values()) {
-        obj.traverse((child) => {
-          if ((child as THREE.Object3D).userData?.name) pickers.push(child);
-        });
-      }
-      const hits = raycaster.intersectObjects(pickers, false);
-      hoveredName.current = hits.length
+      const hits = raycaster.intersectObjects(pickersRef.current, false);
+      const nextHover: string | null = hits.length
         ? (hits[0].object.userData.name as string)
         : null;
-      gl.domElement.style.cursor = hoveredName.current ? 'pointer' : 'grab';
+      hoveredName.current = nextHover;
+      if (nextHover !== lastHover) {
+        if (nextHover) {
+          gl.domElement.style.cursor = 'pointer';
+        } else {
+          // Remove the inline style so the canvas inherits drei's cursor
+          // (grab idle → grabbing during drag).
+          gl.domElement.style.removeProperty('cursor');
+        }
+        lastHover = nextHover;
+      }
     };
     gl.domElement.addEventListener('pointermove', onMove);
-    return () => gl.domElement.removeEventListener('pointermove', onMove);
-  }, [gl, camera, refMap]);
+    return () => {
+      gl.domElement.removeEventListener('pointermove', onMove);
+      gl.domElement.style.removeProperty('cursor');
+    };
+  }, [gl, camera]);
 
   // --- Per-frame text + class update + CSS2D render -------------------------
   //
