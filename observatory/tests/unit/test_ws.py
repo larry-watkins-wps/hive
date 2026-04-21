@@ -136,3 +136,158 @@ async def test_broadcast_envelope_drops_when_queue_above_high_water(pieces) -> N
     await hub.broadcast_envelope(rec)
     # Queue size unchanged — drop path exercised.
     assert client.queue.qsize() == baseline
+    # Drop counter incremented so the next delta tick can emit `decimated`.
+    assert client.dropped_since_last_delta == 1
+
+
+@pytest.mark.asyncio
+async def test_broadcast_envelope_increments_drop_counter_when_decimator_rejects(
+    pieces,
+) -> None:
+    """When the per-client decimator says `should_keep=False`, the drop is
+    counted on the client (so ``_delta_loop`` can surface it via
+    ``decimated``) but nothing lands on the queue."""
+    from observatory.decimator import Decimator  # noqa: PLC0415
+
+    hub, _ring, _cache, _reg, _adj = pieces
+    # max_rate=1 → second envelope in the same 1s window is rejected.
+    client = _Client(ws=None, decimator=Decimator(max_rate=1))  # type: ignore[arg-type]
+    hub._clients.add(client)
+
+    rec = RingRecord(
+        observed_at=1.0,
+        topic="hive/x",
+        envelope={},
+        source_region="a",
+        destinations=("b",),
+    )
+    await hub.broadcast_envelope(rec)
+    await hub.broadcast_envelope(rec)
+    # First kept, second rejected by the decimator.
+    assert client.queue.qsize() == 1
+    assert client.dropped_since_last_delta == 1
+
+
+@pytest.mark.asyncio
+async def test_delta_loop_emits_decimated_message_when_drops_accumulated(
+    pieces, monkeypatch
+) -> None:
+    """After an envelope drop, the next `_delta_loop` tick should enqueue a
+    `decimated` message for that client and reset the counter."""
+    import observatory.ws as ws_module  # noqa: PLC0415
+
+    # Make the delta loop tick immediately.
+    monkeypatch.setattr(ws_module, "_DELTA_INTERVAL_S", 0.0)
+
+    hub, _ring, _cache, _reg, _adj = pieces
+    client = _Client(ws=None)  # type: ignore[arg-type]
+    client.dropped_since_last_delta = 5  # pretend 5 envelopes were dropped
+    hub._clients.add(client)
+
+    # Run one iteration of the delta loop body by driving it directly.
+    task = __import__("asyncio").create_task(hub._delta_loop())
+    try:
+        # Wait until the client has received the three expected messages.
+        for _ in range(50):  # up to ~1 s
+            if client.queue.qsize() >= 3:  # noqa: PLR2004 — adjacency + region_delta + decimated
+                break
+            await __import__("asyncio").sleep(0.02)
+    finally:
+        task.cancel()
+        try:
+            await task
+        except __import__("asyncio").CancelledError:
+            pass
+
+    msgs = []
+    while not client.queue.empty():
+        msgs.append(client.queue.get_nowait())
+    types = [m["type"] for m in msgs]
+    assert "decimated" in types
+    decimated = next(m for m in msgs if m["type"] == "decimated")
+    assert decimated["payload"]["dropped"] == 5  # noqa: PLR2004
+    # Counter reset after emit.
+    assert client.dropped_since_last_delta == 0
+
+
+@pytest.mark.asyncio
+async def test_delta_loop_survives_transient_exception(pieces, monkeypatch) -> None:
+    """A raise inside the body of `_delta_loop` must not kill the loop —
+    subsequent ticks should continue delivering deltas."""
+    import observatory.ws as ws_module  # noqa: PLC0415
+
+    monkeypatch.setattr(ws_module, "_DELTA_INTERVAL_S", 0.0)
+
+    hub, _ring, _cache, _reg, _adj = pieces
+    client = _Client(ws=None)  # type: ignore[arg-type]
+    hub._clients.add(client)
+
+    # Arrange: make the registry's to_json() raise once, then succeed.
+    calls = {"n": 0}
+    orig_to_json = hub.registry.to_json
+
+    def flaky_to_json() -> dict:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("simulated snapshot failure")
+        return orig_to_json()
+
+    monkeypatch.setattr(hub.registry, "to_json", flaky_to_json)
+
+    task = __import__("asyncio").create_task(hub._delta_loop())
+    try:
+        # Wait for at least one successful tick after the failure.
+        for _ in range(100):  # up to ~2 s
+            if client.queue.qsize() > 0 and calls["n"] >= 2:  # noqa: PLR2004
+                break
+            await __import__("asyncio").sleep(0.02)
+    finally:
+        task.cancel()
+        try:
+            await task
+        except __import__("asyncio").CancelledError:
+            pass
+
+    # After the first (failing) tick plus at least one successful one, some
+    # delta messages made it to the queue.
+    assert calls["n"] >= 2  # noqa: PLR2004
+    assert client.queue.qsize() > 0
+
+
+@pytest.mark.asyncio
+async def test_delta_loop_does_not_stall_on_full_queue(pieces, monkeypatch) -> None:
+    """A single stalled/over-full client must not block delta delivery to
+    other clients."""
+    import observatory.ws as ws_module  # noqa: PLC0415
+
+    monkeypatch.setattr(ws_module, "_DELTA_INTERVAL_S", 0.0)
+
+    hub, _ring, _cache, _reg, _adj = pieces
+
+    slow = _Client(ws=None)  # type: ignore[arg-type]
+    # Pre-fill slow client beyond the high-water mark.
+    for _ in range(_QUEUE_HIGH_WATER + 1):
+        slow.queue.put_nowait({"type": "filler"})
+    fast = _Client(ws=None)  # type: ignore[arg-type]
+    hub._clients.add(slow)
+    hub._clients.add(fast)
+
+    slow_baseline = slow.queue.qsize()
+
+    task = __import__("asyncio").create_task(hub._delta_loop())
+    try:
+        for _ in range(100):
+            if fast.queue.qsize() >= 2:  # noqa: PLR2004 — adjacency + region_delta
+                break
+            await __import__("asyncio").sleep(0.02)
+    finally:
+        task.cancel()
+        try:
+            await task
+        except __import__("asyncio").CancelledError:
+            pass
+
+    # Fast client received deltas.
+    assert fast.queue.qsize() >= 2  # noqa: PLR2004
+    # Slow client's queue did NOT grow via the delta loop (dropped silently).
+    assert slow.queue.qsize() == slow_baseline
