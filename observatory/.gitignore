@@ -8,5 +8,7 @@ web/
 *.tsbuildinfo
 web-src/vite.config.js
 web-src/vite.config.d.ts
+web-src/vitest.config.js
+web-src/vitest.config.d.ts
 web-src/tailwind.config.js
 web-src/tailwind.config.d.ts
