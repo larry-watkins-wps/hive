@@ -1,0 +1,31 @@
+schema_version: 1
+subscriptions:
+  # Base subscriptions (all regions)
+  - topic: hive/self/#
+    qos: 1
+    description: "Global identity state"
+  - topic: hive/modulator/#
+    qos: 0
+    description: "Ambient modulator fields"
+  - topic: hive/rhythm/#
+    qos: 0
+    description: "System rhythms"
+  - topic: hive/broadcast/#
+    qos: 1
+    description: "System broadcasts (sleep, shutdown, etc.)"
+  - topic: hive/attention/#
+    qos: 0
+    description: "Attention focus state"
+  - topic: hive/interoception/#
+    qos: 0
+    description: "Internal body state"
+  # Region-specific subscriptions
+  - topic: hive/habit/reinforce
+    qos: 1
+    description: "Dopamine reinforcement signals from VTA"
+  - topic: hive/sensory/#
+    qos: 0
+    description: "All sensory inputs for action selection context"
+  - topic: hive/cognitive/basal_ganglia/#
+    qos: 1
+    description: "Directed requests to basal ganglia"
