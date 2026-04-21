@@ -42,6 +42,29 @@ class HandlerEntry:
 class RegionReader:
     """Sandboxed reader. Instantiated once at service startup."""
 
+    _SECRET_SUFFIXES = ("_key", "_token", "_secret")
+
+    @classmethod
+    def _redact(cls, obj: Any) -> Any:
+        """Walk dicts/lists; replace values whose key ends in a secret suffix.
+
+        Key-suffix match short-circuits: when a dict key ends in a suffix
+        (case-insensitive), the whole value is replaced with ``"***"`` and no
+        further recursion happens into that value. Lists recurse element-wise.
+        """
+        if isinstance(obj, dict):
+            out: dict[str, Any] = {}
+            for k, v in obj.items():
+                key_s = str(k).lower()
+                if any(key_s.endswith(s) for s in cls._SECRET_SUFFIXES):
+                    out[k] = "***"
+                else:
+                    out[k] = cls._redact(v)
+            return out
+        if isinstance(obj, list):
+            return [cls._redact(x) for x in obj]
+        return obj
+
     def __init__(self, regions_root: Path) -> None:
         self._root = regions_root.resolve()
         if not self._root.exists() or not self._root.is_dir():
@@ -59,12 +82,42 @@ class RegionReader:
         path = self._validate(region, "subscriptions.yaml", method="read_subscriptions")
         return self._parse_yaml(region, "subscriptions.yaml", path)
 
-    # --- stubs for Task 3 ---
     def read_config(self, region: str) -> dict[str, Any]:
-        raise NotImplementedError
+        path = self._validate(region, "config.yaml", method="read_config")
+        parsed = self._parse_yaml(region, "config.yaml", path)
+        return self._redact(parsed)
 
     def list_handlers(self, region: str) -> list[HandlerEntry]:
-        raise NotImplementedError
+        # Validate the region name first using the same rule as _validate,
+        # without needing a specific filename.
+        if not _REGION_NAME_RE.fullmatch(region):
+            self._deny(region, "handlers", 404, "invalid_region_name",
+                       f"invalid region name: {region!r}")
+
+        region_dir = (self._root / region).resolve()
+        try:
+            region_dir.relative_to(self._root)
+        except ValueError:
+            self._deny(region, "handlers", 403, "escape", "path escapes sandbox")
+
+        handlers_dir = region_dir / "handlers"
+        if not handlers_dir.exists() or not handlers_dir.is_dir():
+            return []
+
+        entries: list[HandlerEntry] = []
+        for py in sorted(handlers_dir.rglob("*.py")):
+            # Run each through validation: relative-to-region-dir, not a symlink,
+            # size cap. We do not reject based on region existence here
+            # (region_dir exists by virtue of handlers_dir being under it).
+            try:
+                rel = py.relative_to(region_dir).as_posix()
+            except ValueError:
+                continue
+            # Re-validate through the full pipeline (covers symlinks, null bytes,
+            # size cap).
+            validated = self._validate(region, rel, method="list_handlers")
+            entries.append(HandlerEntry(path=rel, size=validated.stat().st_size))
+        return sorted(entries, key=lambda e: e.path)
 
     # --- internal ---
     def _deny(self, region: str, rel: str, code: int, reason: str, message: str) -> NoReturn:

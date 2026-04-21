@@ -85,3 +85,56 @@ def test_symlink_rejected(regions_root: Path) -> None:
     with pytest.raises(SandboxError) as ei:
         reader.read_prompt("testregion")
     assert ei.value.code == 403  # noqa: PLR2004 — HTTP status under test
+
+
+def test_read_config_redacts_secrets(regions_root: Path) -> None:
+    reader = RegionReader(regions_root)
+    cfg = reader.read_config("testregion")
+    assert cfg["name"] == "testregion"
+    assert cfg["llm_model"] == "fake-1.0"
+    assert cfg["api_key"] == "***"
+    # Nested under a dict
+    assert cfg["nested"]["auth_token"] == "***"
+    # Nested under a list — spec says "Nested dicts are walked; lists of dicts too."
+    # aws_secret is a list of scalars here: the top-level key ends `_secret` so the
+    # entire value is redacted to "***".
+    assert cfg["nested"]["aws_secret"] == "***"
+
+
+def test_read_config_case_insensitive_suffix(regions_root: Path) -> None:
+    (regions_root / "testregion" / "config.yaml").write_text(
+        "Session_Key: abc\nSESSION_KEY: def\napi_password: ok\n", encoding="utf-8",
+    )
+    reader = RegionReader(regions_root)
+    cfg = reader.read_config("testregion")
+    assert cfg["Session_Key"] == "***"
+    assert cfg["SESSION_KEY"] == "***"
+    # api_password does not match any _SECRET_SUFFIXES — left alone
+    assert cfg["api_password"] == "ok"
+
+
+def test_list_handlers_happy_path(regions_root: Path) -> None:
+    reader = RegionReader(regions_root)
+    entries = reader.list_handlers("testregion")
+    assert len(entries) == 1
+    assert entries[0].path == "handlers/on_wake.py"
+    assert entries[0].size > 0
+
+
+def test_list_handlers_missing_dir_returns_empty(regions_root: Path) -> None:
+    (regions_root / "testregion" / "handlers" / "on_wake.py").unlink()
+    (regions_root / "testregion" / "handlers").rmdir()
+    reader = RegionReader(regions_root)
+    assert reader.list_handlers("testregion") == []
+
+
+def test_list_handlers_is_sorted(regions_root: Path) -> None:
+    base = regions_root / "testregion" / "handlers"
+    (base / "a.py").write_text("", encoding="utf-8")
+    (base / "sub").mkdir()
+    (base / "sub" / "b.py").write_text("", encoding="utf-8")
+    reader = RegionReader(regions_root)
+    paths = [e.path for e in reader.list_handlers("testregion")]
+    assert paths == sorted(paths)
+    assert "handlers/a.py" in paths
+    assert "handlers/sub/b.py" in paths
