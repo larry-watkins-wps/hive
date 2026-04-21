@@ -38,6 +38,7 @@ import structlog
 
 from region_template.errors import LlmError
 from region_template.llm_adapter import CompletionRequest, Message
+from region_template.prompt_assembly import load_system_prompt
 from region_template.self_modify import _HANDLER_REASON_MIN, HandlerWrite
 from region_template.types import LifecyclePhase
 
@@ -388,14 +389,20 @@ class SleepCoordinator:
     async def _review_events(self, snap: dict[str, Any]) -> _ReviewOutput:
         """Step 2: LLM review of recent events. Returns parsed proposals.
 
-        Reads ``region_template/sleep_prompts/default_review.md`` as the base
-        prompt; formats with stm snapshot + recent events (modulator /
-        self-state placeholders are empty strings until the runtime fills
-        them).
+        The system message is assembled by ``load_system_prompt``:
+        starter ``prompt.md`` + optional rolling appendix. The user
+        message is rendered from ``sleep_prompts/default_review_user.md``
+        with the STM snapshot + recent events + schema. Keeping the
+        large, stable half in ``role="system"`` enables prompt caching
+        (``cache_strategy="system"`` is the default).
         """
-        prompt_text = self._load_review_prompt(snap)
+        system_text = load_system_prompt(self._runtime.region_root)
+        user_text = self._render_review_user_prompt(snap)
         req = CompletionRequest(
-            messages=[Message(role="user", content=prompt_text)],
+            messages=[
+                Message(role="system", content=system_text),
+                Message(role="user", content=user_text),
+            ],
             purpose="sleep_review",
         )
         result = await self._runtime.llm.complete(req)
@@ -574,10 +581,16 @@ class SleepCoordinator:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _load_review_prompt(self, snap: dict[str, Any]) -> str:
-        """Load the default review prompt and fill in placeholders."""
+    def _render_review_user_prompt(self, snap: dict[str, Any]) -> str:
+        """Render the user-side review prompt (STM + events + schema).
+
+        The system-side (starter prompt + rolling appendix) is assembled
+        by :func:`region_template.prompt_assembly.load_system_prompt` and
+        attached to the :class:`CompletionRequest` as a separate
+        ``Message(role="system", ...)``.
+        """
         template_path = (
-            Path(__file__).parent / "sleep_prompts" / "default_review.md"
+            Path(__file__).parent / "sleep_prompts" / "default_review_user.md"
         )
         template = template_path.read_text(encoding="utf-8")
         # Trim snapshot fields to ~2 KB each so the prompt doesn't blow up.
@@ -588,7 +601,6 @@ class SleepCoordinator:
             snap.get("recent_events", []), ensure_ascii=False
         )[:2000]
         return template.format(
-            region=self._runtime.region_name,
             stm_summary=stm_summary,
             recent_events=recent,
             modulator_snapshot="{}",

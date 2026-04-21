@@ -781,3 +781,72 @@ def test_clamp_reason_custom_max() -> None:
     _CUSTOM_MAX = 5
     assert len(out) == _CUSTOM_MAX
     assert out == "ab..."
+
+
+# ---------------------------------------------------------------------------
+# Task 6 — system/user split for the sleep review call.
+# ---------------------------------------------------------------------------
+
+
+async def test_render_review_user_prompt_has_stm_and_schema(
+    tmp_path: Path,
+) -> None:
+    """The user-side template carries STM + events + schema, not system content."""
+    coord, _ = _build_coordinator(tmp_path)
+    snap = {
+        "slots": {"recent_text": {"value": "hello"}},
+        "recent_events": [{"topic": "hive/sensory/input/text"}],
+    }
+    rendered = coord._render_review_user_prompt(snap)
+    assert "hello" in rendered
+    assert "hive/sensory/input/text" in rendered
+    assert '"appendix_entry": "str or null"' in rendered
+    # System-side content must NOT leak into the user prompt.
+    assert "# Evolution appendix" not in rendered
+
+
+async def test_review_events_sends_system_plus_user_messages(
+    tmp_path: Path,
+) -> None:
+    """_review_events builds a two-message request: system (prompt.md + appendix)
+    then user (STM + events + schema). Prompt caching's default
+    ``cache_strategy="system"`` then keeps the stable half hot across cycles.
+    """
+    captured: list[CompletionRequest] = []
+
+    class _CapturingLlm:
+        async def complete(self, req: CompletionRequest) -> CompletionResult:
+            captured.append(req)
+            return _completion(
+                json.dumps(
+                    {
+                        "ltm_candidates": [],
+                        "prune_keys": [],
+                        "appendix_entry": None,
+                        "handler_edits": [],
+                        "needs_restart": False,
+                        "reason": "nothing",
+                    }
+                )
+            )
+
+    coord, runtime = _build_coordinator(tmp_path)
+    # Overwrite the seeded prompt.md with a distinctive marker so we can assert
+    # it lands in the system message verbatim.
+    (runtime.region_root / "prompt.md").write_text(
+        "You are the test region.\nConstitutional content.\n",
+        encoding="utf-8",
+    )
+    runtime.llm = _CapturingLlm()
+
+    await coord._review_events({"slots": {}, "recent_events": []})
+
+    assert len(captured) == 1
+    msgs = captured[0].messages
+    _EXPECTED_MSG_COUNT = 2
+    assert len(msgs) == _EXPECTED_MSG_COUNT
+    assert msgs[0].role == "system"
+    assert msgs[1].role == "user"
+    assert "You are the test region." in msgs[0].content
+    # The user half must carry the schema preamble from the user template.
+    assert "Return a JSON object" in msgs[1].content
