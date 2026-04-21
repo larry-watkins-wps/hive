@@ -3,3 +3,52 @@
 @tailwind utilities;
 
 html, body, #root { height: 100%; margin: 0; }
+
+/* ---------------------------------------------------------------------------
+ * Region labels — CSS2D floating text (Task 10 / spec §5.2).
+ *
+ * The CSS2DRenderer injects a sibling <div> above the WebGL canvas that
+ * billboards DOM nodes at 3D positions. Each region owns a `.float-label`
+ * root with a `.name` child (always visible) and a `.stats` child (shown
+ * only when the root gains `.hover`, either from raycast hover or when
+ * the label belongs to the selected region).
+ *
+ * No card background, no pill — plain text with a dark text-shadow handles
+ * legibility against the bloomy scene without adding visual weight.
+ * ------------------------------------------------------------------------- */
+.float-label {
+  pointer-events: none;
+  text-align: center;
+  transform: translate(-50%, -130%);
+  font-family: 'Inter', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  white-space: nowrap;
+  text-shadow:
+    0 0 3px rgba(0,0,0,0.95),
+    0 0 1px rgba(0,0,0,0.95);
+}
+.float-label .name {
+  font-size: 10px;
+  font-weight: 200;
+  letter-spacing: 0.4px;
+  color: rgba(230, 232, 238, 0.78);
+}
+.float-label .stats {
+  display: none;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 300;
+  color: rgba(200, 204, 212, 0.78);
+  margin-top: 2px;
+  letter-spacing: 0.2px;
+}
+.float-label.hover .name  { color: rgba(255,255,255,0.95); }
+.float-label.hover .stats { display: block; }
+.float-label .phase-badge {
+  font-family: 'Inter', ui-sans-serif, sans-serif;
+  color: rgba(142, 197, 255, 0.85);
+  margin-right: 5px;
+  letter-spacing: 0.5px;
+}
+.float-label .phase-badge.sleep { color: rgba(138, 142, 153, 0.72); }
+.float-label .phase-badge.bootstrap { color: rgba(143, 214, 160, 0.85); }
+.float-label .sep { color: rgba(111, 115, 128, 0.7); margin: 0 4px; }

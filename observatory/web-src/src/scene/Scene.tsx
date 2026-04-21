@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { useStore } from '../store';
 import { useForceGraph } from './useForceGraph';
 import { FuzzyOrbs } from './FuzzyOrbs';
+import { Labels } from './Labels';
 import { Sparks } from './Sparks';
 import { ModulatorFog } from './Fog';
 import { RhythmPulse } from './Rhythm';
@@ -72,6 +73,9 @@ export function Scene() {
         refMap={regionMeshRefs}
         nodesRef={nodes}
       />
+      {/* Labels mounts after FuzzyOrbs so its per-region CSS2DObjects attach
+          to groups that already exist in regionMeshRefs. */}
+      <Labels refMap={regionMeshRefs} />
       <Sparks nodesRef={nodes} />
       <CameraControls
         ref={cameraControlsRef}
