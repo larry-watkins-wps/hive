@@ -899,6 +899,24 @@ class RegionRuntime:
 
         Missing file is legal — many regions rely solely on handler-declared
         subscriptions. Malformed content is skipped with a WARN.
+
+        Two top-level shapes are accepted:
+
+        * A bare list of subscription rows::
+
+              - topic: hive/sensory/input/text
+                qos: 1
+
+        * A wrapper mapping that carries a ``schema_version`` and an inner
+          ``subscriptions`` list — the scaffold format emitted by
+          ``spawn_executor`` and shipped with every v0 region::
+
+              schema_version: 1
+              subscriptions:
+                - topic: hive/sensory/input/text
+                  qos: 1
+
+        Anything else is logged and skipped.
         """
         subs_path = self.region_root / "subscriptions.yaml"
         if not subs_path.exists():
@@ -913,6 +931,14 @@ class RegionRuntime:
                 "subscriptions_yaml_parse_failed", error=str(exc)
             )
             return
+
+        # Accept the wrapper dict form ``{schema_version, subscriptions: [...]}``
+        # as well as the bare-list form. Extracting the inner list keeps the
+        # rest of this method shape-agnostic.
+        if isinstance(data, dict) and isinstance(
+            data.get("subscriptions"), list
+        ):
+            data = data["subscriptions"]
 
         if not isinstance(data, list):
             self._log.warning(

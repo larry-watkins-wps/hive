@@ -267,6 +267,75 @@ async def test_shutdown_cleanly_disconnects_mqtt(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+async def test_subscriptions_yaml_wrapped_format(tmp_path: Path) -> None:
+    """Scaffold shape ``{schema_version, subscriptions: [...]}`` subscribes correctly.
+
+    Every v0 region ships this wrapper shape; earlier the loader only accepted
+    a bare list and silently warned ``subscriptions_yaml_not_a_list`` leaving
+    the region deaf.
+    """
+    mqtt = FakeMqttClient(region_name="test_region")
+    region_root = _build_region_root(tmp_path)
+    (region_root / "subscriptions.yaml").write_text(
+        "schema_version: 1\n"
+        "subscriptions:\n"
+        "  - topic: hive/self/#\n"
+        "    qos: 1\n"
+        "  - topic: hive/modulator/#\n"
+        "    qos: 0\n",
+        encoding="utf-8",
+    )
+
+    runtime = await _build_runtime(tmp_path, fake_mqtt=mqtt)
+    try:
+        await runtime.bootstrap()
+        assert "hive/self/#" in mqtt._subscriptions
+        assert "hive/modulator/#" in mqtt._subscriptions
+    finally:
+        await runtime.shutdown("test_done")
+
+
+async def test_subscriptions_yaml_bare_list_format(tmp_path: Path) -> None:
+    """Bare top-level list remains valid for backward compat."""
+    mqtt = FakeMqttClient(region_name="test_region")
+    region_root = _build_region_root(tmp_path)
+    (region_root / "subscriptions.yaml").write_text(
+        "- topic: hive/sensory/#\n"
+        "  qos: 0\n"
+        "- topic: hive/motor/complete\n"
+        "  qos: 1\n",
+        encoding="utf-8",
+    )
+
+    runtime = await _build_runtime(tmp_path, fake_mqtt=mqtt)
+    try:
+        await runtime.bootstrap()
+        assert "hive/sensory/#" in mqtt._subscriptions
+        assert "hive/motor/complete" in mqtt._subscriptions
+    finally:
+        await runtime.shutdown("test_done")
+
+
+async def test_subscriptions_yaml_dict_without_subscriptions_key_is_skipped(
+    tmp_path: Path,
+) -> None:
+    """A wrapper dict missing the ``subscriptions`` key is skipped (no crash)."""
+    mqtt = FakeMqttClient(region_name="test_region")
+    region_root = _build_region_root(tmp_path)
+    (region_root / "subscriptions.yaml").write_text(
+        "schema_version: 1\nnote: no subscriptions key here\n",
+        encoding="utf-8",
+    )
+
+    runtime = await _build_runtime(tmp_path, fake_mqtt=mqtt)
+    try:
+        await runtime.bootstrap()
+        # Bootstrap succeeded; no yaml-derived subscriptions added.
+        assert "hive/self/#" not in mqtt._subscriptions
+    finally:
+        await runtime.shutdown("test_done")
+
+
 async def test_handler_dispatched_on_matching_topic(tmp_path: Path) -> None:
     """Inject an envelope on a subscribed topic → handler.handle called."""
     mqtt = FakeMqttClient(region_name="test_region")
