@@ -29,7 +29,7 @@
 | v1 Task 13 — Sparks (traveling particles on edges) | ✅ Complete | Commits `bac42b4` + `8e40701` |
 | v1 Task 14 — Modulator fog + rhythm pulse | ✅ Complete | Commits `f3d3e14` + `7eb7fd9` |
 | v1 Task 15 — HUD (self panel + modulators + counters) | ✅ Complete | Commits `79fcb4b` + `44f7c44` |
-| v1 Task 16 — Integration + polish | ✅ Complete | Commit `<task-16-sha>` |
+| v1 Task 16 — Integration + polish | ✅ Complete | Commit `3f4b28f` |
 | **v1 — SHIPPED** | ✅ | All 16 tasks landed across sessions 2–3. |
 | v2 implementation | ⏳ Pending | |
 | v3 implementation | ⏳ Pending | |
