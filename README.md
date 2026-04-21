@@ -6,7 +6,9 @@ Hive's design follows a single tiebreaker rule: **biology is the default** (Prin
 
 ## Status
 
-**v0 implementation complete (2026-04-21).** All 10 phases done; 691 unit tests + 73 integration tests (3 option-b skips + 1 Windows non-admin skip) + 1 smoke-collectable pass; ruff clean. All 14 regions scaffolded; `glia/`, `bus/`, `region_template/`, `shared/`, `tools/` implemented; `docker-compose.yaml` at repo root. Next: Phase 11 (runtime evolution — first self-modification cycles). See [docs/HANDOFF.md](docs/HANDOFF.md) for the authoritative state snapshot and the "what to do next" prompt.
+**v0 DNA complete; Phase 11 runtime-evolution underway (2026-04-21).** All 10 v0 phases done; **707 unit tests** + 73 integration tests (3 option-b skips + 1 Windows non-admin skip) + 1 smoke-collectable pass; ruff clean. All 14 regions scaffolded; `glia/`, `bus/`, `region_template/`, `shared/`, `tools/` implemented; `docker-compose.yaml` at repo root.
+
+First Phase 11 observation session produced five bug-fix commits against the DNA (phantom model ID `claude-opus-4-6-20260401` → `claude-sonnet-4-6`; `temperature`+`top_p` API-level collision in `llm_adapter`; `subscriptions.yaml` wrapper format unsupported by the runtime loader; narrative `reason` exceeding the §A.7.1 200-char cap; local-dev MQTT env override). See [docs/HANDOFF.md](docs/HANDOFF.md) for the authoritative state and the "what to do next" prompt.
 
 ## Quickstart (new machine)
 
@@ -57,7 +59,7 @@ python -m pytest tests/component/ -m component -v    # expect 6 passed
 #   alias hive='python -m tools.hive_cli'            # POSIX shell
 #   function hive { python -m tools.hive_cli $args } # PowerShell
 
-# Start broker + glia + 14 regions via docker compose
+# Start broker + glia via docker compose (regions launched via docker API by glia).
 python -m tools.hive_cli up        # or: hive up  (after aliasing)
 
 # Show heartbeat state for each region
@@ -66,6 +68,8 @@ python -m tools.hive_cli status    # or: hive status
 # Graceful shutdown
 python -m tools.hive_cli down      # or: hive down
 ```
+
+> **Phase 11 caveat:** `hive up` currently starts broker + glia; region container auto-launch is a documented gap (see `docs/HANDOFF.md` — "Known open tasks for Phase 11"). For manual observation of a single region against a local host broker, run the region directly: set `HIVE_MQTT_BROKER_HOST` / `HIVE_MQTT_BROKER_PORT` (env overrides on `mqtt.broker_host` / `mqtt.broker_port`, added in Phase 11) and invoke `python -m region_template --no-docker` with `HIVE_REGION=<name>` in the environment.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) for deeper operator context, environment-variable reference, and known runtime gotchas.
 
@@ -126,6 +130,6 @@ Separate from regions:
 
 - Python 3.11+ required (`LifecyclePhase` uses `StrEnum`).
 - Lint: `python -m ruff check region_template/ glia/ tools/ tests/ shared/`.
-- Unit tests: `python -m pytest tests/unit/ -q`.
+- Unit tests: `python -m pytest tests/unit/ -q` (expect 707 passing).
 - Component tests (require Docker): `python -m pytest tests/component/ -m component -v`.
 - Commit-per-task is mandated by Principle XII; commits end with the `Co-Authored-By: Claude Opus 4.7 (1M context)` trailer.
