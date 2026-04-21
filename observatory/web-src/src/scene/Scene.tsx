@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { useStore } from '../store';
@@ -6,7 +7,7 @@ import { useForceGraph } from './useForceGraph';
 export function Scene() {
   const regions = useStore((s) => s.regions);
   const adjacency = useStore((s) => s.adjacency);
-  const names = Object.keys(regions);
+  const names = useMemo(() => Object.keys(regions).sort(), [regions]);
   const nodes = useForceGraph(names, adjacency);
 
   // Stub: render a tiny cube at each position so we can verify physics before Task 12.

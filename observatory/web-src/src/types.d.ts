@@ -32,7 +32,4 @@ declare module 'd3-force-3d' {
   export function forceX<N = unknown>(x?: number | ((d: N) => number)): any;
   export function forceY<N = unknown>(y?: number | ((d: N) => number)): any;
   export function forceZ<N = unknown>(z?: number | ((d: N) => number)): any;
-  export function forceCenter<N = unknown>(x?: number, y?: number, z?: number): any;
-  export function forceCollide<N = unknown>(radius?: number | ((d: N) => number)): any;
-  export function forceRadial<N = unknown>(radius: number | ((d: N) => number), x?: number, y?: number, z?: number): any;
 }

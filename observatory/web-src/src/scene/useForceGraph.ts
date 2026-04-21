@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { forceSimulation, forceManyBody, forceLink, forceX, forceY, forceZ } from 'd3-force-3d';
 
 export type ForceNode = { id: string; x: number; y: number; z: number; fx?: number; fy?: number; fz?: number };
@@ -13,8 +13,23 @@ const PERIMETER_BIAS: Record<string, [number, number, number]> = {
 
 export function useForceGraph(names: string[], adjacency: Array<[string, string, number]>) {
   const nodesRef = useRef<Map<string, ForceNode>>(new Map());
+  const simRef = useRef<ReturnType<typeof forceSimulation<ForceNode>> | null>(null);
 
-  const nodes = useMemo<ForceNode[]>(() => {
+  const namesKey = [...names].sort().join('|');
+
+  useEffect(() => {
+    const sim = forceSimulation<ForceNode>([], 3)
+      .force('charge', forceManyBody().strength(-80))
+      .force('xBias', forceX<ForceNode>((d) => PERIMETER_BIAS[d.id]?.[0] ?? 0).strength(0.02))
+      .force('yBias', forceY<ForceNode>((d) => PERIMETER_BIAS[d.id]?.[1] ?? 0).strength(0.02))
+      .force('zBias', forceZ<ForceNode>((d) => PERIMETER_BIAS[d.id]?.[2] ?? 0).strength(0.02))
+      .alphaDecay(0.02)
+      .velocityDecay(0.6);
+    simRef.current = sim;
+    return () => { sim.stop(); simRef.current = null; };
+  }, []);
+
+  useEffect(() => {
     const map = nodesRef.current;
     for (const name of names) {
       if (!map.has(name)) {
@@ -26,22 +41,9 @@ export function useForceGraph(names: string[], adjacency: Array<[string, string,
         map.set(name, node);
       }
     }
-    return Array.from(map.values());
-  }, [names]);
-
-  const simRef = useRef<ReturnType<typeof forceSimulation<ForceNode>> | null>(null);
-
-  useEffect(() => {
-    const sim = forceSimulation<ForceNode>(nodes, 3)
-      .force('charge', forceManyBody().strength(-80))
-      .force('xBias', forceX<ForceNode>((d) => PERIMETER_BIAS[d.id]?.[0] ?? 0).strength(0.02))
-      .force('yBias', forceY<ForceNode>((d) => PERIMETER_BIAS[d.id]?.[1] ?? 0).strength(0.02))
-      .force('zBias', forceZ<ForceNode>((d) => PERIMETER_BIAS[d.id]?.[2] ?? 0).strength(0.02))
-      .alphaDecay(0.02)
-      .velocityDecay(0.6);
-    simRef.current = sim;
-    return () => { sim.stop(); };
-  }, [nodes]);
+    if (!simRef.current) return;
+    simRef.current.nodes(Array.from(map.values())).alpha(0.3).restart();
+  }, [namesKey]);
 
   useEffect(() => {
     if (!simRef.current) return;
