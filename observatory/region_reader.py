@@ -79,8 +79,13 @@ class RegionReader:
         except ValueError as e:
             raise SandboxError("path escapes sandbox", 403) from e
 
-        # Path.is_symlink() on the resolved path follows symlinks by definition,
-        # so also check the unresolved path tail component for symlinks via lstat.
+        # Reject if the leaf component is a symlink. This is a defense-in-depth
+        # check on top of the `relative_to` guard above: any symlink that points
+        # *outside* the sandbox is already rejected by the escape check, so this
+        # exists to also reject symlinks that stay inside the sandbox (cycle /
+        # DoS concerns). Only the leaf is checked here — per-component checks
+        # for multi-segment `rel` inputs (e.g. Task 2's `list_handlers` entries)
+        # will run through this same pipeline one-by-one.
         unresolved = self._root / region / rel
         try:
             if unresolved.is_symlink():
