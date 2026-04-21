@@ -1,7 +1,7 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-20 (Phase 5 COMPLETE — Glia infrastructure stack)
-**Current phase:** Phase 5 (Glia) ✅; Phase 6 (Bootstrap CLI), Phase 7 (Observability), or Phase 8 (14 regions) next
+**Last updated:** 2026-04-20 (Phase 6 COMPLETE — Bootstrap CLI)
+**Current phase:** Phase 6 (Bootstrap CLI) ✅; Phase 7 (Observability) or Phase 8 (14 regions) next
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
@@ -380,7 +380,7 @@ The plan should:
 | 3. Runtime DNA (17 tasks) | ✅ **Complete (17/17)** | All waves done. 508 unit tests + 6 component tests (real mosquitto via testcontainers). Ruff clean. |
 | 4. Region Docker image | ✅ | `region_template/Dockerfile` (commit `f79c91a`). Builds `hive-region:v0` from `python:3.11-slim-bookworm@sha256:9c6f908…`. `docker run --rm hive-region:v0 --help` prints usage. |
 | 5. Glia (12 tasks) | ✅ | All 12 tasks done: registry, launcher, heartbeat monitor, ACL manager, rollback, codechange executor, spawn executor, metrics aggregator, supervisor, `__main__`, 6 bridges. `docker build -t hive-glia:v0 -f glia/Dockerfile .` succeeds. |
-| 6. Bootstrap CLI (2 tasks) | ⏳ | |
+| 6. Bootstrap CLI (2 tasks) | ✅ | `docker-compose.yaml` + `tools/hive_cli.py` (typer CLI: up/down/status/logs + --dev/--no-docker). 702 tests total (691 unit + 11 integration). |
 | 7. Observability tools (4 tasks) | ⏳ | |
 | 8. Region scaffolding × 14 | ⏳ | PARALLEL-OK |
 | 9. Integration + smoke + self-mod tests | ⏳ | |
@@ -520,7 +520,46 @@ All 12 tasks landed on `main`. 23 commits on top of Phase 4's HEAD. **691 unit t
 
 Implement Hive v0 per the plan. Multi-session; use parallel dispatched agents for the 14-region scaffolding work in Phase 8.
 
-### Prompt for next Phase-6/7/8 session (Phases 3–5 DONE)
+---
+
+## Phase 6 — Bootstrap CLI — COMPLETE (2026-04-20)
+
+Both tasks landed on `main` in a 3-commit slice (impl + review fixes per task). 702 tests passing (691 unit + 11 integration). `ruff check region_template/ glia/ tools/ tests/` clean. `docker compose config` validates.
+
+**Per-task status:**
+
+| Task | File | Status | Commits |
+|---|---|---|---|
+| 6.1 | `docker-compose.yaml` | ✅ | `1632cba` — exact copy of spec §G.7 (broker + glia services; regions launched at runtime by glia, not compose). Config-only; spec-review only (skipped code-quality review per CLAUDE.md). |
+| 6.2 | `tools/hive_cli.py` + `tests/integration/test_hive_cli.py` | ✅ | `e385434` impl, `2ef219f` review fixes. Typer CLI. 11 integration tests (all mocked; no docker daemon required). |
+
+**V0 CLI surface (plan narrowing of spec §E.12):** `up [--dev | --no-docker --region NAME]`, `down [--fast]`, `status`, `logs SERVICE [--tail N] [--no-follow]`. Fuller §E.12 surface (`restart`, `sleep`, `kill`, `acl`, `spawn`, `shell`, `inspect`) deferred.
+
+**Spec-vs-plan deviations carried as follow-ups (non-blocking, flagged by spec review):**
+
+1. **`hive down` skips the §G.3 / §E.13 MQTT broadcast sequence.** Spec prescribes publishing `hive/broadcast/shutdown` with `grace_s=30`, observing heartbeats, THEN `docker stop` per service. V0 collapses that to a single `docker compose down`. Defensible because regions don't exist yet to respond to the broadcast; wire up once Phase 8 regions land. The `--fast` flag (`docker compose down --timeout 1`) is the v0 approximation of the "skip grace" escape hatch.
+2. **`hive up` skips §G.1 steps 1/3/4/6/7** (`.env` validation, `bus/acl.conf` render, `bus/passwd` render, region launch in dependency order, heartbeat verification). All of those are glia's responsibility once it's running (§E.1–E.6), so `hive up` is the narrow "start broker and glia; let glia do the rest" shape. Add `.env` validation as a small hardening pass when convenient.
+3. **`hive up --no-docker`** launches a local mosquitto binary if present (prefers `bus/mosquitto.conf` via `-c`) and a single `python -m region_template --config regions/<name>/config.yaml` process. Cross-platform signal handling: SIGINT unconditional; SIGTERM POSIX-only; SIGBREAK installed on Windows when available. On launch, a `try/finally` guarantees broker cleanup (`terminate()` → `wait(timeout=5)` → `kill()`).
+
+**Follow-up items worth tracking (non-blocking, from code review):**
+
+- `hive down` should eventually publish `hive/broadcast/shutdown` via an aiomqtt one-shot client before invoking `docker compose down`, per spec §G.3.
+- `hive up` should validate `.env` presence and flag missing required keys before invoking `docker compose up -d`, per spec §G.1 step 1.
+- `status` parser warns on malformed NDJSON (post-fix) but doesn't distinguish "docker not running" from "no services yet"; could be sharper.
+- `logs --follow` default can hang a non-TTY invocation (CI). Test suite covers both branches; no bug, just a footgun.
+- `CliRunner` default parity: tests now use `mix_stderr=False` unconditionally; if typer ever drops the kwarg, tests break loudly instead of silently combining streams (intentional).
+- `_VALID_LOG_SERVICES` hardcoded to `("broker", "glia")`. Adding a third compose service requires editing the tuple and the validator; consider deriving from compose config in Phase 7.
+
+**Cumulative gotchas (Phase 6 additions):**
+
+- `docker compose ps --format json` emits NDJSON (one object per line) on modern compose; older versions may emit a JSON array. Impl type-checks the parsed payload and handles both shapes.
+- `version: "3.9"` at the top of `docker-compose.yaml` is deprecated by compose v2 (emits a warning) but kept per spec §G.7. Will drop when spec §G.7 is revised.
+- `$$SYS/#` in the healthcheck is the correct escape for a literal `$` in compose YAML; `$SYS` would be interpolated as an env var.
+- `typer 0.23` + `click 8.1` both ship via transitive deps; no new pins required.
+- `hive up --no-docker` on Windows: `signal.signal(SIGTERM, ...)` is a no-op for anything other than process-termination-from-console; use `SIGBREAK` instead. SIGINT works on both platforms.
+- Integration tests live under `tests/integration/`; the `integration` pytest marker already existed in root `pyproject.toml`. `testpaths = ["tests"]` picks them up automatically, so `python -m pytest tests/unit/` is the correct invocation to run unit-only.
+
+### Prompt for next Phase-7/8 session (Phases 3–6 DONE)
 
 Paste the following into a new Claude Code session:
 
@@ -528,47 +567,46 @@ Paste the following into a new Claude Code session:
 
 ```
 You are continuing Hive v0 at C:/repos/hive/ on branch `main`.
-Phases 3 (Runtime DNA), 4 (Region Docker image), and 5 (Glia) are COMPLETE.
-Both `hive-region:v0` and `hive-glia:v0` images build; 691 unit tests pass;
-ruff clean. Next: Phase 6 (Bootstrap CLI), Phase 7 (Observability),
-or Phase 8 (14-region scaffolding). Larry picks.
+Phases 3 (Runtime DNA), 4 (Region Docker image), 5 (Glia), and
+6 (Bootstrap CLI) are COMPLETE. Both `hive-region:v0` and
+`hive-glia:v0` images build; 691 unit tests + 11 integration
+tests pass; ruff clean. Next: Phase 7 (Observability) or
+Phase 8 (14-region scaffolding). Larry picks.
 
 ## Start here
 
-1. Read `docs/HANDOFF.md` in full. The Phase-3/4/5 progress tables are the
+1. Read `docs/HANDOFF.md` in full. The Phase-3/4/5/6 progress tables are the
    authoritative state snapshot. The "Follow-up items worth tracking"
-   section lists non-blocking cleanup candidates.
+   sections under each phase list non-blocking cleanup candidates.
 2. Confirm git state:
      git fetch origin && git checkout main && git log --oneline -10
-   Expected HEAD is `574176d glia: bridges review fixes` or newer.
+   Expected HEAD is `2ef219f cli: hive_cli review fixes` or newer.
 3. Confirm environment (assumes `.venv` on Python 3.12 from scripts/setup.sh):
      cd C:/repos/hive && source .venv/Scripts/activate
-     python -m pytest tests/unit/ -q       # 691 passed
-     python -m ruff check region_template/ glia/ tests/
-     docker build -t hive-glia:v0 -f glia/Dockerfile .   # optional re-verify
+     python -m pytest tests/unit/ -q                 # 691 passed
+     python -m pytest tests/integration/ -q          # 11 passed
+     python -m ruff check region_template/ glia/ tools/ tests/
+     docker compose config                           # validates
 4. Pick the next phase and read its plan section:
      docs/superpowers/plans/2026-04-19-hive-v0-plan.md
-   - Phase 6 (Tasks 6.1-6.2): docker-compose.yaml + hive_cli.py. Small.
    - Phase 7 (Tasks 7.1-7.4): observability — log aggregator, traffic
-     inspector, metric dashboards, debug tooling. Small.
+     inspector, metric dashboards, debug tooling. Small. PARALLEL-OK.
    - Phase 8 (Tasks 8.1-8.14): 14-region scaffolding. **PARALLEL-OK** —
-     each region is independent now that glia exists. Good fit for
-     `superpowers:dispatching-parallel-agents`.
+     each region is independent now that glia + CLI exist. Good fit
+     for `superpowers:dispatching-parallel-agents`.
 
 ## Suggested order (Larry's call)
 
 - **Phase 8 first** — the big push: 14 regions scaffolded in parallel
   dispatches (3-4 at a time per handoff). Each region is independent
   and can be tested against the real `hive-region:v0` + `hive-glia:v0`
-  images. Component tests deferred in Phase 5 can be unblocked here.
-- **Phase 6 first** — docker-compose + CLI lets operator actually
-  `hive up` the system before any region scaffolding lands. Small
-  scope; useful for the first real end-to-end smoke test.
+  images. `hive up` + `hive status` now exist for smoke-testing. The
+  component tests deferred in Phase 5 can be unblocked here.
 - **Phase 7 first** — observability is nice-to-have before Phase 8
   regions start behaving strangely. Optional; can defer.
 
-Recommendation: **Phase 6 → Phase 8** — compose lets you smoke-test
-each region as it lands; Phase 7 is backfillable anytime.
+Recommendation: **Phase 8 next** — CLI is landed; compose lets you
+smoke-test each region as it lands; Phase 7 is backfillable anytime.
 
 ## Execution model — unchanged
 
@@ -597,14 +635,15 @@ docker-SDK quirks (NotFound/APIError, memory cache), aiomqtt v2,
 and repo hygiene. The `=2.6` / `=24` stray files at repo root are
 still pip-install typos, still left alone.
 
-Spec-vs-plan deviations are catalogued in two sections: Phase-3
-Wave C (8 items touching §C/§B/§A.7/§D.5) and Phase 5 (9 items
-touching §E and §F). Read both before the first Phase-6/8
+Spec-vs-plan deviations are catalogued in three sections: Phase-3
+Wave C (8 items touching §C/§B/§A.7/§D.5), Phase 5 (9 items touching
+§E and §F), and Phase 6 (3 items touching §G.1/§G.3/§E.12 — v0
+CLI narrowings). Read all three before the first Phase-7/8
 implementer dispatch.
 
 ## Deliverable at end of session
 
-- More tasks committed on `impl/v0`.
+- More tasks committed on `main`.
 - Unit + component suites passing.
 - Ruff clean.
 - HANDOFF.md updated with phase completion.
