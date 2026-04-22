@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import { useRegionFetch } from '../useRegionFetch';
 import { fetchStm } from '../../api/rest';
@@ -20,10 +20,16 @@ export function Stm({ name }: { name: string }) {
   const { loading, error, data, reload } = useRegionFetch(name, fetchStm);
   const stats = useStore((s) => s.regions[name]?.stats);
 
-  // Auto-refetch on phase / last_error_ts change — see Prompt.tsx for the
-  // rationale behind the exhaustive-deps exemption.
+  const firstRef = useRef(true);
+  // Auto-refetch on phase change or last_error_ts change (spec §3.3).
+  // Skip the first render — `useRegionFetch` already fetches on mount,
+  // so firing reload() here would double-fetch every selection.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    if (firstRef.current) {
+      firstRef.current = false;
+      return;
+    }
     if (stats) reload();
   }, [stats?.phase, stats?.last_error_ts]);
 

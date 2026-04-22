@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import { Stm } from './sections/Stm';
 import { useStore, type RegionStats } from '../store';
 
@@ -42,9 +42,7 @@ describe('Stm section', () => {
     const { container } = render(<Stm name="r" />);
     // Expand the collapsed <details> so inner content is queryable.
     container.querySelector('details')!.open = true;
-    await waitFor(() =>
-      expect(screen.getByText('STM is empty.')).toBeTruthy(),
-    );
+    await screen.findByText('STM is empty.');
   });
 
   it('renders the JSON tree when STM has keys', async () => {
@@ -55,7 +53,7 @@ describe('Stm section', () => {
     const { container } = render(<Stm name="r" />);
     container.querySelector('details')!.open = true;
     // Key names appear in the tree as plain text.
-    await waitFor(() => expect(screen.getByText('scratch')).toBeTruthy());
+    await screen.findByText('scratch');
     expect(screen.getByText('count')).toBeTruthy();
     // String values are quoted by JsonTree.
     expect(screen.getByText('"hello"')).toBeTruthy();
@@ -69,6 +67,6 @@ describe('Stm section', () => {
       vi.fn(async () => jsonResponse({ a: 1, b: 2, c: 3 })),
     );
     render(<Stm name="r" />);
-    await waitFor(() => expect(screen.getByText('· 3 keys')).toBeTruthy());
+    await screen.findByText('· 3 keys');
   });
 });

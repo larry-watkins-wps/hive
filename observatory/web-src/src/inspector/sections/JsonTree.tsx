@@ -23,7 +23,7 @@ export type JsonObject = { [k: string]: JsonValue };
 
 export function JsonTree({ value, depth = 0 }: { value: JsonValue; depth?: number }) {
   if (value === null) return <span className="text-[#8a8e99]">null</span>;
-  if (typeof value === 'string') return <span className="text-[#8fd6a0]">"{value}"</span>;
+  if (typeof value === 'string') return <span className="text-[#8fd6a0]">{JSON.stringify(value)}</span>;
   if (typeof value === 'number') return <span className="text-[#ffb36a]">{value}</span>;
   if (typeof value === 'boolean') return <span className="text-[#d6a0e0]">{String(value)}</span>;
   if (Array.isArray(value)) return <JsonArrayView arr={value} depth={depth} />;
