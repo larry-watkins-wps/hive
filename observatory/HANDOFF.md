@@ -1,8 +1,8 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-22 (session 6 — v3 spec + plan committed; ready for implementation)*
+*Last updated: 2026-04-22 (session 7 — v3 SHIPPED)*
 
-**Canonical resume prompt:** `continue observatory v3 implementation`
+**Canonical resume prompt:** `continue observatory v4` (v4 not yet scoped)
 
 ---
 
@@ -34,36 +34,48 @@
 | v3 brainstorm | ✅ Complete | 2026-04-22 — visual-companion mockups (layout A bottom dock, collapsible/resizable, 3D scene primary, click-region-popup) |
 | v3 spec written | ✅ Complete | `observatory/docs/specs/2026-04-22-observatory-v3-design.md` · commit `7d5762e` |
 | v3 plan written | ✅ Complete | `observatory/docs/plans/2026-04-22-observatory-v3-plan.md` (11 tasks) · commit `7813c92` |
-| v3 Task 1 — /appendix route | ⏳ Pending | |
-| v3 Task 2 — store dock + self-retained | ⏳ Pending | |
-| v3 Task 3 — REST + hook + parseAppendix | ⏳ Pending | |
-| v3 Task 4 — dock shell + keys + persistence | ⏳ Pending | |
-| v3 Task 5 — Firehose tab + kindTag | ⏳ Pending | |
-| v3 Task 6 — Topics tab + useTopicStats | ⏳ Pending | |
-| v3 Task 7 — Metacognition tab + badge | ⏳ Pending | |
-| v3 Task 8 — inspector Appendix section + Prompt relabel | ⏳ Pending | |
-| v3 Task 9 — HUD SystemMetrics + SelfState replacement | ⏳ Pending | |
-| v3 Task 10 — Messages JsonTree expand + pendingEnvelopeKey | ⏳ Pending | |
-| v3 Task 11 — integration + verification + HANDOFF closure | ⏳ Pending | |
+| v3 Task 1 — /appendix route | ✅ Complete | `a2da75f` + review-fix `ac3f76a` (spec §9.2 404 body; str \| None + `appendix_missing` kind + `SandboxError.reason`) |
+| v3 Task 2 — store dock + self-retained | ✅ Complete | `5c6124d` + doc-fix `bc7bc7a` (dock state + pendingEnvelopeKey + 4 hive/self/* topics; SelfPanel Option-C trim) |
+| v3 Task 3 — REST + hook + parseAppendix | ✅ Complete | `5d22c27` (no review-fix; APPROVED with 3 Suggestions) |
+| v3 Task 4 — dock shell + keys + persistence | ✅ Complete | `00920ba` + review-fix `a547771` (subscribeWithSelector middleware + selector-scoped subscribe) |
+| v3 Task 5 — Firehose tab + kindTag | ✅ Complete | `150c634` + review-fix `76a69e4` (single-line row + h-[22px] + 18ch ellipsis + JSON undefined guard + expand test) |
+| v3 Task 6 — Topics tab + useTopicStats | ✅ Complete | `8a45ba7` + review-fix `09e3e50` (10-s buckets per spec §6.1 + kind column removal + sort/expand tests) |
+| v3 Task 7 — Metacognition tab + badge | ✅ Complete | `8e32ed0` + review-fix `29c3f27` (useMemo rows filter) |
+| v3 Task 8 — inspector Appendix section + Prompt relabel | ✅ Complete | `e9e2892` + review-fix `00c419d` (N entries count in summary label) |
+| v3 Task 9 — HUD SystemMetrics + SelfState replacement | ✅ Complete | `7d7a03a` + review-fix `b46c795` (tab "Autobio"→"Index" + tooltip status field + autobio newest-first sort + Modulators mt-2 cleanup) |
+| v3 Task 10 — Messages JsonTree expand + pendingEnvelopeKey | ✅ Complete | `abd8556` + review-fix `f12221d` (pendingEnvelopeKey mount race — filtered in dep array) |
+| v3 Task 11 — integration + verification + HANDOFF closure | ✅ Complete | this commit (component E2E /appendix test + HANDOFF bump) |
+| **v3 — SHIPPED** | ✅ | 11 tasks + 9 review-fix commits + 1 doc-fix + 1 ship commit |
 
-## Suite + lint snapshot (end of session 5 — v2 ship)
+## Suite + lint snapshot (end of session 7 — v3 ship)
 
-- `python -m pytest observatory/tests/unit/ -q` → **92 passed + 2 skipped** (symlink test + one other skip on Windows without Developer Mode)
-- `python -m pytest observatory/tests/component/ -m component -v` → **2 passed** (v1 MQTT publish → WS receive + v2 `/config` redaction + `/handlers` tree against real broker via testcontainers `eclipse-mosquitto:2`)
+- `python -m pytest observatory/tests/unit/ -q` → **99 passed + 2 skipped** (+7 v3: 4 reader_appendix + 3 api_appendix)
+- `python -m pytest observatory/tests/component/ -m component -v` → **3 passed** (v1 MQTT publish → WS receive + v2 `/config` redaction + `/handlers` tree + v3 `/appendix` happy-path + 404 body via seeded temp regions dir + real broker via testcontainers `eclipse-mosquitto:2`)
 - `python -m ruff check observatory/` → clean
-- Frontend: `cd observatory/web-src && npm run test -- --run` → **84 passed** across 13 test files (store 12, ws 3, topicColors 13, rest 14, useRegionFetch 9, FuzzyOrbs 4, Labels 6, Edges 7, Header 3, Stats 4, Inspector 3, Stm 3, Messages 3)
-- Frontend: `npx tsc -b` → clean; `npm run build` → `observatory/web/` emitted (~1.05 MB bundle, 292 kB gzipped; chunk-size warning pre-existing from v1)
+- Frontend: `cd observatory/web-src && npx vitest run` → **168 passed** across 25 test files (was 84 pre-v3, +84 new — store 14, ws 3, topicColors 34 (13 topicColor + 18 kindTag + 3 new), rest 16, useRegionFetch 9, FuzzyOrbs 4, Labels 6, Edges 7, Header 3, Stats 4, Inspector 3, Stm 3, Messages 8 (was 3, +5), parseAppendix 6, useRegionAppendix 4, Dock frame 3, useDockPersistence 4, selectRegionFromRow 3, Firehose 6 (4+2), Topics 4 (2+2 sort/expand), useTopicStats 4 (3+1 roll), Metacog 2, SystemMetrics 4, SelfState 4 (3+1 autobio sort), Appendix 4)
+- Frontend: `npx tsc -b` → clean; `npm run build` → `observatory/web/index.html` + `assets/index-*.{css,js}` emitted (~1.08 MB JS, 16.4 kB CSS; chunk-size warning pre-existing from v1).
 
 ## Next session resume protocol
 
-1. `git log --oneline -10 observatory/` should show the v3 spec + plan commits at HEAD (`7d5762e` spec, `7813c92` plan, plus a HANDOFF bump). v2 ship commits (`c522809`, `6a8df79`, `a98a39e`, `10b90c0`) sit just below.
-2. **v3 spec + plan are complete.** Resume prompt: `continue observatory v3 implementation`.
-3. Execute via `superpowers:subagent-driven-development`: fresh implementer subagent per task (Tasks 1–11), two-stage review after each (`general-purpose` for spec compliance, then `superpowers:code-reviewer` for code quality), fix-loop on anything Important+, one commit per task + review-fix commits as needed. Store each implementer prompt at `observatory/prompts/v3-task-NN-<slug>.md`. Append non-obvious calls to `observatory/memory/decisions.md`.
-4. Authoritative references:
+1. **v3 is shipped.** Canonical resume prompt for the next phase: `continue observatory v4` — v4 is not yet scoped. Start with a brainstorm session before writing a v4 spec.
+2. `git log --oneline -25 observatory/` should show the v3 task commits + review-fixes culminating in the v3 ship commit. v2 and v1 commits are older history.
+3. v3 post-ship checklist Larry may want to address in v4 or earlier:
+   - **Scene outline ring on Topics row click** — spec §6.1 line 171 / §8 lines 231-233. Deferred from Task 6 (requires scene-level state + FuzzyOrbs outline mesh + 15 s decay timer). Decisions.md entry logs the scope split.
+   - **SystemMetrics tooltip `last-hb HH:MM:SS`** — spec §10.1 line 312 references a field that `glia/metrics.py::build_region_health_payload` doesn't currently emit. Either spec amends or glia extends. Decisions.md entry logged.
+   - **Identity render as key-value when dict-shaped** — spec §10.2 line 324 "key-value list of payload's top-level string/number fields". Current Hive publishes `{"value": "<text>"}` which the store coerces to a bare string; SelfState renders as paragraph. Object-shaped identity WOULD render as key-value correctly via the existing object branch.
+   - **§5.3 kind-tag color column** — spec table lists colors for all 17 prefixes as if they were badge backgrounds, but the Firehose badge uses a fixed neutral background (`bg-[rgba(255,255,255,.05)]`). Task 5 review arbitrated this as a spec ambiguity pending Larry's call on whether the color column is scene palette (current interpretation) or badge backgrounds (would need a second coloring pass).
+4. **Visual-E2E punch list** — deferred to Larry's human-loop review:
+   - Dock: collapse/expand via backtick, drag-resize with clamp, localStorage round-trip.
+   - Firehose: filter regex + substring, pause snapshot, row expand JsonTree.
+   - Topics: sort by rate desc, sparkline rolls every 10 s, row expand into recent 5, click picks most-recent publisher.
+   - Metacog: left-border kind coloring, badge severity (red/amber/grey) at 1 Hz, click-through sets pendingEnvelopeKey → Messages scroll + expand.
+   - Appendix: entries newest-first, 360 px max-height, empty state on fresh regions, reload button.
+   - HUD: SystemMetrics renders from retained topics, region-health heatmap colors correct, SelfState tab switching, tabs hide missing data with empty-state copy.
+   - Messages: chevron expand, pendingEnvelopeKey scrolls + expands the target row, auto-scroll-to-bottom still works for new envelopes, follow-tail yields to pendingKey scroll.
+5. Authoritative references (v3):
    - Spec: [observatory/docs/specs/2026-04-22-observatory-v3-design.md](docs/specs/2026-04-22-observatory-v3-design.md)
    - Plan: [observatory/docs/plans/2026-04-22-observatory-v3-plan.md](docs/plans/2026-04-22-observatory-v3-plan.md)
    - Project CLAUDE.md: [observatory/CLAUDE.md](CLAUDE.md)
-5. Visual-E2E punch list for v2 is still deferred to Larry's human-loop review; v3 adds its own (dock / Firehose / Topics / Metacog / Appendix / new HUD tiles).
 
 ## v1 legacy suite snapshot (session 3 baseline, unchanged)
 
@@ -247,3 +259,4 @@ Plan Step 3 requires a real browser + live Hive broker. The Task 16 implementer 
 | 2026-04-21 | Session 3 complete: Task 16 ships v1. All 16 tasks + review-fixes landed. Total session-3 commits: 8 task commits + 7 review-fix commits + HANDOFF bumps. Canonical resume prompt pivoted to v2. |
 | 2026-04-22 | Session 5 ships v2. Opened with the deferred Task 12 reviews (review-fix `1fc7a1f`): slide-out animation via a 300 ms `displayName` hold, `useStatsHistory` tail-compare dedup so sparklines sample heartbeats not envelopes, `shutdown` phase badge branch, shared `fmtBytes` helper. Then Tasks 13 → 14 → 15 with subagent-driven-development: fresh implementer per task, two-stage review (spec + code-quality) after each. Task 13 (`10b90c0` + review-fix `a98a39e`): Prompt + STM sections with auto-refetch on phase/last_error_ts, plus in-repo `JsonTree` recursive renderer; review-fix skipped the first-render double-fetch and swapped string rendering to `JSON.stringify` for escape-safety. Task 14 (`6a8df79`, no review-fix — APPROVED with Suggestions only): Messages section with monotonic `envelopesReceivedTotal`-gated incremental scan (fixes plan's length-plateau race, same class as v1 Counters'), stable `observed_at\|topic` expand-state keys, auto-scroll follow-tail within 40 px. Task 15 (this commit): HANDOFF bump only; no code changes. Suite grew to 92 unit + 2 component Python + 84 frontend vitest (was 78 pre-session-5). Canonical resume prompt pivoted to v3. |
 | 2026-04-22 | Session 6: v3 scoping. Brainstormed real-time-visibility MVP with Larry (visual companion mockups for layout; picked bottom-dock A with collapsible/resizable, 3D primary, click-region-popup). Audited Hive's MQTT surface — confirmed all v3 needs are already on the wire (cognitive/sensory/motor/metacog/self/modulator/etc. + retained metrics + heartbeat); no Hive-side publish changes required. Found post-v2 staleness: `ecd8a94` made `prompt.md` immutable with `memory/appendices/rolling.md` as the rolling appendix, and `155854d` dropped `hive/self/developmental_stage` + `hive/self/age` (both still referenced by current SelfPanel). Wrote v3 spec (`7d5762e`, 477 lines) — six-item MVP: bottom dock (Firehose + Topics + Metacog tabs), inspector Appendix section, HUD SystemMetrics + expanded SelfState, full-envelope JsonTree in Messages, unified dock-row→scene-focus→popup interaction. Wrote v3 plan (`7813c92`, 11 tasks, ~2950 lines). Next session: execute via subagent-driven-development. Canonical resume prompt: `continue observatory v3 implementation`. |
+| 2026-04-22 | Session 7 ships v3. Executed all 11 tasks via `superpowers:subagent-driven-development`: fresh implementer per task, two-stage review after each (spec-compliance `general-purpose` + code-quality `superpowers:code-reviewer`), fix-loop on anything Important+. Total: 11 task commits + 9 review-fix commits + 1 doc-fix + this ship commit. Suite grew from 92 unit + 2 component + 84 frontend → 99 unit + 3 component + 168 frontend. Ruff + tsc clean throughout; production build emits 1.08 MB JS bundle. Significant arbitrations along the way: Task 1 spec §9.2 literal 404 body (`appendix_missing`) won over plan's reuse of `_error_detail`; Task 6 10-s sparkline buckets won over plan's 1-tick-per-bucket code; Task 9 SystemMetrics `region_health.per_region` schema reconciled against `glia/metrics.py` actual shape `{status, consecutive_misses, uptime_s}` rather than plan's bare-string fixture; Task 10 pendingEnvelopeKey mount race fixed by adding `filtered` to the consumption effect's deps. Larry course-corrected once early in session ("where there is confusion or ambiguity you should be asking me") — subsequent arbitration of spec-vs-plan conflicts surfaced to him explicitly. All 10 implementer prompts + this Task 11 prompt-of-record stored at `observatory/prompts/v3-task-NN-<slug>.md`. Decisions.md entries appended through session. Canonical resume prompt pivoted to `continue observatory v4` — v4 not yet scoped. |

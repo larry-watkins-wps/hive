@@ -253,3 +253,69 @@ def test_v2_endpoints_over_real_service(tmp_path, broker_url) -> None:
         on_disk = (regions_root / "testregion" / "handlers" / "on_wake.py").stat().st_size
         assert entries[0]["size"] == on_disk
         assert r.headers["cache-control"] == "no-store"
+
+
+def test_v3_appendix_endpoint_over_real_service(tmp_path, broker_url) -> None:
+    """v3 /appendix route returns rolling.md over the real FastAPI mount.
+
+    Seeds ``memory/appendices/rolling.md`` into the testregion, boots the
+    full service (real broker, real lifespan, real registry), and asserts
+    the route surfaces the parsed body with ``Cache-Control: no-store``.
+
+    Also asserts the 404 path: a fresh region without a rolling.md returns
+    the spec §9.2 body shape ``{"error":"appendix_missing","message":"No
+    appendix file for region"}`` (Task 1 review-fix).
+    """
+    regions_root = tmp_path / "regions"
+    _seed_regions(regions_root)
+
+    # Seed the appendix for testregion with two entries (chronological).
+    appendix_dir = regions_root / "testregion" / "memory" / "appendices"
+    appendix_dir.mkdir(parents=True, exist_ok=True)
+    (appendix_dir / "rolling.md").write_text(
+        "## 2026-04-22T10:00:00Z — sleep\n\nfirst body\n\n"
+        "## 2026-04-22T12:00:00Z — sleep\n\nsecond body\n",
+        encoding="utf-8",
+    )
+
+    # Seed a second region with NO appendix to exercise the 404 spec-shape.
+    fresh_region = regions_root / "freshregion"
+    (fresh_region / "memory").mkdir(parents=True)
+    (fresh_region / "prompt.md").write_text("# fresh\n", encoding="utf-8")
+
+    empty_root = tmp_path / "empty_hive_root"
+    empty_root.mkdir()
+
+    settings = dataclasses.replace(
+        Settings(),
+        bind_host="127.0.0.1",
+        bind_port=_free_port(),
+        mqtt_url=broker_url,
+        regions_root=regions_root,
+        hive_repo_root=empty_root,
+        ring_buffer_size=100,  # noqa: PLR2004 — component-test magic
+        max_ws_rate=200,  # noqa: PLR2004 — component-test magic
+    )
+    app = build_app(settings)
+
+    with TestClient(app) as client:
+        app.state.registry.apply_heartbeat("testregion", {"phase": "wake"})
+        app.state.registry.apply_heartbeat("freshregion", {"phase": "wake"})
+
+        # Happy path.
+        r = client.get("/api/regions/testregion/appendix")
+        assert r.status_code == 200  # noqa: PLR2004
+        assert "first body" in r.text
+        assert "second body" in r.text
+        assert r.headers["cache-control"] == "no-store"
+        assert r.headers["content-type"].startswith("text/plain")
+
+        # 404 path for a registered region with no rolling.md — spec §9.2
+        # (Task 1 review-fix aligned body to spec).
+        r = client.get("/api/regions/freshregion/appendix")
+        assert r.status_code == 404  # noqa: PLR2004
+        body = r.json()
+        assert body == {
+            "error": "appendix_missing",
+            "message": "No appendix file for region",
+        }
