@@ -1,4 +1,5 @@
-import { create, StoreApi, UseBoundStore } from 'zustand';
+import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 
 export type RegionStats = {
   phase: string;
@@ -102,8 +103,15 @@ function extractAmbient(retained: Snapshot['retained']): Ambient {
   return ambient;
 }
 
-export function createStore(): UseBoundStore<StoreApi<State>> {
-  return create<State>((set, get) => ({
+// `subscribeWithSelector` middleware adds an overloaded
+// `subscribe(selector, listener, opts?)` signature to the store API so
+// subscribers can scope to a slice of state (see
+// `dock/useDockPersistence.ts` for the canonical usage). Existing
+// `useStore((s) => ...)` React hook calls and `store.getState()` are
+// unaffected — the middleware is purely additive.
+export function createStore() {
+  return create<State>()(
+    subscribeWithSelector((set, get) => ({
     regions: {},
     envelopes: [],
     envelopesReceivedTotal: 0,
@@ -174,7 +182,8 @@ export function createStore(): UseBoundStore<StoreApi<State>> {
       set({ expandedRowIds: next });
     },
     setPendingEnvelopeKey: (key) => set({ pendingEnvelopeKey: key }),
-  }));
+    })),
+  );
 }
 
 export const useStore = createStore();

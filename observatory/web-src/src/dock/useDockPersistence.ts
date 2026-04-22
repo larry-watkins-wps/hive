@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import type { StoreApi, UseBoundStore } from 'zustand';
 
 const KEY_HEIGHT = 'observatory.dock.height';
 const KEY_COLLAPSED = 'observatory.dock.collapsed';
@@ -7,12 +6,27 @@ const DEBOUNCE_MS = 200;
 const MIN = 120;
 const MAX = 520;
 
-type AnyStore = UseBoundStore<StoreApi<{
+/**
+ * Minimal shape of the store this hook needs. The `subscribe` signature
+ * reflects the overload added by `subscribeWithSelector` middleware in
+ * `store.ts`: a selector + listener + optional equalityFn. `getState` is
+ * used only for the hydration path.
+ */
+type DockSlice = {
   dockHeight: number;
   dockCollapsed: boolean;
   setDockHeight: (n: number) => void;
   setDockCollapsed: (b: boolean) => void;
-}>>;
+};
+
+type AnyStore = {
+  getState: () => DockSlice;
+  subscribe: <U>(
+    selector: (state: DockSlice) => U,
+    listener: (selected: U, previous: U) => void,
+    options?: { equalityFn?: (a: U, b: U) => boolean; fireImmediately?: boolean },
+  ) => () => void;
+};
 
 /**
  * Hydrates the dock's height + collapsed state from localStorage on first mount
@@ -57,14 +71,23 @@ export function useDockPersistence(store: AnyStore): void {
       if (timer) clearTimeout(timer);
       timer = setTimeout(fn, DEBOUNCE_MS);
     };
-    const unsub = store.subscribe((s, prev) => {
-      if (s.dockHeight !== prev.dockHeight) {
-        schedule(() => localStorage.setItem(KEY_HEIGHT, String(s.dockHeight)));
-      }
-      if (s.dockCollapsed !== prev.dockCollapsed) {
-        schedule(() => localStorage.setItem(KEY_COLLAPSED, String(s.dockCollapsed)));
-      }
-    });
+    // Scope the subscribe to [dockHeight, dockCollapsed] via the
+    // `subscribeWithSelector` middleware overload (see store.ts). The
+    // tuple `equalityFn` skips the listener entirely when both fields
+    // are unchanged, so high-frequency `pushEnvelope` ticks (firehose
+    // rates) do not traverse this listener at all.
+    const unsub = store.subscribe(
+      (s) => [s.dockHeight, s.dockCollapsed] as const,
+      ([height, collapsed], [prevHeight, prevCollapsed]) => {
+        if (height !== prevHeight) {
+          schedule(() => localStorage.setItem(KEY_HEIGHT, String(height)));
+        }
+        if (collapsed !== prevCollapsed) {
+          schedule(() => localStorage.setItem(KEY_COLLAPSED, String(collapsed)));
+        }
+      },
+      { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] },
+    );
     return () => {
       unsub();
       if (timer) clearTimeout(timer);
