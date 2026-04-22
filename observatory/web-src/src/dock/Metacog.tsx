@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useStore, type Envelope } from '../store';
 import { selectRegionFromRow } from './selectRegionFromRow';
 
@@ -76,7 +76,10 @@ function ts(ms: number): string {
  */
 export function Metacog() {
   const envs = useStore((s) => s.envelopes);
-  const rows = envs.filter((e) => e.topic.startsWith('hive/metacognition/'));
+  const rows = useMemo(
+    () => envs.filter((e) => e.topic.startsWith('hive/metacognition/')),
+    [envs],
+  );
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
