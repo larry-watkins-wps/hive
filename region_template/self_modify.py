@@ -68,9 +68,6 @@ _REASON_MAX = 200
 # Handlers are high-impact — tighter minimum (§A.7.3).
 _HANDLER_REASON_MIN = 10
 
-# edit_prompt: UTF-8 budget (§A.7.1).
-_PROMPT_MAX_BYTES = 64 * 1024
-
 # Spawn block timeout (§A.7.7). Module-level to let tests compress it.
 _SPAWN_TIMEOUT_S: float = 30.0
 
@@ -208,31 +205,6 @@ class SelfModifyTools:
         self._memory = memory
         self._bootstrap_sha = bootstrap_sha
         self._log = log.bind(region=region_name)
-
-    # ------------------------------------------------------------------
-    # edit_prompt (§A.7.1)
-    # ------------------------------------------------------------------
-    @requires_capability("self_modify")
-    @sleep_only
-    async def edit_prompt(self, new_text: str, reason: str) -> EditResult:
-        """Overwrite ``regions/<name>/prompt.md`` atomically."""
-        _validate_reason(reason, min_len=_REASON_MIN, max_len=_REASON_MAX)
-        _validate_utf8_size(new_text, max_bytes=_PROMPT_MAX_BYTES)
-        target = self._sandboxed_path("prompt.md")
-        bytes_written, diff = _atomic_write_text(target, new_text)
-        self._log.info(
-            "edit_prompt",
-            path=str(target),
-            bytes_written=bytes_written,
-            diff_lines=diff,
-            reason=reason,
-        )
-        return EditResult(
-            ok=True,
-            path=target,
-            bytes_written=bytes_written,
-            diff_lines=diff,
-        )
 
     # ------------------------------------------------------------------
     # edit_subscriptions (§A.7.2)

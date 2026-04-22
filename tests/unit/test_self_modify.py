@@ -10,8 +10,6 @@ git repo under ``tmp_path``. Each tool is tested for:
 
 Per-tool specifics (per spec §A.7):
 
-  - ``edit_prompt``     — writes ``prompt.md`` atomically; reason length
-                           bounded; UTF-8 budget enforced.
   - ``edit_subscriptions`` — YAML dump; invalid topic rejected.
   - ``edit_handlers``  — writes + deletes; syntax error in any resulting
                           file rolls back and returns ``ok=False``.
@@ -51,7 +49,6 @@ from region_template.types import CapabilityProfile, LifecyclePhase
 
 _SHA_LEN = 40
 _PRE_CHECK_VALUE = 42
-_PROMPT_FIXTURE = "hello world\nsecond line\n"
 _DEFAULT_IMPORTANCE = 0.5
 _CUSTOM_IMPORTANCE = 0.9
 
@@ -136,58 +133,6 @@ def _build(
         bootstrap_sha=bootstrap_sha,
     )
     return tools, runtime, git, root
-
-
-# ---------------------------------------------------------------------------
-# edit_prompt
-# ---------------------------------------------------------------------------
-
-
-async def test_edit_prompt_phase_wake_raises(tmp_path: Path) -> None:
-    tools, _, _, _ = _build(tmp_path, phase=LifecyclePhase.WAKE)
-    with pytest.raises(PhaseViolation):
-        await tools.edit_prompt("new", "reason")
-
-
-async def test_edit_prompt_missing_capability_raises(tmp_path: Path) -> None:
-    tools, _, _, _ = _build(
-        tmp_path,
-        caps={"self_modify": False, "can_spawn": False},
-    )
-    with pytest.raises(CapabilityDenied):
-        await tools.edit_prompt("new", "reason")
-
-
-async def test_edit_prompt_happy_path(tmp_path: Path) -> None:
-    tools, _, _, root = _build(tmp_path)
-    result = await tools.edit_prompt(_PROMPT_FIXTURE, "update prompt")
-    assert result.ok
-    assert result.path == root / "prompt.md"
-    assert result.bytes_written == len(_PROMPT_FIXTURE.encode("utf-8"))
-    # With the O_BINARY fix, bytes_written must match the file's actual
-    # on-disk size on every platform (no LF→CRLF translation on Windows).
-    assert result.bytes_written == (root / "prompt.md").stat().st_size
-    assert result.diff_lines >= 1
-    assert (root / "prompt.md").read_text(encoding="utf-8") == _PROMPT_FIXTURE
-
-
-async def test_edit_prompt_empty_reason_rejected(tmp_path: Path) -> None:
-    tools, _, _, _ = _build(tmp_path)
-    with pytest.raises(ConfigError):
-        await tools.edit_prompt("new", "")
-
-
-async def test_edit_prompt_too_long_reason_rejected(tmp_path: Path) -> None:
-    tools, _, _, _ = _build(tmp_path)
-    with pytest.raises(ConfigError):
-        await tools.edit_prompt("new", "x" * 201)
-
-
-async def test_edit_prompt_text_too_large_rejected(tmp_path: Path) -> None:
-    tools, _, _, _ = _build(tmp_path)
-    oversized = "a" * (64 * 1024 + 1)
-    with pytest.raises(ConfigError):
-        await tools.edit_prompt(oversized, "too big")
 
 
 # ---------------------------------------------------------------------------
