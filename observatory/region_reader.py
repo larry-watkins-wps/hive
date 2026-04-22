@@ -87,6 +87,20 @@ class RegionReader:
         parsed = self._parse_yaml(region, "config.yaml", path)
         return self._redact(parsed)
 
+    def read_appendix(self, region: str) -> str:
+        """Read ``regions/<region>/memory/appendices/rolling.md``.
+
+        Raises ``SandboxError(code=404)`` when the file doesn't exist — a
+        fresh region that has never slept legitimately lacks this file.
+        No redaction: appendix content is LLM-authored narrative (spec §9.2).
+        """
+        path = self._validate(
+            region,
+            "memory/appendices/rolling.md",
+            method="read_appendix",
+        )
+        return path.read_text(encoding="utf-8")
+
     def list_handlers(self, region: str) -> list[HandlerEntry]:
         # Validate the region name first using the same rule as _validate,
         # without needing a specific filename.

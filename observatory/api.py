@@ -75,6 +75,19 @@ def build_router(region_registry: RegionRegistry) -> APIRouter:
             headers=_NO_STORE,
         )
 
+    @router.get("/regions/{name}/appendix", response_class=PlainTextResponse)
+    def get_appendix(name: str, request: Request) -> PlainTextResponse:
+        _ensure_region(request, name)
+        try:
+            text = _reader(request).read_appendix(name)
+        except SandboxError as e:
+            raise HTTPException(status_code=e.code, detail=_error_detail(e)) from e
+        return PlainTextResponse(
+            text,
+            media_type="text/plain; charset=utf-8",
+            headers=_NO_STORE,
+        )
+
     @router.get("/regions/{name}/stm")
     def get_stm(name: str, request: Request) -> JSONResponse:
         _ensure_region(request, name)

@@ -155,3 +155,41 @@ def test_list_handlers_is_sorted(regions_root: Path) -> None:
     assert paths == sorted(paths)
     assert "handlers/a.py" in paths
     assert "handlers/sub/b.py" in paths
+
+
+def test_read_appendix_happy_path(regions_root: Path) -> None:
+    reader = RegionReader(regions_root)
+    appendix_dir = regions_root / "testregion" / "memory" / "appendices"
+    appendix_dir.mkdir(parents=True, exist_ok=True)
+    (appendix_dir / "rolling.md").write_text(
+        "## 2026-04-22T10:00:00Z - sleep\n\nLearned that topic X ...\n",
+        encoding="utf-8",
+    )
+    assert "topic X" in reader.read_appendix("testregion")
+
+
+def test_read_appendix_missing_returns_404(regions_root: Path) -> None:
+    reader = RegionReader(regions_root)
+    with pytest.raises(SandboxError) as ei:
+        reader.read_appendix("testregion")
+    assert ei.value.code == 404  # noqa: PLR2004 — HTTP status under test
+
+
+def test_read_appendix_invalid_region_name_returns_404(regions_root: Path) -> None:
+    reader = RegionReader(regions_root)
+    with pytest.raises(SandboxError) as ei:
+        reader.read_appendix("../evil")
+    assert ei.value.code == 404  # noqa: PLR2004 — HTTP status under test
+
+
+def test_read_appendix_oversize_returns_413(
+    regions_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    appendix_dir = regions_root / "testregion" / "memory" / "appendices"
+    appendix_dir.mkdir(parents=True, exist_ok=True)
+    (appendix_dir / "rolling.md").write_text("aaaa", encoding="utf-8")
+    monkeypatch.setattr("observatory.region_reader.MAX_FILE_BYTES", 2)
+    reader = RegionReader(regions_root)
+    with pytest.raises(SandboxError) as ei:
+        reader.read_appendix("testregion")
+    assert ei.value.code == 413  # noqa: PLR2004 — HTTP status under test

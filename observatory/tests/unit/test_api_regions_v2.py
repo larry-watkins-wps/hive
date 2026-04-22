@@ -175,3 +175,32 @@ def test_symlink_rejected_as_sandbox_403(
     r = client.get("/api/regions/testregion/prompt")
     assert r.status_code == 403  # noqa: PLR2004
     assert r.json()["error"] == "sandbox"
+
+
+# --- v3 /appendix route --------------------------------------------------
+
+
+def test_appendix_happy(client: TestClient, regions_root: Path) -> None:
+    appendix_dir = regions_root / "testregion" / "memory" / "appendices"
+    appendix_dir.mkdir(parents=True, exist_ok=True)
+    (appendix_dir / "rolling.md").write_text(
+        "## 2026-04-22T10:00:00Z - sleep\n\nbody\n", encoding="utf-8"
+    )
+    r = client.get("/api/regions/testregion/appendix")
+    assert r.status_code == 200  # noqa: PLR2004
+    assert r.headers["cache-control"] == "no-store"
+    assert r.headers["content-type"].startswith("text/plain")
+    assert "body" in r.text
+
+
+def test_appendix_404_when_missing(client: TestClient) -> None:
+    r = client.get("/api/regions/testregion/appendix")
+    assert r.status_code == 404  # noqa: PLR2004
+    body = r.json()
+    assert body["error"] == "not_found"
+
+
+def test_appendix_404_when_region_unknown(client: TestClient) -> None:
+    r = client.get("/api/regions/unknown/appendix")
+    assert r.status_code == 404  # noqa: PLR2004
+    assert r.json()["error"] == "not_found"
