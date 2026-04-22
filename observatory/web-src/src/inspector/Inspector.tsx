@@ -4,6 +4,7 @@ import { Header } from './sections/Header';
 import { Stats } from './sections/Stats';
 import { ModulatorBath } from './sections/ModulatorBath';
 import { Prompt } from './sections/Prompt';
+import { Appendix } from './sections/Appendix';
 import { Messages } from './sections/Messages';
 import { Stm } from './sections/Stm';
 import { Subscriptions } from './sections/Subscriptions';
@@ -67,6 +68,7 @@ export function Inspector() {
           <ModulatorBath />
           <div className="flex-1 overflow-y-auto">
             <Prompt name={displayName} />
+            <Appendix name={displayName} />
             <Messages name={displayName} />
             <Stm name={displayName} />
             <Subscriptions name={displayName} />

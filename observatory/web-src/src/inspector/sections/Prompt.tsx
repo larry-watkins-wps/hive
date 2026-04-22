@@ -42,7 +42,7 @@ export function Prompt({ name }: { name: string }) {
     <details className="border-b border-[#1f1f27]">
       <summary className="px-4 py-2 cursor-pointer flex items-center justify-between">
         <span className="font-semibold">
-          Prompt{' '}
+          Prompt (DNA){' '}
           <span className="text-[#8a8e99] text-[10px]">· {sizeLabel}</span>
         </span>
         <button
