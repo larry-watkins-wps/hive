@@ -58,4 +58,36 @@ describe('Firehose', () => {
     rerender(<Firehose />);
     expect(container.querySelectorAll('[data-testid="firehose-row"]').length).toBe(2);
   });
+
+  it('row renders with undefined JSON payload data without crashing', () => {
+    // Directly push an envelope with content_type: application/json and
+    // data: undefined — JSON.stringify(undefined) returns undefined, and
+    // without the nullish fallback the row previously crashed on .replace().
+    useStore.getState().pushEnvelope({
+      observed_at: Date.now() + Math.random(),
+      topic: 'hive/cognitive/pfc/plan',
+      envelope: {
+        payload: { content_type: 'application/json', data: undefined },
+      } as unknown as Record<string, unknown>,
+      source_region: 'pfc',
+      destinations: [],
+    });
+    const { container } = render(<Firehose />);
+    const rows = container.querySelectorAll('[data-testid="firehose-row"]');
+    expect(rows.length).toBe(1);
+    // `data ?? null` coerces undefined to null, which stringifies to "null".
+    expect(rows[0].textContent).toContain('null');
+  });
+
+  it('row chevron expands JsonTree inline', () => {
+    push('hive/cognitive/pfc/plan', 'pfc', { goal: 'reach_block' });
+    const { container } = render(<Firehose />);
+    const chevron = container.querySelector(
+      '[data-testid="firehose-row"] button',
+    ) as HTMLButtonElement;
+    fireEvent.click(chevron);
+    // After expand, JsonTree renders the key 'goal' somewhere in the tree
+    // output (sibling of the row, not inside it).
+    expect(container.textContent).toContain('goal');
+  });
 });
