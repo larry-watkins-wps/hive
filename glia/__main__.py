@@ -8,7 +8,11 @@ Wires all eight glia sub-modules plus the supervisor behind a single
 3. Subscribe to every system topic the supervisor routes on.
 4. Dispatch inbound envelopes into the appropriate ``Supervisor.on_*``
    method via a simple topic-prefix router.
-5. Race the dispatch loop against a SIGTERM/SIGINT/SIGBREAK-driven
+5. Launch every active region (spec §G.1 step 6) in registry order as a
+   concurrent task. Already-running regions are skipped (singleton
+   guard). Failed launches are logged and the rest of the brain still
+   comes up.
+6. Race the dispatch loop against a SIGTERM/SIGINT/SIGBREAK-driven
    ``asyncio.Event`` so shutdown is graceful.
 
 **Enabled-by-default bridges** (spec §E.7, §E.8):
@@ -73,7 +77,7 @@ from glia.bridges.input_text_bridge import InputTextBridge
 from glia.bridges.rhythm_generator import RhythmGenerator
 from glia.codechange_executor import CodeChangeExecutor
 from glia.heartbeat_monitor import HeartbeatMonitor
-from glia.launcher import Launcher
+from glia.launcher import GliaError, Launcher
 from glia.metrics import MetricsAggregator
 from glia.registry import RegionRegistry, RegistryError
 from glia.rollback import Rollback
@@ -206,6 +210,69 @@ def _install_signal_handlers(
     for sig in (signal.SIGTERM, signal.SIGINT):
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, _on_event_loop)
+
+
+async def _launch_active_regions(
+    registry: RegionRegistry,
+    launcher: Launcher,
+    log: structlog.typing.FilteringBoundLogger,
+) -> None:
+    """Launch every active region in registry order (spec §G.1 step 6).
+
+    Called once at startup, concurrently with the dispatch loop so that
+    heartbeats from freshly-launched regions are consumed as they arrive.
+    Each :meth:`Launcher.launch_region` call is offloaded to a thread
+    because the Docker SDK is blocking.
+
+    Semantics:
+
+    * ``already running`` → treated as success; logged at INFO.
+      Lets glia restart (without compose down) leave running regions
+      alone instead of tripping on the launcher's singleton guard.
+    * other :class:`GliaError` (image missing, docker API error, …) →
+      logged at WARN and skipped. Heartbeat monitor will surface the
+      region as unhealthy a few seconds later; we do not want one
+      bad image to block the rest of the brain from coming up.
+    * unexpected exception → logged at ERROR and skipped. Same reason.
+
+    Returns once all regions have been attempted. On shutdown the
+    caller cancels this task; in-flight ``launch_region`` calls that
+    are already inside :func:`asyncio.to_thread` complete, but the
+    next iteration is skipped.
+    """
+    launched: list[str] = []
+    already_running: list[str] = []
+    failed: list[str] = []
+    for entry in registry.active():
+        try:
+            await asyncio.to_thread(launcher.launch_region, entry.name)
+            launched.append(entry.name)
+            log.info("glia.main.region_launched", region=entry.name)
+        except GliaError as exc:
+            msg = str(exc)
+            if "already running" in msg:
+                already_running.append(entry.name)
+                log.info("glia.main.region_already_running", region=entry.name)
+            else:
+                failed.append(entry.name)
+                log.warning(
+                    "glia.main.region_launch_failed",
+                    region=entry.name,
+                    error=msg,
+                )
+        except Exception as exc:  # noqa: BLE001 — never let one bad region block the others
+            failed.append(entry.name)
+            log.error(
+                "glia.main.region_launch_unexpected",
+                region=entry.name,
+                error=str(exc),
+            )
+    log.info(
+        "glia.main.launch_summary",
+        launched=launched,
+        already_running=already_running,
+        failed=failed,
+    )
 
 
 async def _dispatch_loop(  # noqa: PLR0912 — straight-line topic router
@@ -387,6 +454,15 @@ async def _run(  # noqa: PLR0915 — linear bootstrap sequence; easier to read f
                         _dispatch_loop(mqtt_client, supervisor, log),
                         name="glia_dispatch",
                     )
+                    # Launch concurrently with dispatch so heartbeats from
+                    # freshly-booted regions are consumed as they arrive.
+                    # This closes spec §G.1 step 6 ("Launch regions in
+                    # dependency order") — v0 launches in registry order;
+                    # explicit depends_on can follow if ordering matters.
+                    launch_task = asyncio.create_task(
+                        _launch_active_regions(registry, launcher, log),
+                        name="glia_launch",
+                    )
                     signal_task = asyncio.create_task(
                         shutdown_event.wait(),
                         name="glia_signal",
@@ -400,7 +476,13 @@ async def _run(  # noqa: PLR0915 — linear bootstrap sequence; easier to read f
                     except asyncio.CancelledError:
                         done, pending = set(), {dispatch_task, signal_task}
 
-                    for task in pending:
+                    # launch_task is not in the wait set (it completes on
+                    # its own schedule). Always include it in teardown so
+                    # shutdown cleanly cancels an in-flight launch loop.
+                    to_cancel = set(pending)
+                    if not launch_task.done():
+                        to_cancel.add(launch_task)
+                    for task in to_cancel:
                         task.cancel()
                         with contextlib.suppress(asyncio.CancelledError, Exception):
                             await task
