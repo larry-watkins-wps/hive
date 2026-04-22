@@ -168,11 +168,9 @@ def test_read_appendix_happy_path(regions_root: Path) -> None:
     assert "topic X" in reader.read_appendix("testregion")
 
 
-def test_read_appendix_missing_returns_404(regions_root: Path) -> None:
+def test_read_appendix_missing_returns_none(regions_root: Path) -> None:
     reader = RegionReader(regions_root)
-    with pytest.raises(SandboxError) as ei:
-        reader.read_appendix("testregion")
-    assert ei.value.code == 404  # noqa: PLR2004 — HTTP status under test
+    assert reader.read_appendix("testregion") is None
 
 
 def test_read_appendix_invalid_region_name_returns_404(regions_root: Path) -> None:

@@ -82,6 +82,19 @@ def build_router(region_registry: RegionRegistry) -> APIRouter:
             text = _reader(request).read_appendix(name)
         except SandboxError as e:
             raise HTTPException(status_code=e.code, detail=_error_detail(e)) from e
+        if text is None:
+            # Spec §9.2: file-missing has its own body shape distinct from
+            # the shared `_error_detail()` taxonomy (which emits
+            # "not_found" for SandboxError code=404). The reader returns
+            # None specifically for the missing-file case so the route can
+            # assemble this body without guessing from a message string.
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "appendix_missing",
+                    "message": "No appendix file for region",
+                },
+            )
         return PlainTextResponse(
             text,
             media_type="text/plain; charset=utf-8",

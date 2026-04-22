@@ -26,11 +26,18 @@ class SandboxError(Exception):
 
     `code` is the HTTP status an API handler should emit: 403 sandbox, 404
     missing, 413 oversize, 502 parse failure.
+
+    `reason` is a short machine tag matching `_deny`'s taxonomy
+    (``invalid_region_name``, ``null_byte``, ``traversal``, ``escape``,
+    ``stat_failed``, ``symlink``, ``missing``, ``oversize``, ``parse_json``,
+    ``parse_yaml``). Route handlers can discriminate on this without parsing
+    the human-readable message string.
     """
 
-    def __init__(self, message: str, code: int) -> None:
+    def __init__(self, message: str, code: int, reason: str = "sandbox") -> None:
         super().__init__(message)
         self.code = code
+        self.reason = reason
 
 
 @dataclass(frozen=True)
@@ -87,18 +94,33 @@ class RegionReader:
         parsed = self._parse_yaml(region, "config.yaml", path)
         return self._redact(parsed)
 
-    def read_appendix(self, region: str) -> str:
+    def read_appendix(self, region: str) -> str | None:
         """Read ``regions/<region>/memory/appendices/rolling.md``.
 
-        Raises ``SandboxError(code=404)`` when the file doesn't exist — a
-        fresh region that has never slept legitimately lacks this file.
-        No redaction: appendix content is LLM-authored narrative (spec §9.2).
+        Returns ``None`` when the file doesn't exist — a fresh region that
+        has never slept legitimately lacks this file. Spec §9.2 specifies
+        this signature and the corresponding HTTP 404 body shape
+        (``{"error":"appendix_missing","message":"No appendix file for
+        region"}``) is assembled by the route.
+
+        Still raises ``SandboxError`` for sandbox violations (403), oversize
+        (413), invalid region name (404 + ``reason="invalid_region_name"``),
+        or any other non-missing denial. No redaction: appendix content is
+        LLM-authored narrative (spec §9.2).
         """
-        path = self._validate(
-            region,
-            "memory/appendices/rolling.md",
-            method="read_appendix",
-        )
+        try:
+            path = self._validate(
+                region,
+                "memory/appendices/rolling.md",
+                method="read_appendix",
+            )
+        except SandboxError as e:
+            # _validate emits code=404 for both the "missing" case (file
+            # simply doesn't exist yet) and "invalid_region_name". Only the
+            # former collapses to a None return — invalid names still raise.
+            if e.reason == "missing":
+                return None
+            raise
         return path.read_text(encoding="utf-8")
 
     def list_handlers(self, region: str) -> list[HandlerEntry]:
@@ -162,7 +184,7 @@ class RegionReader:
             code=code,
             reason=reason,
         )
-        raise SandboxError(message, code)
+        raise SandboxError(message, code, reason=reason)
 
     def _validate(self, region: str, rel: str, *, method: str) -> Path:
         """Run the full sandbox pipeline; return an absolute, safe Path.

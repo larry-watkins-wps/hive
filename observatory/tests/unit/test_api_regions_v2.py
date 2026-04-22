@@ -197,7 +197,10 @@ def test_appendix_404_when_missing(client: TestClient) -> None:
     r = client.get("/api/regions/testregion/appendix")
     assert r.status_code == 404  # noqa: PLR2004
     body = r.json()
-    assert body["error"] == "not_found"
+    assert body == {
+        "error": "appendix_missing",
+        "message": "No appendix file for region",
+    }
 
 
 def test_appendix_404_when_region_unknown(client: TestClient) -> None:
