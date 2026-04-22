@@ -80,3 +80,8 @@ export async function fetchHandlers(name: string): Promise<HandlerEntry[]> {
   const r = await _get(`/api/regions/${encodeURIComponent(name)}/handlers`);
   return r.json();
 }
+
+export async function fetchAppendix(name: string): Promise<string> {
+  const r = await _get(`/api/regions/${encodeURIComponent(name)}/appendix`);
+  return r.text();
+}

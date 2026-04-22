@@ -5,6 +5,7 @@ import {
   fetchSubscriptions,
   fetchConfig,
   fetchHandlers,
+  fetchAppendix,
   RestError,
 } from './rest';
 
@@ -153,6 +154,22 @@ describe('fetchHandlers', () => {
     await expect(fetchHandlers('foo')).rejects.toMatchObject({
       status: 404,
       message: 'no handlers dir',
+    });
+  });
+});
+
+describe('fetchAppendix', () => {
+  it('returns text on 200', async () => {
+    mockFetchOnce(200, '## 2026-04-22T10:00:00Z — sleep\n\nbody', 'text/plain; charset=utf-8');
+    expect(await fetchAppendix('good_region')).toBe('## 2026-04-22T10:00:00Z — sleep\n\nbody');
+  });
+
+  it('throws RestError with status 404 on missing appendix', async () => {
+    mockFetchOnce(404, { error: 'appendix_missing', message: 'No appendix file for region' });
+    await expect(fetchAppendix('good_region')).rejects.toMatchObject({
+      name: 'RestError',
+      status: 404,
+      message: 'No appendix file for region',
     });
   });
 });
