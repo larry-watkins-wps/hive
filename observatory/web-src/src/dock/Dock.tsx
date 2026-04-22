@@ -3,10 +3,9 @@ import { useStore } from '../store';
 import { DockTabStrip } from './DockTabStrip';
 import { useDockPersistence } from './useDockPersistence';
 import { Firehose } from './Firehose';
+import { Topics } from './Topics';
+import { useTopicStats } from './useTopicStats';
 
-function TopicsPlaceholder() {
-  return <div className="p-3 text-xs opacity-60">Topics — implemented in v3 Task 6</div>;
-}
 function MetacogPlaceholder() {
   return <div className="p-3 text-xs opacity-60">Metacog — implemented in v3 Task 7</div>;
 }
@@ -53,8 +52,8 @@ function useFirehoseRate(): number {
  * Persistence is handled by `useDockPersistence`: it hydrates the store
  * from localStorage on first mount and debounces subsequent changes back.
  *
- * Tab content: Task 5 wires the real `<Firehose />`; Topics + Metacog
- * remain placeholders until Tasks 6 + 7.
+ * Tab content: Task 5 wires the real `<Firehose />`, Task 6 wires the
+ * real `<Topics />`; Metacog remains a placeholder until Task 7.
  */
 export function Dock() {
   useDockPersistence(useStore);
@@ -63,6 +62,12 @@ export function Dock() {
   const height = useStore((s) => s.dockHeight);
   const setDockHeight = useStore((s) => s.setDockHeight);
   const firehoseRate = useFirehoseRate();
+  // Drift A (v3 Task 6): call `useTopicStats()` once at the dock level
+  // and thread the map down — both the tab-strip badge (`topicStats.size`)
+  // and the `<Topics>` body share one selector, one setInterval, one
+  // state slice. Calling the hook in both components would spin up two
+  // independent 1 Hz intervals with divergent state.
+  const topicStats = useTopicStats();
 
   const [dragging, setDragging] = useState(false);
   const startY = useRef(0);
@@ -102,13 +107,13 @@ export function Dock() {
       />
       <DockTabStrip
         firehoseRate={firehoseRate}
-        topicCount={0}
+        topicCount={topicStats.size}
         metacogBadge={{ count: 0, severity: 'quiet' }}
       />
       {!collapsed && (
         <div className="flex-1 overflow-hidden">
           {tab === 'firehose' && <Firehose />}
-          {tab === 'topics' && <TopicsPlaceholder />}
+          {tab === 'topics' && <Topics stats={topicStats} />}
           {tab === 'metacog' && <MetacogPlaceholder />}
         </div>
       )}

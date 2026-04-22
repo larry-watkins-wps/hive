@@ -40,10 +40,13 @@ describe('Dock frame', () => {
     expect(container.querySelector('input')).toBeTruthy();
   });
 
-  it('mounts the placeholder for the topics tab', () => {
+  it('mounts the real Topics component on the topics tab', () => {
+    // v3 Task 6 replaced the placeholder with the real Topics component.
+    // With no envelopes pushed, `useTopicStats()` returns an empty map
+    // on its first tick so Topics shows the empty-state message.
     const { queryByText, rerender } = render(<Dock />);
     useStore.setState({ dockTab: 'topics' });
     rerender(<Dock />);
-    expect(queryByText(/Topics — implemented/)).toBeTruthy();
+    expect(queryByText(/No topics yet/i)).toBeTruthy();
   });
 });
