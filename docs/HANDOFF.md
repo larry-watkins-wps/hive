@@ -1067,15 +1067,20 @@ retained self-state channels. (Separate from §A.7.1, which covers
   ``delta(first_memory_timestamp, current_time)``, not read from a
   topic. First-memory timestamp is obtained from hippocampus.
 
-**Follow-ups (explicitly deferred).**
+**Follow-ups.**
 - Observatory HUD's ``SelfPanel.tsx`` still renders a
   ``developmental_stage`` field (with ``?? 'unknown'`` fallback). It
   degrades gracefully to "unknown" forever until the observatory pass
   reworks the panel around the remaining 4 self-topics (or a computed
   age readout). Observatory is a separate sub-project; this is tracked
   there, not here.
-- Design spec §A.7.1 and §B.4 edits should land in a proper spec
-  revision when other divergences accumulate.
+
+**Done 2026-04-22.** Spec body edits landed — §B.3.4 (self-state
+schema), §B.4 (topic table), §L.3 (retained-topic count), §A.4.2 step
+7 (bootstrap cross-ref), §D.5.3 (review prompt), §D.5.6 (commit
+message template), §I.6 (self-mod cycle test), §K.6 (starter prompt
+iteration). Divergence banners subsequently removed once the spec
+body agreed with itself end-to-end.
 
 ---
 

@@ -602,7 +602,7 @@ Every tool:
 
 #### A.7.1 `append_appendix`
 
-> **2026-04-21 divergence (append-only prompt evolution).** The prior `edit_prompt` tool has been **removed**. `regions/<name>/prompt.md` is now immutable constitutional DNA — written once at region birth by `glia/spawn_executor.py` and never overwritten. Evolution of a region's self-instructions happens via a per-region append-only appendix at `regions/<name>/memory/appendices/rolling.md`, owned by `region_template.appendix.AppendixStore`. Rationale: an early PFC self-mod cycle replaced its ~200-line constitutional starter prompt with a 4-item TODO list; the pipeline worked but the LLM's judgment on rewriting its own DNA was self-destructive. Removing the footgun is safer than adding guardrails around full prompt rewrites. See `docs/HANDOFF.md` Phase 11 "2026-04-21 — Append-only prompt evolution" divergence entry.
+`regions/<name>/prompt.md` is immutable constitutional DNA — written once at region birth by `glia/spawn_executor.py` and never rewritten. Evolution of a region's self-instructions happens via a per-region append-only appendix at `regions/<name>/memory/appendices/rolling.md`, owned by `region_template.appendix.AppendixStore`.
 
 ```python
 async def append_appendix(self, section_body: str, trigger: str) -> AppendixResult:
@@ -1196,8 +1196,6 @@ Each `content_type` has a stable `data` shape. Non-exhaustive at v0; regions can
 
 #### B.3.4 `application/hive+self-state`
 
-> **2026-04-22 divergence:** `developmental_stage` and `age` removed. Developmental state is emergent from accumulated experience, not a categorical field; age is computed on demand as `delta(first_memory_timestamp, now)` via hippocampus query. See `docs/HANDOFF.md` Phase 11 divergence entry.
-
 ```json
 {
   "type": "object",
@@ -1211,6 +1209,8 @@ Each `content_type` has a stable `data` shape. Non-exhaustive at v0; regions can
 ```
 
 One `hive/self/*` topic per scalar field (mPFC splits the object across topics for retained-granularity). See B.4 for topic mapping.
+
+Developmental state and age are **not** fields in this schema. Developmental state is emergent from accumulated experience (modulator history, STM depth, consolidated LTM, appendix history, handler library size, rollback frequency). Age, when needed, is computed on demand as `delta(first_memory_timestamp, now)` via a hippocampus query — it is not a retained value.
 
 #### B.3.5 `application/hive+error`
 
@@ -1513,8 +1513,6 @@ The wildcard rule: `hive/cognitive/<region>/request` is a dedicated inbox for `<
 | `hive/attention/salience` | **R** | 1 | `thalamus` | `*` |
 
 #### Self — global identity
-
-> **2026-04-22 divergence:** `hive/self/developmental_stage` and `hive/self/age` removed. See `docs/HANDOFF.md` Phase 11 divergence entry.
 
 | Topic | R | QoS | Publishers | Subscribers |
 |---|---|---|---|---|
@@ -4589,7 +4587,7 @@ Glia mounts `/var/run/docker.sock`, which gives it host-level privileges. Any co
 
 ### L.3 Retained-topic fan-out cost
 
-`hive/self/*` has 4 retained topics at v0 (identity, values, personality, autobiographical_index — the original 6 minus developmental_stage and age, both dropped on 2026-04-22), all fan-out to 14 regions on every (re)connect. Retained messages are persistent in mosquitto, so a region restarting within 5s sees them instantly. Cost is negligible at 14 regions. At post-v0 counts (50+ regions or fast-cycling spawn) this needs measurement. Not a v0 issue.
+`hive/self/*` has 4 retained topics at v0 (identity, values, personality, autobiographical_index), all fan-out to 14 regions on every (re)connect. Retained messages are persistent in mosquitto, so a region restarting within 5s sees them instantly. Cost is negligible at 14 regions. At post-v0 counts (50+ regions or fast-cycling spawn) this needs measurement. Not a v0 issue.
 
 ### L.4 Sleep starvation
 
