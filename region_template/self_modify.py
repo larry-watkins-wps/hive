@@ -544,18 +544,6 @@ def _validate_reason(reason: str, *, min_len: int, max_len: int) -> None:
         )
 
 
-def _validate_utf8_size(text: str, *, max_bytes: int) -> None:
-    """Ensure *text* encodes to valid UTF-8 within the byte budget."""
-    try:
-        encoded = text.encode("utf-8")
-    except UnicodeEncodeError as exc:
-        raise ConfigError(f"text is not valid UTF-8: {exc}") from exc
-    if len(encoded) > max_bytes:
-        raise ConfigError(
-            f"text too large: {len(encoded)} bytes (max {max_bytes})"
-        )
-
-
 def _validate_topic(topic: str) -> None:
     """Validate an MQTT subscription topic per spec §A.7.2.
 
