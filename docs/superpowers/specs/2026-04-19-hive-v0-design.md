@@ -380,7 +380,7 @@ Ordered steps in `RegionRuntime.bootstrap()`:
 | 4 | Connect to MQTT (with LWT) with exponential backoff (1s, 2s, 4s, 8s; cap at 30s; try for ≤ 60s total) | Raise `ConnectionError`, exit 4. Glia restarts. |
 | 5 | Publish initial heartbeat with `status="boot"` | If publish fails, retry once; continue. |
 | 6 | Read `subscriptions.yaml`; subscribe to each topic at the declared QoS | ACL rejection: log WARN, skip topic, continue. |
-| 7 | If region is `mPFC`, publish bootstrap `hive/self/*` retained topics (A.7.1). Other regions SHOULD subscribe to `hive/self/#` before proceeding. | Non-fatal. |
+| 7 | If region is `mPFC`, publish bootstrap `hive/self/*` retained topics (see L.1 for the mPFC-owned topic set and B.4 for the full table). Other regions SHOULD subscribe to `hive/self/#` before proceeding. | Non-fatal. |
 | 8 | Load handlers from `handlers/` (A.6) | On any handler import error: log ERROR, mark handler `degraded`; continue. |
 | 9 | Initialize `MemoryStore` (read STM; do not load LTM into memory — queried on demand). | STM corruption: back up to `memory/stm.json.corrupt.<ts>` and start empty. |
 | 10 | Set phase → `WAKE`. Publish `hive/system/heartbeat/<region>` with `status="wake"`. | — |
@@ -2680,7 +2680,7 @@ Identify:
 1. Events worth storing as episodes in LTM (1-5 candidates)
 2. Patterns worth promoting to knowledge/ or procedural/ notes
 3. Any STM slots that should be cleared
-4. Any prompts to yourself about what to revise (optional)
+4. An appendix entry to append to your rolling evolution log (optional) — only the new section body; the framework prepends the timestamped H2 heading. prompt.md itself is immutable DNA and is never rewritten (see A.7.1).
 
 Return a JSON object matching this schema: {review_schema}
 ```
@@ -2730,7 +2730,7 @@ sleep: <trigger> @ <ts>
 - events reviewed: <n>
 - ltm writes: <n>  files: <list>
 - stm pruned: <k> slots
-- prompt: <changed|unchanged>
+- appendix: <+N section(s)|unchanged>
 - handlers: <changed|unchanged>
 - restart required: <yes|no>
 
@@ -4233,16 +4233,17 @@ Smoke is the canary for wholescale breakage.
 
 `tests/integration/test_self_mod_cycle.py`:
 
-1. Launch one test region with `self_modify: true` and a starter prompt that instructs it to edit its own prompt during first sleep.
+1. Launch one test region with `self_modify: true` and a starter prompt that instructs it to append an appendix entry (and optionally add a handler) during first sleep.
 2. Force a sleep via `hive/system/sleep/force`.
 3. Wait for `hive/system/restart/request` from that region.
 4. Verify:
    - Git log shows new commit with expected message pattern.
-   - `prompt.md` content changed.
+   - `memory/appendices/rolling.md` has grown by at least one dated H2 section.
+   - `prompt.md` is byte-identical to its post-spawn initial commit (immutable-DNA invariant; any diff here is a regression — see A.7.1).
    - Container restarts cleanly.
    - New `hive/system/heartbeat` arrives with `status=wake`.
 
-This is the canary for the sleep → commit → restart pipeline.
+This is the canary for the sleep → append-appendix → commit → restart pipeline.
 
 ### I.7 What to mock vs. run real
 
@@ -4534,14 +4535,17 @@ This is a purely in-process reload. If the change requires a `region_template` e
 
 ### K.6 Starter prompt iteration
 
-Because prompts are stored in `regions/<name>/prompt.md` and read at bootstrap, iterating on a prompt is:
+Starter prompts are the source of truth at `docs/starter_prompts/<region>.md`. At region birth, glia's `spawn_executor` copies the starter to `regions/<name>/prompt.md` as immutable constitutional DNA (see A.7.1). In production, iterating on a starter after a region is running requires either re-spawning the region (destroy + recreate so glia copies the fresh starter — accumulated appendix and memory are lost) or submitting the change through the code-change review path.
+
+In dev, the faster loop is to bypass the immutability contract directly:
 
 ```bash
-$EDITOR regions/test_region/prompt.md
+$EDITOR docs/starter_prompts/test_region.md
+cp docs/starter_prompts/test_region.md regions/test_region/prompt.md
 hive restart test_region
 ```
 
-No sleep cycle involved. Prompt changes take effect on next bootstrap.
+This is appropriate only for test regions where losing appendix / memory history is acceptable. No sleep cycle is involved; prompt changes take effect on next bootstrap.
 
 ### K.7 Debugging Python internals
 
@@ -4585,7 +4589,7 @@ Glia mounts `/var/run/docker.sock`, which gives it host-level privileges. Any co
 
 ### L.3 Retained-topic fan-out cost
 
-`hive/self/*` has ~6 retained topics, all fan-out to 14 regions on every (re)connect. Retained messages are persistent in mosquitto, so a region restarting within 5s sees them instantly. Cost is negligible at 14 regions. At post-v0 counts (50+ regions or fast-cycling spawn) this needs measurement. Not a v0 issue.
+`hive/self/*` has 4 retained topics at v0 (identity, values, personality, autobiographical_index — the original 6 minus developmental_stage and age, both dropped on 2026-04-22), all fan-out to 14 regions on every (re)connect. Retained messages are persistent in mosquitto, so a region restarting within 5s sees them instantly. Cost is negligible at 14 regions. At post-v0 counts (50+ regions or fast-cycling spawn) this needs measurement. Not a v0 issue.
 
 ### L.4 Sleep starvation
 
