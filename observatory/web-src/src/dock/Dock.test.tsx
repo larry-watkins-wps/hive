@@ -6,7 +6,15 @@ import { useStore } from '../store';
 afterEach(() => {
   cleanup();
   localStorage.clear();
-  useStore.setState({ dockCollapsed: false, dockTab: 'firehose', dockHeight: 220 });
+  useStore.setState({
+    dockCollapsed: false,
+    dockTab: 'firehose',
+    dockHeight: 220,
+    envelopes: [],
+    firehoseFilter: '',
+    dockPaused: false,
+    expandedRowIds: new Set(),
+  });
 });
 
 describe('Dock frame', () => {
@@ -24,9 +32,16 @@ describe('Dock frame', () => {
     expect(root.style.height).toBe('28px');
   });
 
-  it('mounts the placeholder for the active tab', () => {
+  it('mounts the real Firehose on the firehose tab', () => {
+    const { container, getByPlaceholderText } = render(<Dock />);
+    // Firehose has an input with a distinctive placeholder
+    expect(getByPlaceholderText(/filter source · topic · payload/i)).toBeTruthy();
+    // Filter bar should be rendered at the top of the firehose tab body
+    expect(container.querySelector('input')).toBeTruthy();
+  });
+
+  it('mounts the placeholder for the topics tab', () => {
     const { queryByText, rerender } = render(<Dock />);
-    expect(queryByText(/Firehose — implemented/)).toBeTruthy();
     useStore.setState({ dockTab: 'topics' });
     rerender(<Dock />);
     expect(queryByText(/Topics — implemented/)).toBeTruthy();

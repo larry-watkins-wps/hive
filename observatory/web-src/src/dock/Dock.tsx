@@ -2,15 +2,38 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { DockTabStrip } from './DockTabStrip';
 import { useDockPersistence } from './useDockPersistence';
+import { Firehose } from './Firehose';
 
-function FirehosePlaceholder() {
-  return <div className="p-3 text-xs opacity-60">Firehose — implemented in v3 Task 5</div>;
-}
 function TopicsPlaceholder() {
   return <div className="p-3 text-xs opacity-60">Topics — implemented in v3 Task 6</div>;
 }
 function MetacogPlaceholder() {
   return <div className="p-3 text-xs opacity-60">Metacog — implemented in v3 Task 7</div>;
+}
+
+/**
+ * Live messages-per-second indicator for the Firehose tab badge. Samples
+ * the monotonic `envelopesReceivedTotal` counter on a 1 Hz interval and
+ * reports the per-second delta.
+ *
+ * Per decisions entry 82: read the counter via `useStore.getState()`
+ * inside the interval rather than subscribing via `useStore((s) => s...)`
+ * in the hook body. A subscribing read would re-run the hook on every
+ * envelope, tearing down and recreating the interval constantly; the
+ * imperative read inside setInterval keeps the 1 Hz cadence stable.
+ */
+function useFirehoseRate(): number {
+  const [rate, setRate] = useState(0);
+  const lastTotal = useRef(0);
+  useEffect(() => {
+    const id = setInterval(() => {
+      const cur = useStore.getState().envelopesReceivedTotal;
+      setRate(cur - lastTotal.current);
+      lastTotal.current = cur;
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return rate;
 }
 
 /**
@@ -30,8 +53,8 @@ function MetacogPlaceholder() {
  * Persistence is handled by `useDockPersistence`: it hydrates the store
  * from localStorage on first mount and debounces subsequent changes back.
  *
- * Real tab content lands in Tasks 5 (Firehose), 6 (Topics), 7 (Metacog).
- * For now, each tab renders a one-line placeholder.
+ * Tab content: Task 5 wires the real `<Firehose />`; Topics + Metacog
+ * remain placeholders until Tasks 6 + 7.
  */
 export function Dock() {
   useDockPersistence(useStore);
@@ -39,6 +62,7 @@ export function Dock() {
   const collapsed = useStore((s) => s.dockCollapsed);
   const height = useStore((s) => s.dockHeight);
   const setDockHeight = useStore((s) => s.setDockHeight);
+  const firehoseRate = useFirehoseRate();
 
   const [dragging, setDragging] = useState(false);
   const startY = useRef(0);
@@ -77,13 +101,13 @@ export function Dock() {
         }}
       />
       <DockTabStrip
-        firehoseRate={0}
+        firehoseRate={firehoseRate}
         topicCount={0}
         metacogBadge={{ count: 0, severity: 'quiet' }}
       />
       {!collapsed && (
         <div className="flex-1 overflow-hidden">
-          {tab === 'firehose' && <FirehosePlaceholder />}
+          {tab === 'firehose' && <Firehose />}
           {tab === 'topics' && <TopicsPlaceholder />}
           {tab === 'metacog' && <MetacogPlaceholder />}
         </div>
