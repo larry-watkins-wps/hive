@@ -1,8 +1,8 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-21 (session 4 — v2 Tasks 1–12 landed, Task 12 reviews + Tasks 13–15 remain)*
+*Last updated: 2026-04-22 (session 5 — v2 SHIPPED; Task 12 reviews + Tasks 13–15 landed)*
 
-**Canonical resume prompt:** `continue observatory v2`
+**Canonical resume prompt:** `continue observatory v3`
 
 ---
 
@@ -26,26 +26,27 @@
 | v2 Task 9 — FuzzyOrbs (5-mesh additive-glow groups) + glowTexture + deletes Regions.tsx | ✅ Complete | `cce9149` + review-fix `f03493d` |
 | v2 Task 10 — Labels (CSS2DRenderer, name always / stats on hover, hover raycaster) | ✅ Complete | `528ee1c` + review-fix `955d75f` |
 | v2 Task 11 — Edges (reactive adjacency threads) + Sparks EDGE_PULSE bump | ✅ Complete | `59ccaaa` + review-fix `de5ec6c` |
-| v2 Task 12 — Inspector shell + useInspectorKeys + Header/Stats/ModulatorBath/Subscriptions/Handlers sections | ⚠️ Landed, **reviews deferred** | `8002732` |
-| v2 Task 13 — Prompt + STM + JsonTree sections | ⏳ Pending | |
-| v2 Task 14 — Messages section (filter + auto-scroll + row expand) | ⏳ Pending | |
-| v2 Task 15 — integration + verification + HANDOFF closure | ⏳ Pending | |
+| v2 Task 12 — Inspector shell + useInspectorKeys + Header/Stats/ModulatorBath/Subscriptions/Handlers sections | ✅ Complete | `8002732` + review-fix `1fc7a1f` (slide-out animation + Stats dedup + shutdown badge) |
+| v2 Task 13 — Prompt + STM + JsonTree sections | ✅ Complete | `10b90c0` + review-fix `a98a39e` (skip first-render refetch + JsonTree escaping) |
+| v2 Task 14 — Messages section (filter + auto-scroll + row expand) | ✅ Complete | `6a8df79` (no review-fix; APPROVED with Suggestions only) |
+| v2 Task 15 — integration + verification + HANDOFF closure | ✅ Complete | this commit |
+| **v2 — SHIPPED** | ✅ | |
 | v3 implementation | ⏳ Pending | |
 
-## Suite + lint snapshot (end of session 4)
+## Suite + lint snapshot (end of session 5 — v2 ship)
 
-- `python -m pytest observatory/tests/unit/ -q` → **92 passed + 1 skipped** (v1's 67 + v2's 25: region_reader 15 + api_regions_v2 10; symlink test skips on Windows without Developer Mode)
-- `python -m pytest observatory/tests/component/ -m component -v` → **2 passed** (v1 MQTT publish → WS receive + v2 `/config` redaction + `/handlers` tree against real broker)
+- `python -m pytest observatory/tests/unit/ -q` → **92 passed + 2 skipped** (symlink test + one other skip on Windows without Developer Mode)
+- `python -m pytest observatory/tests/component/ -m component -v` → **2 passed** (v1 MQTT publish → WS receive + v2 `/config` redaction + `/handlers` tree against real broker via testcontainers `eclipse-mosquitto:2`)
 - `python -m ruff check observatory/` → clean
-- Frontend: `cd observatory/web-src && npm run test` → **71 passed** (store 12, ws 3, topicColors 13, rest 14, useRegionFetch 9, FuzzyOrbs 4, Labels 6, Edges 7, Header 3)
-- Frontend: `npx tsc -b` → clean; `npm run build` → `observatory/web/` emitted (~1 MB bundle, chunk-size warning pre-existing)
+- Frontend: `cd observatory/web-src && npm run test -- --run` → **84 passed** across 13 test files (store 12, ws 3, topicColors 13, rest 14, useRegionFetch 9, FuzzyOrbs 4, Labels 6, Edges 7, Header 3, Stats 4, Inspector 3, Stm 3, Messages 3)
+- Frontend: `npx tsc -b` → clean; `npm run build` → `observatory/web/` emitted (~1.05 MB bundle, 292 kB gzipped; chunk-size warning pre-existing from v1)
 
 ## Next session resume protocol
 
-1. `git log --oneline -10 observatory/` should show `8002732` (Task 12 Inspector shell) at or near the top.
-2. **First order of business: run the deferred Task 12 reviews.** Spec-compliance review via `general-purpose`, then code-quality review via `superpowers:code-reviewer`. Scope: `observatory/web-src/src/inspector/` + `App.tsx` modification. Spec refs: §3.1–3.4, §5.2 (Modulator bath reuse). Check: slide-over `translate-x-full` animation, `useInspectorKeys` input-focus guard, R-key CustomEvent dispatch matches Task 8's listener, Stats tile threshold coloring, Handlers fetchHandlers `size` formatting, fallback `—` for empty `llm_model`.
-3. Then Tasks 13 (Prompt + STM + JsonTree), 14 (Messages with incremental-scan auto-scroll), 15 (integration + final HANDOFF closure).
-4. Full v2 resume prompt: `continue observatory v2`.
+1. `git log --oneline -10 observatory/` should show the v2 ship commit at HEAD, with Tasks 13–15 commits (`10b90c0`, `a98a39e`, `6a8df79`, and this HANDOFF bump) just below.
+2. **v2 is SHIPPED.** Next phase is v3. Resume prompt: `continue observatory v3`.
+3. The v3 spec does not exist yet — first session of v3 should start by brainstorming + writing the spec per the same discipline used for v1/v2 (superpowers:brainstorm → superpowers:writing-plans → superpowers:subagent-driven-development execution).
+4. Visual-E2E punch list for v2 is still deferred to Larry's human-loop review — the automated suite cannot exercise `<Canvas>` + CameraControls + CSS2DRenderer in jsdom. Run the production build, start the service against a live broker, and walk the Task 9/10/11/12/13/14 checklist items (orb phase colors, label hover, edge threads, inspector slide-over + all 8 sections + keyboard `[`/`]`/`R`/`Esc` + messages auto-scroll).
 
 ## v1 legacy suite snapshot (session 3 baseline, unchanged)
 
@@ -133,6 +134,38 @@ Smoke test **also surfaced a Windows-dev-only latent bug** in `observatory/servi
 - **Review-fix 2 (Important)** — Replaced `(a, r: any) => ...` with `(a, r: RegionMeta) => ...` in Counters' reducer. Compile-time guard on `tokens_lifetime` rename.
 - **Review-fix 3 (Suggestion)** — Dedup: exported `MODULATOR_NAMES` + `ModulatorName` type from the store; `Modulators.tsx` imports them instead of maintaining a duplicate local `ORDER` tuple.
 
+### v2 Task 12 review-fix (session 5 — reviews were deferred from session 4)
+
+- **Spec-review Important §1** — Inspector slide-out had nothing to animate. Children were gated on `open` and unmounted synchronously on deselect, so the 300 ms `translate-x-full` transition ran against an already-empty panel. Added a `displayName` state held for 300 ms via `useEffect` + timer so the panel slides out with content still visible.
+- **Code-review Important §1** — `useStatsHistory` subscribed to the whole store, firing on every `pushEnvelope` tick. Sparkline was sampling envelope rate instead of heartbeat rate. Fixed with tail-compare dedup (identical `queue_depth`/`stm_bytes`/`tokens_lifetime` returns prior ref so React bails out).
+- **Suggestion** — `PhaseBadge` gained a `shutdown` branch (dim red) to match the v1 scene label enumeration.
+- **Suggestion** — `fmtBytes` lifted to `inspector/format.ts`; `Stats` + `Handlers` now import the shared helper instead of diverging (`16kB` vs `12.3 kB`).
+- **Regression tests** — `Inspector.test.tsx` (3 fake-timer-based tests) pins the slide-out window; `Stats.test.tsx` (4 tests) pins the dedup + change paths.
+
+### v2 Task 13 substantive fixes vs. the plan (session 5)
+
+- **Drift (test imports)** — `vitest.config.ts` has `globals: false`; plan's `Stm.test.tsx` used `beforeEach` without importing it. Added `beforeEach` + `afterEach` + `cleanup` to the imports to match the house pattern.
+- **Drift (reload button)** — Plan's reload button only did `e.preventDefault()`. Added `e.stopPropagation()` to match `Handlers.tsx` convention, avoiding the "one click reloads then collapses the section" bug.
+- **Drift (size label)** — Used `fmtBytes(data.length)` instead of plan's inline `(data.length/1024).toFixed(1) + ' kB'` for consistency with `Handlers` + `Stats`.
+- **Drift (JsonTree cast)** — `JsonValue` exported as a named type from `JsonTree.tsx`; `Stm.tsx` casts `data as JsonValue` at the single call site rather than widening `JsonTree` to `unknown`.
+- **Drift (404 handling)** — Backend 404 on missing `prompt.md` surfaces as red "Failed:" rather than the "No `prompt.md` in this region." empty-state copy. Acceptable — empty-state copy fires on `!error && !data`, which is correct for an empty-file case.
+- **Review-fix 1 (Important)** — Auto-refetch `useEffect` fired on mount because `stats` was already populated by the store, so `reload()` kicked a second fetch back-to-back with `useRegionFetch`'s name-change mount fetch. Added `firstRef` sentinel to skip the mount tick in both `Prompt.tsx` and `Stm.tsx`. Net: one fetch per selection, not two.
+- **Review-fix 2 (Important)** — `Stm.test.tsx` used `waitFor + getByText` where `findByText` is idiomatic. Swapped.
+- **Review-fix 3 (Suggestion)** — `JsonTree` rendered string values as `<span>"{value}"</span>`, which doesn't escape embedded quotes/backslashes. Replaced with `JSON.stringify(value)` so `{"msg": "she said \"hi\""}` displays correctly.
+
+### v2 Task 14 substantive fixes vs. the plan (session 5)
+
+- **Drift (IMPORTANT, incremental scan)** — Plan's `lastLenRef` + `env.length` gating misses every envelope after the ring caps at `RING_CAP=5000`: once `length` plateaus, `startIdx = last = ringLen` and the scan loop never executes. Same class of bug v1 Counters hit under its own length-plateau, fixed there by adding monotonic `envelopesReceivedTotal` to the store. Task 14 uses the same precedent: `lastTotalRef` gates on `s.envelopesReceivedTotal - lastTotalRef.current`, then reads the last `take = min(delta, ring.length)` envelopes at the tail. Correct under saturation.
+- **Drift (IMPORTANT, expand-state key)** — Plan keyed both `expanded: Set<number>` and React row `key=` on the filtered-array index `i`. When new rows land and `.slice(-MAX_ROWS)` drops the oldest, indices shift down — expanded Set now holds stale indices pointing to different envelopes. Swapped both to `` `${e.observed_at}|${e.topic}` `` stable identity.
+- **Drift (test cleanup)** — `vitest.config.ts` has `globals: false`, so no auto-cleanup between tests. Rendered DOM from the first test persisted into the second, breaking the direction-count assertion. Added `afterEach(() => cleanup())` mirroring sibling `Stm.test.tsx`.
+- **Drift (`if/else`)** — Plan's ternary `n.has(i) ? n.delete(i) : n.add(i)` trips `no-unused-expressions`; rewrote as `if (n.has(id)) n.delete(id); else n.add(id);`.
+- **Code-review result** — Two APPROVED rounds: spec-compliance (no violations; `lastLenRef → lastTotalRef` documented as reviewer-approved implementation choice) and code-quality (3 Suggestion-only findings, all non-blocking: seed-vs-subscribe race window note, optional `data-testid` instead of CSS-escape querySelector, optional follow-up if `observed_at|topic` ever collides under sub-second duplicates).
+
+### v2 Task 15 substantive fixes vs. the plan (session 5)
+
+- **No-op for production code.** Task 15 is pure verification + HANDOFF closure; no files under `observatory/web-src/` or `observatory/` backend were modified.
+- **Smoke test (Plan Step 4) deferred to Larry's human-loop review** — same pattern as v1 Task 16. The automated suite cannot exercise `<Canvas>` / CameraControls / CSS2DRenderer in jsdom, and running the service against a live broker requires Larry's workstation. All v2 backend contracts are pinned by the 92-unit + 2-component suite; inspector sections are pinned by the 84-test frontend vitest suite.
+
 ### Prior session (session 2) substantive fixes vs. the plan
 
 - **Task 2** — real `glia/regions_registry.yaml` schema (dict keyed by name with `layer`/`required_capabilities`) reconciled; plan's list-of-dicts format would have silently returned empty.
@@ -195,3 +228,4 @@ Plan Step 3 requires a real browser + live Hive broker. The Task 16 implementer 
 | 2026-04-21 | Session 3 continued: Task 14 complete + review-fix. Scene-wide ambient channels: `ModulatorFog` tints scene.fog + scene.background from weighted modulator values; `RhythmPulse` modulates ambient-light intensity at perceptually-scaled gamma/beta/theta tempo. Pre-approved drifts: Fog.tsx hoisted BG constants + reusable targetRef (no per-frame Color alloc); Rhythm.tsx uses `useStore.getState()` non-reactively; Scene.tsx `useMemo` preserved (3rd time plan reverts it). Review-fix addressed 2 Important: rhythm pulse now decays after 5s staleness; scan window replaced with incremental lastLenRef-based scan (same as Sparks). Plus Fog's MOD_ENTRIES tuple table + scene.background moved to first-frame-only. 21 frontend tests unchanged; Python suite 67 unit + 1 component untouched. Next is Task 15 (HUD — self panel + modulators + counters). |
 | 2026-04-21 | Session 3 continued: Task 15 complete + review-fix. HUD (SelfPanel / Modulators / Counters) rendered as DOM overlay above `<Canvas>` via Tailwind. Pre-approved drifts: Counters.tsx avoids cross-process clock-origin bug (plan compared `performance.now()/1000` to server-side `observed_at` = `time.monotonic()`) + `useEffect([])` instead of `[envelopes]`; App.tsx preserves Task 11's strict-mode comment. Review-fix addressed 2 Important + 1 Suggestion: added `envelopesReceivedTotal` monotonic counter to the store so Counters no longer reads 0.0 msg/s when the envelope ring plateaus at RING_CAP; typed Counters reducer accumulator as `RegionMeta` (was `any`); exported `MODULATOR_NAMES` from the store + deduped `Modulators.tsx`. 22 frontend tests (was 21, +1 regression); Python suite 67 unit + 1 component untouched. Next is Task 16 (final integration + production build + static mount smoke test). |
 | 2026-04-21 | Session 3 complete: Task 16 ships v1. All 16 tasks + review-fixes landed. Total session-3 commits: 8 task commits + 7 review-fix commits + HANDOFF bumps. Canonical resume prompt pivoted to v2. |
+| 2026-04-22 | Session 5 ships v2. Opened with the deferred Task 12 reviews (review-fix `1fc7a1f`): slide-out animation via a 300 ms `displayName` hold, `useStatsHistory` tail-compare dedup so sparklines sample heartbeats not envelopes, `shutdown` phase badge branch, shared `fmtBytes` helper. Then Tasks 13 → 14 → 15 with subagent-driven-development: fresh implementer per task, two-stage review (spec + code-quality) after each. Task 13 (`10b90c0` + review-fix `a98a39e`): Prompt + STM sections with auto-refetch on phase/last_error_ts, plus in-repo `JsonTree` recursive renderer; review-fix skipped the first-render double-fetch and swapped string rendering to `JSON.stringify` for escape-safety. Task 14 (`6a8df79`, no review-fix — APPROVED with Suggestions only): Messages section with monotonic `envelopesReceivedTotal`-gated incremental scan (fixes plan's length-plateau race, same class as v1 Counters'), stable `observed_at\|topic` expand-state keys, auto-scroll follow-tail within 40 px. Task 15 (this commit): HANDOFF bump only; no code changes. Suite grew to 92 unit + 2 component Python + 84 frontend vitest (was 78 pre-session-5). Canonical resume prompt pivoted to v3. |
