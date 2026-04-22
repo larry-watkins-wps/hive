@@ -196,3 +196,16 @@ describe('self-state retained handling', () => {
     expect(store.getState().ambient.self.values).toEqual(['a', 'b']);
   });
 });
+
+describe('retained raw map', () => {
+  it('retained map captures snapshot + live updates', () => {
+    const store = createStore();
+    store.getState().applySnapshot({
+      regions: {}, recent: [], server_version: 't',
+      retained: { 'hive/system/metrics/compute': { payload: { total_cpu_pct: 42 } } },
+    });
+    expect(store.getState().retained['hive/system/metrics/compute']).toEqual({ total_cpu_pct: 42 });
+    store.getState().applyRetained('hive/system/metrics/tokens', { total_input_tokens: 10 });
+    expect(store.getState().retained['hive/system/metrics/tokens']).toEqual({ total_input_tokens: 10 });
+  });
+});

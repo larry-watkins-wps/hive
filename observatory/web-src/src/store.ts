@@ -51,6 +51,7 @@ type State = {
   envelopesReceivedTotal: number;
   adjacency: Array<[string, string, number]>;
   ambient: Ambient;
+  retained: Record<string, unknown>;
   selectedRegion: string | null;
   dockTab: 'firehose' | 'topics' | 'metacog';
   dockCollapsed: boolean;
@@ -117,6 +118,7 @@ export function createStore() {
     envelopesReceivedTotal: 0,
     adjacency: [],
     ambient: { modulators: {}, self: {} },
+    retained: {},
     selectedRegion: null,
     dockTab: 'firehose',
     dockCollapsed: false,
@@ -130,16 +132,31 @@ export function createStore() {
       envelopes: s.recent,
       envelopesReceivedTotal: s.recent.length,
       ambient: extractAmbient(s.retained),
+      // Unwrap each retained envelope's `.payload` into the flat
+      // `retained[topic]` map so consumers (e.g. SystemMetrics tile) can
+      // read `hive/system/metrics/*` payloads directly without destructuring
+      // the envelope wrapper every time. A malformed retained entry
+      // (missing `payload`) becomes `null` rather than `undefined` so the
+      // key still appears in the map.
+      retained: Object.fromEntries(
+        Object.entries(s.retained).map(([k, v]) => [k, (v as { payload?: unknown }).payload ?? null]),
+      ),
     }),
     applyRegionDelta: (regions) => set({ regions }),
     applyAdjacency: (pairs) => set({ adjacency: pairs }),
     applyRetained: (topic, payload) => {
+      // Per Task 9 Drift D: every retained topic lands in the raw `retained`
+      // map, even if the branch logic below can't classify it into `ambient`
+      // (e.g. unknown modulator name). Ambient + retained are updated in a
+      // single `set(...)` call so subscribers see a consistent snapshot.
       const ambient = { ...get().ambient, modulators: { ...get().ambient.modulators }, self: { ...get().ambient.self } };
       const value = (payload as { value?: unknown }).value;
       if (topic.startsWith('hive/modulator/')) {
         const name = topic.slice('hive/modulator/'.length);
-        if (!isModulatorName(name)) return;
-        ambient.modulators[name] = Number(value ?? 0);
+        if (isModulatorName(name)) {
+          ambient.modulators[name] = Number(value ?? 0);
+        }
+        // Unknown modulator names still fall through to the retained set below.
       } else if (topic === 'hive/self/identity') {
         ambient.self.identity = String(value ?? '');
       } else if (topic === 'hive/self/values') {
@@ -151,7 +168,10 @@ export function createStore() {
       } else if (topic === 'hive/interoception/felt_state') {
         ambient.self.felt_state = String(value ?? '');
       }
-      set({ ambient });
+      set({
+        ambient,
+        retained: { ...get().retained, [topic]: payload },
+      });
     },
     pushEnvelope: (env) => {
       const next = get().envelopes.concat(env);
