@@ -11,6 +11,19 @@ Wires all eight glia sub-modules plus the supervisor behind a single
 5. Race the dispatch loop against a SIGTERM/SIGINT/SIGBREAK-driven
    ``asyncio.Event`` so shutdown is graceful.
 
+**Enabled-by-default bridges** (spec §E.7, §E.8):
+
+* :class:`~glia.bridges.rhythm_generator.RhythmGenerator` emits
+  ``hive/rhythm/{gamma,beta,theta}`` tick envelopes so regions subscribed
+  to ``hive/rhythm/#`` receive baseline timing.
+* :class:`~glia.bridges.input_text_bridge.InputTextBridge` runs a TCP
+  server on ``127.0.0.1:7777`` and republishes each newline-delimited
+  line to ``hive/sensory/input/text`` — the entry point for external
+  text injection into Hive.
+
+Camera, mic, speaker, and motor bridges remain opt-in and are not
+wired here (spec §E.8: audio/camera require deliberate enablement).
+
 Exit-code mapping (parallels region_template's §A.4.2 convention):
 
 +-----------------------------+------+
@@ -56,6 +69,8 @@ import structlog.contextvars
 import structlog.typing
 
 from glia.acl_manager import AclManager
+from glia.bridges.input_text_bridge import InputTextBridge
+from glia.bridges.rhythm_generator import RhythmGenerator
 from glia.codechange_executor import CodeChangeExecutor
 from glia.heartbeat_monitor import HeartbeatMonitor
 from glia.launcher import Launcher
@@ -304,13 +319,18 @@ async def _run(  # noqa: PLR0915 — linear bootstrap sequence; easier to read f
             identifier="glia",
         ) as mqtt_client:
             # Bind publish callable to this specific client instance.
+            # ``qos`` is a keyword-only arg with default 1 so existing
+            # callers (supervisor / metrics / rollback / spawn executor /
+            # codechange executor) that omit it keep their behavior, while
+            # bridges that pass ``qos=0`` (rhythm ticks) or ``qos=1``
+            # explicitly get the value they asked for.
             async def publish(
-                envelope: Envelope, *, retain: bool = False
+                envelope: Envelope, *, qos: int = 1, retain: bool = False
             ) -> None:
                 await mqtt_client.publish(
                     envelope.topic,
                     payload=envelope.to_json(),
-                    qos=1,
+                    qos=qos,
                     retain=retain,
                 )
 
@@ -342,54 +362,71 @@ async def _run(  # noqa: PLR0915 — linear bootstrap sequence; easier to read f
                 publish=publish,
             )
 
+            # Enabled-by-default bridges. Both handle their own
+            # bind / publish errors; ``start()`` is best-effort.
+            rhythm_generator = RhythmGenerator(publish=publish)
+            input_text_bridge = InputTextBridge(publish=publish)
+
             await supervisor.start()
             try:
-                for topic in _SUBSCRIBED_TOPICS:
-                    await mqtt_client.subscribe(topic, qos=1)
-
-                log.info(
-                    "glia.main.started",
-                    mqtt_host=mqtt_host,
-                    mqtt_port=mqtt_port,
-                    subscribed=list(_SUBSCRIBED_TOPICS),
-                )
-
-                dispatch_task = asyncio.create_task(
-                    _dispatch_loop(mqtt_client, supervisor, log),
-                    name="glia_dispatch",
-                )
-                signal_task = asyncio.create_task(
-                    shutdown_event.wait(),
-                    name="glia_signal",
-                )
-
+                await rhythm_generator.start()
+                await input_text_bridge.start()
                 try:
-                    done, pending = await asyncio.wait(
-                        {dispatch_task, signal_task},
-                        return_when=asyncio.FIRST_COMPLETED,
+                    for topic in _SUBSCRIBED_TOPICS:
+                        await mqtt_client.subscribe(topic, qos=1)
+
+                    log.info(
+                        "glia.main.started",
+                        mqtt_host=mqtt_host,
+                        mqtt_port=mqtt_port,
+                        subscribed=list(_SUBSCRIBED_TOPICS),
+                        bridges=["rhythm_generator", "input_text_bridge"],
                     )
-                except asyncio.CancelledError:
-                    done, pending = set(), {dispatch_task, signal_task}
 
-                for task in pending:
-                    task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError, Exception):
-                        await task
+                    dispatch_task = asyncio.create_task(
+                        _dispatch_loop(mqtt_client, supervisor, log),
+                        name="glia_dispatch",
+                    )
+                    signal_task = asyncio.create_task(
+                        shutdown_event.wait(),
+                        name="glia_signal",
+                    )
 
-                # Surface an exception from the dispatch task (other
-                # than cancellation) as exit 1.
-                exit_code = _EXIT_OK
-                if dispatch_task in done:
-                    exc = dispatch_task.exception()
-                    if exc is not None and not isinstance(
-                        exc, asyncio.CancelledError
-                    ):
-                        log.error(
-                            "glia.main.dispatch_task_crashed", error=str(exc)
+                    try:
+                        done, pending = await asyncio.wait(
+                            {dispatch_task, signal_task},
+                            return_when=asyncio.FIRST_COMPLETED,
                         )
-                        exit_code = _EXIT_UNHANDLED
+                    except asyncio.CancelledError:
+                        done, pending = set(), {dispatch_task, signal_task}
 
-                return exit_code
+                    for task in pending:
+                        task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError, Exception):
+                            await task
+
+                    # Surface an exception from the dispatch task (other
+                    # than cancellation) as exit 1.
+                    exit_code = _EXIT_OK
+                    if dispatch_task in done:
+                        exc = dispatch_task.exception()
+                        if exc is not None and not isinstance(
+                            exc, asyncio.CancelledError
+                        ):
+                            log.error(
+                                "glia.main.dispatch_task_crashed", error=str(exc)
+                            )
+                            exit_code = _EXIT_UNHANDLED
+
+                    return exit_code
+                finally:
+                    # Bridge teardown runs before supervisor.stop so any
+                    # in-flight bridge publishes observe a still-open
+                    # mqtt_client. Order is reverse of start.
+                    with contextlib.suppress(Exception):
+                        await input_text_bridge.stop()
+                    with contextlib.suppress(Exception):
+                        await rhythm_generator.stop()
             finally:
                 # Supervisor teardown must run even if the dispatch loop
                 # raised — cancels in-flight restart backoffs and stops
