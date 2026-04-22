@@ -57,19 +57,21 @@ export function Header({ name }: { name: string }) {
 }
 
 /**
- * Phase badge pill. Colors per spec §3.2:
- *   wake       → blue  (default)
- *   sleep      → grey
- *   bootstrap  → green
- *   other      → same classes as wake (fallback)
+ * Phase badge pill. Colors cover the four LifecyclePhase StrEnum values the
+ * backend emits (`bootstrap | wake | sleep | shutdown`) plus a blue fallback
+ * for anything unexpected. `shutdown` was added after spec-review T12 S1 —
+ * v1 labels distinguish SHUTDOWN in the 3D scene, so the inspector badge
+ * should too.
  */
 function PhaseBadge({ phase }: { phase: string }) {
   const cls =
     phase === 'sleep'
       ? 'bg-[#2a2f3a] text-[#8a8e99]'
-      : phase === 'bootstrap'
-        ? 'bg-[#1e3a2a] text-[#8fd6a0]'
-        : 'bg-[#1e3a5f] text-[#8ec5ff]';
+      : phase === 'shutdown'
+        ? 'bg-[#3a1e1e] text-[#ffb3b3]'
+        : phase === 'bootstrap'
+          ? 'bg-[#1e3a2a] text-[#8fd6a0]'
+          : 'bg-[#1e3a5f] text-[#8ec5ff]';
   return (
     <span className={`text-[10px] px-2 py-0.5 rounded-full tracking-wider ${cls}`}>
       {phase.toUpperCase()}

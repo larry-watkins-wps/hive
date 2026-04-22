@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useStore } from '../../store';
+import { fmtBytes } from '../format';
 
 /**
  * Stats strip — five inline tiles summarising the selected region's runtime
@@ -30,12 +31,16 @@ type SparkHistory = {
  * Subscribe once to the zustand store and append each region's fresh stats
  * to a bounded history. Kept tight (24 points) so React renders stay cheap.
  *
- * We read via `useStore.subscribe` rather than `useStore(selector)` because
- * we want to sample on every store update (every heartbeat delta the
- * backend sends), not only when the selector's output changes by identity.
- * `subscribe` returns an unsubscribe function we clean up in the effect.
+ * `useStore.subscribe` fires on every store update — including envelope-rate
+ * pushes from `pushEnvelope`, which don't carry stats changes. The callback
+ * therefore dedupes by comparing the three sparkline values against the tail
+ * of the history; identical values return `h` unchanged, letting React bail
+ * out of the setState and keeping the sparkline at heartbeat cadence rather
+ * than envelope cadence (code-review T12 Important I1).
+ *
+ * Exported for tests in `Stats.test.tsx`; not meant as a public API.
  */
-function useStatsHistory(name: string): SparkHistory {
+export function useStatsHistory(name: string): SparkHistory {
   const [history, setHistory] = useState<SparkHistory>({
     queue_depth: [],
     stm_bytes: [],
@@ -59,14 +64,25 @@ function useStatsHistory(name: string): SparkHistory {
     const unsub = useStore.subscribe((s) => {
       const stats = s.regions[name]?.stats;
       if (!stats) return;
-      setHistory((h) => ({
-        queue_depth: [...h.queue_depth.slice(-(HISTORY_POINTS - 1)), stats.queue_depth],
-        stm_bytes: [...h.stm_bytes.slice(-(HISTORY_POINTS - 1)), stats.stm_bytes],
-        tokens_lifetime: [
-          ...h.tokens_lifetime.slice(-(HISTORY_POINTS - 1)),
-          stats.tokens_lifetime,
-        ],
-      }));
+      setHistory((h) => {
+        const last = h.queue_depth.length - 1;
+        if (
+          last >= 0 &&
+          h.queue_depth[last] === stats.queue_depth &&
+          h.stm_bytes[last] === stats.stm_bytes &&
+          h.tokens_lifetime[last] === stats.tokens_lifetime
+        ) {
+          return h;
+        }
+        return {
+          queue_depth: [...h.queue_depth.slice(-(HISTORY_POINTS - 1)), stats.queue_depth],
+          stm_bytes: [...h.stm_bytes.slice(-(HISTORY_POINTS - 1)), stats.stm_bytes],
+          tokens_lifetime: [
+            ...h.tokens_lifetime.slice(-(HISTORY_POINTS - 1)),
+            stats.tokens_lifetime,
+          ],
+        };
+      });
     });
     return unsub;
   }, [name]);
@@ -103,12 +119,6 @@ function relativeTime(ts: string | null): { text: string; fresh: boolean } {
   if (delta < 60) return { text: `${Math.floor(delta)}s`, fresh: true };
   if (delta < 3600) return { text: `${Math.floor(delta / 60)}m`, fresh: false };
   return { text: `${Math.floor(delta / 3600)}h`, fresh: false };
-}
-
-function fmtBytes(n: number): string {
-  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)}MB`;
-  if (n >= 1024) return `${Math.round(n / 1024)}kB`;
-  return `${n}B`;
 }
 
 function fmtTokens(n: number): string {

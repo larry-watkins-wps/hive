@@ -1,5 +1,6 @@
 import { fetchHandlers, type HandlerEntry } from '../../api/rest';
 import { useRegionFetch } from '../useRegionFetch';
+import { fmtBytes } from '../format';
 
 /**
  * Handlers section — collapsed `<details>` by default. Spec §3.2 item 8.
@@ -11,11 +12,6 @@ import { useRegionFetch } from '../useRegionFetch';
  * No auto-refetch (spec §3.3) — handler files change only on region
  * self-modification + restart. Reload button handles manual refresh.
  */
-function fmtBytes(n: number): string {
-  if (n >= 1024) return `${(n / 1024).toFixed(1)} kB`;
-  return `${n} B`;
-}
-
 export function Handlers({ name }: { name: string }) {
   const { loading, error, data, reload } = useRegionFetch(name, fetchHandlers);
   const entries: HandlerEntry[] = data ?? [];
