@@ -49,4 +49,14 @@ describe('Dock frame', () => {
     rerender(<Dock />);
     expect(queryByText(/No topics yet/i)).toBeTruthy();
   });
+
+  it('mounts the real Metacog component on the metacog tab', () => {
+    // v3 Task 7 replaced the placeholder with the real Metacog component.
+    // With no envelopes pushed, the filter returns an empty list so Metacog
+    // shows the empty-state message.
+    const { queryByText, rerender } = render(<Dock />);
+    useStore.setState({ dockTab: 'metacog' });
+    rerender(<Dock />);
+    expect(queryByText(/No metacognition events yet\./i)).toBeTruthy();
+  });
 });

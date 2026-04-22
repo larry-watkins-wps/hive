@@ -5,10 +5,7 @@ import { useDockPersistence } from './useDockPersistence';
 import { Firehose } from './Firehose';
 import { Topics } from './Topics';
 import { useTopicStats } from './useTopicStats';
-
-function MetacogPlaceholder() {
-  return <div className="p-3 text-xs opacity-60">Metacog — implemented in v3 Task 7</div>;
-}
+import { Metacog } from './Metacog';
 
 /**
  * Live messages-per-second indicator for the Firehose tab badge. Samples
@@ -36,6 +33,49 @@ function useFirehoseRate(): number {
 }
 
 /**
+ * Metacognition dock-tab badge (spec §4.2 line 86). Count = metacog
+ * envelopes in the last 60 s. Severity: `error` if any `/error/` topic
+ * in that window, else `conflict` if any `/conflict/`, else `quiet`.
+ *
+ * Drift A (v3 Task 7): computed at 1 Hz via `setInterval` reading
+ * `useStore.getState()` imperatively — NOT via `useStore((s) => s.envelopes)`
+ * reactively. A reactive subscription would re-scan the ring (O(ring))
+ * and re-render the dock on every envelope push; at firehose rates that
+ * thrashes the dock-tab-strip for no visual benefit (the badge only
+ * ticks visibly at 1 Hz anyway). Same pattern as `useFirehoseRate` here
+ * and `useTopicStats` — decisions entry 82.
+ *
+ * Initial `compute()` runs inline so the first render doesn't display a
+ * 1 s zero-count; React strict-mode's double-mount is handled by the
+ * `return () => clearInterval(id)` cleanup — no leak.
+ */
+function useMetacogBadge(): { count: number; severity: 'error' | 'conflict' | 'quiet' } {
+  const [badge, setBadge] = useState<{ count: number; severity: 'error' | 'conflict' | 'quiet' }>({
+    count: 0,
+    severity: 'quiet',
+  });
+  useEffect(() => {
+    const compute = () => {
+      const envs = useStore.getState().envelopes;
+      const now = Date.now();
+      const recent = envs.filter(
+        (e) => e.topic.startsWith('hive/metacognition/') && now - e.observed_at < 60_000,
+      );
+      const errors = recent.filter((e) => e.topic.includes('/error/')).length;
+      const conflicts = recent.filter((e) => e.topic.includes('/conflict/')).length;
+      setBadge({
+        count: recent.length,
+        severity: errors > 0 ? 'error' : conflicts > 0 ? 'conflict' : 'quiet',
+      });
+    };
+    compute();
+    const id = setInterval(compute, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return badge;
+}
+
+/**
  * Spec §4 — bottom dock. Fixed-position frame at the bottom of the viewport.
  *
  * Height:
@@ -53,7 +93,7 @@ function useFirehoseRate(): number {
  * from localStorage on first mount and debounces subsequent changes back.
  *
  * Tab content: Task 5 wires the real `<Firehose />`, Task 6 wires the
- * real `<Topics />`; Metacog remains a placeholder until Task 7.
+ * real `<Topics />`, Task 7 wires the real `<Metacog />` + badge.
  */
 export function Dock() {
   useDockPersistence(useStore);
@@ -68,6 +108,7 @@ export function Dock() {
   // state slice. Calling the hook in both components would spin up two
   // independent 1 Hz intervals with divergent state.
   const topicStats = useTopicStats();
+  const metacogBadge = useMetacogBadge();
 
   const [dragging, setDragging] = useState(false);
   const startY = useRef(0);
@@ -108,13 +149,13 @@ export function Dock() {
       <DockTabStrip
         firehoseRate={firehoseRate}
         topicCount={topicStats.size}
-        metacogBadge={{ count: 0, severity: 'quiet' }}
+        metacogBadge={metacogBadge}
       />
       {!collapsed && (
         <div className="flex-1 overflow-hidden">
           {tab === 'firehose' && <Firehose />}
           {tab === 'topics' && <Topics stats={topicStats} />}
-          {tab === 'metacog' && <MetacogPlaceholder />}
+          {tab === 'metacog' && <Metacog />}
         </div>
       )}
     </div>
