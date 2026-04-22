@@ -52,6 +52,7 @@ export function Appendix({ name }: { name: string }) {
           Appendix{' '}
           <span className="text-[#8a8e99] text-[10px]">
             (rolling) · {sizeLabel}
+            {data ? ` · ${entries.length} entries` : ''}
           </span>
         </span>
         <button
