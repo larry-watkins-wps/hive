@@ -14,7 +14,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'identity', label: 'Identity' },
   { id: 'values', label: 'Values' },
   { id: 'personality', label: 'Personality' },
-  { id: 'autobio', label: 'Autobio' },
+  { id: 'autobio', label: 'Index' },
 ];
 
 // `empty state` is per-tab and uses the exact copy from spec §10.2. The
@@ -33,12 +33,23 @@ function renderBody(tab: Tab, self: ReturnType<typeof useStore.getState>['ambien
   if (typeof v === 'string') return <div className="text-sm leading-snug">{v}</div>;
   if (Array.isArray(v)) {
     if (tab === 'autobio') {
-      // Autobio entries are `{ts, headline}` newest-first — slice at 20
-      // with an "N more…" footer; fall back to a truncated JSON blob per
-      // row so a malformed entry still renders something useful.
+      // Autobio entries are `{ts, headline}` rendered newest-first per spec
+      // §10.2:327 — sort by `ts` descending (ISO 8601 timestamps sort
+      // lexicographically as they do chronologically, so a string compare
+      // works) then slice at 20 with an "N more…" footer. Missing `ts`
+      // sorts to the end via `''` fallback. Fall back to a truncated JSON
+      // blob per row so a malformed entry still renders something useful.
+      const entries = (v as Array<{ ts?: string; headline?: string }>)
+        .slice()
+        .sort((a, b) => {
+          const ta = a.ts ?? '';
+          const tb = b.ts ?? '';
+          return tb.localeCompare(ta);
+        })
+        .slice(0, 20);
       return (
         <ul className="text-xs leading-snug list-none space-y-0.5">
-          {(v as Array<{ ts?: string; headline?: string }>).slice(0, 20).map((e, i) => (
+          {entries.map((e, i) => (
             <li key={i} className="font-mono">
               <span className="opacity-60">{e.ts ?? '—'}</span> · {e.headline ?? JSON.stringify(e).slice(0, 80)}
             </li>

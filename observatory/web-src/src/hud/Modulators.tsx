@@ -16,7 +16,7 @@ function Gauge({ name, value }: { name: string; value: number }) {
 export function Modulators() {
   const mods = useStore((s) => s.ambient.modulators);
   return (
-    <div className="p-3 bg-hive-panel/80 backdrop-blur rounded-md w-72 space-y-1 mt-2">
+    <div className="p-3 bg-hive-panel/80 backdrop-blur rounded-md w-72 space-y-1">
       <div className="text-[10px] tracking-widest opacity-60 uppercase">Modulators</div>
       {MODULATOR_NAMES.map((n) => <Gauge key={n} name={n} value={mods[n] ?? 0} />)}
     </div>

@@ -71,7 +71,7 @@ export function SystemMetrics() {
             <div
               key={name}
               data-testid="health-cell"
-              title={`${name} · ${live}`}
+              title={`${name} · ${entry?.status ?? 'unknown'} · ${live}`}
               style={{
                 width: 10,
                 height: 10,

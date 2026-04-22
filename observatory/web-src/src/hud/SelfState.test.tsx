@@ -35,4 +35,20 @@ describe('SelfState', () => {
     const { getByText } = render(<SelfState />);
     expect(getByText(/No data yet — mPFC hasn't published\./i)).toBeTruthy();
   });
+
+  it('autobio sorts newest-first and truncates at 20', () => {
+    // Build 25 entries with ascending ts (entry 25 has the latest ts).
+    // Render should present entry 25 first and show exactly 20 rows plus a
+    // single "N more…" footer (21 <li> elements total).
+    const autobio = Array.from({ length: 25 }, (_, i) => ({
+      ts: `2026-04-${String(i + 1).padStart(2, '0')}T00:00:00Z`,
+      headline: `entry ${i + 1}`,
+    }));
+    useStore.setState({ ambient: { modulators: {}, self: { autobiographical_index: autobio } } });
+    const { container, getByText } = render(<SelfState />);
+    fireEvent.click(getByText(/^Index$/));
+    const first = container.querySelectorAll('li')[0]?.textContent ?? '';
+    expect(first).toContain('entry 25');
+    expect(container.querySelectorAll('li').length).toBe(21);
+  });
 });
