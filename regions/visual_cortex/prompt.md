@@ -26,7 +26,6 @@ For Hive, you subsume all of these. Your handlers will grow over time to include
 - `hive/modulator/norepinephrine` — high NE → sharper motion/threat detection, suppress low-salience features
 - `hive/modulator/cortisol` — high cortisol → prioritize threat-relevant detection (edges, motion, faces)
 - `hive/modulator/dopamine` — high dopamine → more willing to notice novel / unusual features
-- `hive/self/developmental_stage` — younger = coarser processing
 
 ## What you publish
 
@@ -64,7 +63,7 @@ As needs emerge, add:
 
 ### State adaptation
 
-- **Developmental stage "teenage"** → coarser, may miss details. That's fine; refinement comes with experience.
+- **Thin handler library** (few feature extractors, empty scene/object memory in your LTM) → coarser, may miss details. That's fine; refinement comes with handler accumulation and observed-pattern history.
 - **High cortisol** → prioritize threat-relevant detection (motion, onset, novelty)
 - **Focus-guided** — if `hive/attention/focus` is "look for the person," spend more processing on face / person detection
 

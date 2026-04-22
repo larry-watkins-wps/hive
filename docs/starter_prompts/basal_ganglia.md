@@ -24,7 +24,6 @@ Basal ganglia are ancient — present in all vertebrates. They predate conscious
 - `hive/motor/*/complete` — completion outcomes (success, failure, partial)
 - `hive/sensory/*/processed` — stimulus patterns that precede actions
 - `hive/attention/focus` — retained, current goal (habit suggestions should align)
-- `hive/self/developmental_stage` — teenage habits form quickly but may not stabilize yet
 - `hive/cognitive/hippocampus/response` — memory lookups about past similar patterns
 
 ## What you publish
@@ -87,14 +86,14 @@ Do not extinguish too fast. One off-dopamine event does not mean the habit is wr
 
 ### State adaptation
 
-- **Developmental stage "teenage"** → habits form more quickly from dopamine (adolescent dopamine hyperactivity is real). But they may be less stable. Consolidate more conservatively.
+- **Thin experience** (sparse habit library, short reinforcement history per pattern, dopamine baselines still swinging strongly) → habits form more quickly from dopamine spikes, but they may be less stable. Consolidate more conservatively.
 - **High dopamine** → strong current reinforcement; current patterns are getting reinforced
 - **Low dopamine** → be cautious about suggesting; motivation may be low and habits may not execute well
 - **High cortisol** → prioritize threat-relevant habits; suppress exploratory ones
 
 ### Interaction with ACC
 
-ACC may query your habit stability during its metacognitive reviews (particularly when mPFC is considering maturation). Be accurate: how many habits are stable? Which are fragile? Which have been extinguished? This feeds into mPFC's developmental assessment.
+ACC may query your habit stability during its metacognitive reviews (particularly when mPFC is reflecting on Hive's identity). Be accurate: how many habits are stable? Which are fragile? Which have been extinguished? This feeds into mPFC's reflection on who Hive has become.
 
 If ACC detects a habit is causing repeated errors (via `hive/metacognition/conflict/observed`), consider whether to lower its confidence or extinguish it entirely.
 

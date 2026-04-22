@@ -1,6 +1,6 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-21 (Phase 11 — append-only prompt evolution landed; prompt.md now immutable DNA)
+**Last updated:** 2026-04-22 (Phase 11 — `hive/self/developmental_stage` and `hive/self/age` topics dropped; stage + age are emergent from accumulated experience)
 **Current phase:** v0 DNA complete; Phase 11 (Runtime evolution — first self-mod cycles, post-v0 region additions) next
 **Repo path:** `C:/repos/hive/`
 
@@ -10,7 +10,7 @@ This document is the **source of truth for session-to-session continuity.** Any 
 
 ## Quick reference
 
-v0 is **complete** — all 10 phases done. The "DNA" (shared runtime, 14 regions, glia, bus, CLI, observability, tests, CI) is in place. Hive can now boot, heartbeat, sleep, self-modify, and roll back. The next era is **growth**: regions evolve their own handlers and memory via sleep cycles, and post-v0 regions (raphe_nuclei, locus_coeruleus, hypothalamus, basal_forebrain, cerebellum) get added when developmental stage warrants.
+v0 is **complete** — all 10 phases done. The "DNA" (shared runtime, 14 regions, glia, bus, CLI, observability, tests, CI) is in place. Hive can now boot, heartbeat, sleep, self-modify, and roll back. The next era is **growth**: regions evolve their own handlers and memory via sleep cycles, and post-v0 regions (raphe_nuclei, locus_coeruleus, hypothalamus, basal_forebrain, cerebellum) get added when accumulated experience warrants.
 
 | Phase | Status | Artifact location |
 |---|---|---|
@@ -26,7 +26,7 @@ v0 is **complete** — all 10 phases done. The "DNA" (shared runtime, 14 regions
 | 10. Docs + HANDOFF polish | ✅ Complete (2026-04-21) | `README.md`, `docs/HANDOFF.md`, `CLAUDE.md` |
 | 11. Runtime evolution | ⏳ **Next era** | See Phase 11 section below |
 
-**Totals:** 691 unit + 73 integration (3 option-b skips + 1 Windows non-admin skip) + 1 smoke-collectable. Ruff clean. Minimal CI green on every push + PR.
+**Totals:** 710 unit + 73 integration (3 option-b skips + 1 Windows non-admin skip) + 1 smoke-collectable. Ruff clean. Minimal CI green on every push + PR.
 
 ---
 
@@ -70,7 +70,7 @@ Through iterative design dialogue, the brainstorming phase produced:
 13. Message envelope spec
 14. Modulator flow, rhythm coordination, interoception grounding, habit formation, self-state evolution, cross-region encoding
 
-**14 starter prompts** (see `docs/starter_prompts/`) — one per v0 region, self-sufficient (all 16 principles embedded), stage-aware (regions read `hive/self/developmental_stage` rather than hard-coding), and self-evolution-enabled (each has a detailed protocol for editing itself during sleep).
+**14 starter prompts** (see `docs/starter_prompts/`) — one per v0 region, self-sufficient (all 16 principles embedded), experience-grounded (regions read observable state — modulator values, STM depth, consolidated LTM, appendix history — rather than branching on a categorical stage label), and self-evolution-enabled (each has a detailed protocol for editing itself during sleep). Note: original prompts were stage-aware; reframed 2026-04-22 to emergent-state grounding (see Phase 11 divergence entry).
 
 ### Key architectural decisions made
 
@@ -82,7 +82,7 @@ Through iterative design dialogue, the brainstorming phase produced:
 - Basal ganglia handles habit formation via dopamine reinforcement
 - Modality isolation is absolute; ACLs enforce at broker level
 - Three signal types: messages, modulators (retained), rhythms (broadcast)
-- Hive is a "teenager analog" at v0 — all regions present, minimal handlers, empty memory
+- Hive boots with a thin seed at v0 — all regions present, minimal handlers, empty memory, empty appendices; developmental state is emergent from this seed plus accumulated experience, not a declared label
 
 ### Git log of Phase 1 (16 commits)
 
@@ -774,14 +774,14 @@ Paste the following into a new Claude Code session:
 ```
 You are continuing Hive at C:/repos/hive/ on branch `main`.
 v0 is DNA-complete. All 10 phases are done and committed. Both
-`hive-region:v0` and `hive-glia:v0` images build; 691 unit + 73
+`hive-region:v0` and `hive-glia:v0` images build; 710 unit + 73
 integration (3 option-b skips + 1 Windows non-admin skip) + 1
 smoke-collectable. Ruff clean. Minimal GitHub Actions CI green.
 
 All 14 regions boot, sleep, self-modify, and roll back. Phase 11
 is not a construction phase — it is runtime evolution: letting
 regions grow their own handlers and memory via sleep cycles, and
-eventually adding post-v0 regions when developmental stage warrants.
+eventually adding post-v0 regions when accumulated experience warrants.
 
 ## Start here
 
@@ -802,7 +802,7 @@ eventually adding post-v0 regions when developmental stage warrants.
 
 See the Phase 11 section of this HANDOFF file. The full description
 of Track A (growth in place), Track B (region additions),
-developmental_stage transitions, observables, and red flags is there.
+emergent-state framing, observables, and red flags is there.
 Do not duplicate it here; treat it as the authoritative reference.
 
 ## Execution model — observation first
@@ -895,9 +895,9 @@ Each self-modification is a region-authored commit in its own `regions/<name>/.g
 
 ### Track B — Post-v0 region additions
 
-When developmental_stage crosses a threshold (or Larry explicitly decides), these regions join in likely order:
+When accumulated experience makes the addition worth the cost (or Larry explicitly decides), these regions join in likely order:
 
-- **raphe_nuclei** — serotonin modulator. Stabilizes mood; counterweights amygdala under sustained stress. First addition because it calms a teenager-era system that may oscillate.
+- **raphe_nuclei** — serotonin modulator. Stabilizes mood; counterweights amygdala under sustained stress. First addition because it calms a young, experience-thin system whose modulators may still oscillate strongly.
 - **locus_coeruleus** — norepinephrine modulator (shared production with amygdala rather than amygdala owning it alone). Arousal and vigilance. Second addition; pairs with raphe for a balanced two-source economy.
 - **hypothalamus** — homeostatic set-points. Body-temp / hunger analogs for compute pressure, quota, and token budget. Third; grounds the system in resource reality.
 - **basal_forebrain** — acetylcholine modulator. Attention and learning gain. Fourth; boosts hippocampal consolidation quality.
@@ -905,14 +905,16 @@ When developmental_stage crosses a threshold (or Larry explicitly decides), thes
 
 Each addition flows through ACC's metacognitive spawn gate → glia's `spawn_executor` → new per-region git repo → new ACL grants via template render → heartbeat verification. The mechanism is already built (Phase 5 Task 5.7a); Phase 11 exercises it for real.
 
-### Developmental stage transitions
+### Emergent developmental state (not declared)
 
-mPFC owns the retained topic `hive/self/developmental_stage`. v0 ships at stage `teenager` — all 14 regions present, minimal handlers, empty memory, exploratory behavior. Expected transitions:
+v0 ships with a thin seed: 14 regions scaffolded with constitutional starter prompts, empty STM, empty LTM, empty appendices, modulator baselines at boot defaults. There is **no `hive/self/developmental_stage` topic and no `hive/self/age` topic** (both removed 2026-04-22 — see divergence entry below). There is no categorical stage a region reads to decide how to behave. Developmental state — whatever Hive currently is — is a function of accumulated experience: modulator history, STM depth, consolidated LTM count, appendix length, handler library size, rollback frequency, the richness of cross-region envelope chains.
 
-- **teenager → early_adult**: handler libraries non-trivial, STM retention meaningful, cross-modal chains functional, modulator values fluctuating beyond boot defaults.
-- **early_adult → adult**: handler libraries stable, LTM consolidation routine, rollback events rare, post-v0 regions added and integrated.
+What that means operationally:
 
-Stages map to larger handler libraries, richer STM retention, and lower curiosity exploration bonus on VTA. Stage is a retained MQTT topic — every region reads it at wake and adapts behavior. Transitions are mPFC decisions; no automatic trigger exists in v0. Larry and mPFC agree when growth is sufficient.
+- Behavior changes over time as the seed plus lived experience compound. A region with empty LTM and boot-default modulators behaves reactively; the same region with weeks of consolidated LTM and settled modulators behaves more deliberately. No stage label governs the shift.
+- "Teenager-like" / "adult-like" are descriptive labels an operator (or mPFC's identity narrative) may apply to the observed state; they are not switches. mPFC's `hive/self/identity` and `hive/self/personality` free-text publications are the correct surface for narrative self-description.
+- Dialing the seed (richer starter prompts, pre-populated LTM, appendix history, tuned modulator baselines, starter handler library) produces different starting behavior — this is the first-class lever for shaping boot state. Zero seed → newborn-like behavior. Rich seed → adult-like behavior. Current v0 seed sits closer to newborn-in-experience than to teenager despite the historical "teenager analog" framing.
+- Post-v0 region additions are triggered by accumulated experience making the addition worth the cost, or by Larry's explicit decision — never by crossing a stage threshold. Age, when needed, is computed on demand as `delta(first_memory_timestamp, now)` via hippocampus query, not read from a topic.
 
 ### How to know Phase 11 is going well
 
@@ -1001,6 +1003,77 @@ should reframe §A.7.1 around the rolling appendix.
   ``"appendix: +1 section"`` / ``"unchanged"`` — sibling lines are
   ``"handlers: changed"`` / ``"unchanged"``. Minor symmetry polish.
 
+### 2026-04-22 — Emergent developmental state (§A.7.1 / §B.4 divergence)
+
+**Decision.** ``hive/self/developmental_stage`` and ``hive/self/age``
+are no longer retained topics. They have been removed from
+``shared/topics.py``, from the mPFC ACL template, from the topic schema
+doc, and from the required-constants test. Regions no longer subscribe
+to, read, or branch on a stage label. Developmental state is emergent
+from accumulated experience — not a categorical field. Age, when
+needed, is computed on demand as ``delta(first_memory_timestamp, now)``
+via hippocampus query.
+
+**Why.** Biology is the tiebreaker (Principle I). A biological mind's
+developmental stage is a descriptive observation, not a switch that
+drives behavior. "Teenager" means "seeded with and shaped by roughly
+what a biological teenager has lived through," not a runtime flag. The
+previous design invited stage-label / actual-state mismatch — a region
+told "you are a teenager" while holding a newborn's actual experience
+(empty LTM, empty appendix, no STM history) — which contributed to
+brittle first-cycle self-mod behavior. Removing the topic removes the
+footgun.
+
+**Mechanism.**
+- ``SELF_DEVELOPMENTAL_STAGE`` and ``SELF_AGE`` constants removed from
+  ``shared/topics.py``.
+- ``"SELF_DEVELOPMENTAL_STAGE"`` entry removed from
+  ``REQUIRED_CONSTANTS`` in ``tests/unit/test_topics.py`` (``SELF_AGE``
+  was not in the spot-check list).
+- mPFC write grants for both topics removed from
+  ``bus/acl_templates/medial_prefrontal_cortex.j2``.
+- Matching rows removed from ``bus/topic_schema.md``.
+- 14 region starter prompts + 14 region mirror prompts reworked:
+  stage-subscription bullets deleted; "teenage X runs hot" narrative
+  replaced with experience-grounded language naming observable state
+  (modulator values, STM depth, LTM count, appendix length);
+  "read ``hive/self/developmental_stage``" instructions deleted;
+  mPFC "Periodic maturation review" renamed "Periodic identity review"
+  and reframed — reflection refines ``hive/self/identity`` and
+  ``hive/self/personality`` narrative, does not advance a stage.
+- mPFC starter prompt bootstrap section no longer lists
+  ``developmental_stage`` or ``age`` among retained publishes. The four
+  remaining retained self-state channels are ``identity``, ``values``,
+  ``personality``, ``autobiographical_index``.
+
+**Spec divergence from §A.7.1 and §B.4.** §A.7.1's ``self`` schema
+lists ``developmental_stage`` with enum
+``["teenage", "young_adult", "adult"]``. §B.4's topic table lists both
+``hive/self/developmental_stage`` and ``hive/self/age`` as retained
+mPFC-published topics. Neither is part of v0's runtime surface any
+more. A future spec revision should drop both fields; retain
+``identity``, ``values``, ``personality``, ``autobiographical_index``
+as the four retained self-state channels.
+
+**What to check on resume.**
+- No region prompt references ``hive/self/developmental_stage`` or
+  ``hive/self/age``.
+- Python runtime never imports or references
+  ``SELF_DEVELOPMENTAL_STAGE`` / ``SELF_AGE``.
+- When wondering "how old is Hive?": age is computed on demand as
+  ``delta(first_memory_timestamp, current_time)``, not read from a
+  topic. First-memory timestamp is obtained from hippocampus.
+
+**Follow-ups (explicitly deferred).**
+- Observatory HUD's ``SelfPanel.tsx`` still renders a
+  ``developmental_stage`` field (with ``?? 'unknown'`` fallback). It
+  degrades gracefully to "unknown" forever until the observatory pass
+  reworks the panel around the remaining 4 self-topics (or a computed
+  age readout). Observatory is a separate sub-project; this is tracked
+  there, not here.
+- Design spec §A.7.1 and §B.4 edits should land in a proper spec
+  revision when other divergences accumulate.
+
 ---
 
 ## Maintaining this file
@@ -1024,7 +1097,6 @@ High-signal items Phase 11 will grapple with (full detail in per-phase "Follow-u
 
 - **Offline LLM stub.** The `HIVE_TEST_OFFLINE=1` flag is wired at the env level but the runtime's `llm_adapter.py` factory doesn't route to a `FakeLlmAdapter` when it's set. Un-blocking CI for full-flow integration tests (Tasks 9.3 / 9.5 / 9.6) without real API spend is the highest-leverage infrastructure item for Phase 11.
 - **Bridge wiring.** `RhythmGenerator` and `InputTextBridge` are implemented in `glia/bridges/` but not started in `glia/__main__.py`. No region currently receives rhythm ticks or externally-injected text from the glia layer. Wiring is a small `_main()` edit; deferred because no region has a handler for those signals yet.
-- **Developmental_stage transition triggers.** mPFC owns `hive/self/developmental_stage` (retained, starts at `teenager`). There is no automated trigger for advancing to `early_adult`. The transition policy — what observable thresholds count as "enough growth" — must be designed by Larry and encoded in mPFC's prompt or handlers before the first transition occurs. This is an open design question, not an implementation gap.
 - **Post-v0 region authoring pattern.** When Track B kicks in (raphe_nuclei, locus_coeruleus, etc.), glia's `spawn_executor` scaffolds the region, but the region's starter prompt must be authored and reviewed before the spawn. The authoring pattern (who writes the prompt, what review loop it goes through, how it gets committed to `docs/starter_prompts/`) is undecided. Decide before spawning the first post-v0 region.
 
 ---

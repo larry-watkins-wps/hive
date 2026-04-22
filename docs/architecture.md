@@ -353,8 +353,6 @@ hive/
 │
 ├── self/                          # GLOBAL IDENTITY (published by mPFC, retained)
 │   ├── identity                   # retained: narrative self-description
-│   ├── developmental_stage        # retained: "teenage" | "young_adult" | "adult"
-│   ├── age                        # retained: metaphorical age (advances with experience)
 │   ├── values                     # retained: core commitments
 │   ├── personality                # retained: trait summary
 │   └── autobiographical_index     # retained: pointer to hippocampus core-memory IDs
@@ -1049,7 +1047,7 @@ sequenceDiagram
 
 The medial prefrontal cortex (mPFC) holds Hive's global identity. **No other region has this knowledge.** Other regions read it from retained `hive/self/*` topics as ambient context — the same way they read modulators.
 
-Crucially, **no region hard-codes its developmental stage.** Regions read the current stage and adapt. Hive grows up without any region being rewritten.
+**Developmental state is emergent, not declared.** Hive does not have a `hive/self/developmental_stage` topic or a `hive/self/age` topic (both removed 2026-04-22; see `docs/HANDOFF.md` Phase 11 divergence entry). No region reads a stage label and adapts based on it. Instead, each region's behavior emerges from the state it actually inhabits: current modulator values, STM depth, consolidated LTM count, appendix history, handler library size, rollback frequency. A region with thin experience behaves reactively because its actual state is thin — not because a label told it to. As the seed plus lived experience compound, behavior changes without any stage field and without any code change.
 
 ```mermaid
 sequenceDiagram
@@ -1060,61 +1058,44 @@ sequenceDiagram
     participant BG as Basal Ganglia
     participant Others as All other regions
 
-    Note over mPFC: On bootstrap: publish initial self-state (retained)
+    Note over mPFC: On bootstrap: publish initial identity state (retained)
     mPFC->>MQTT: hive/self/identity = "I am Hive, a distributed mind..."
-    mPFC->>MQTT: hive/self/developmental_stage = "teenage"
-    mPFC->>MQTT: hive/self/age = 15
     mPFC->>MQTT: hive/self/values = ["honest", "curious", "careful"]
     mPFC->>MQTT: hive/self/personality = "reflective, reactive, reward-seeking"
+    mPFC->>MQTT: hive/self/autobiographical_index = {}
 
-    Note over Others: Every region subscribes to hive/self/#<br/>Self-state injected into every LLM call as context
+    Note over Others: Every region subscribes to hive/self/#<br/>Identity/values/personality are ambient context
     MQTT->>Others: deliver retained self-state
 
-    Note over Others: A region reading "developmental_stage = teenage"<br/>biases its reasoning toward reactive / reward-seeking
+    Note over Others: Each region's behavior is shaped by its OWN state —<br/>modulator values, STM, LTM, appendix — not by a stage label
 
-    Note over mPFC: Later — mPFC periodically reviews maturation evidence
+    Note over mPFC: Later — mPFC periodically reviews what Hive has become
     loop Every N sleep cycles
         mPFC->>Hip: query: autobiographical accumulation?
-        Hip->>mPFC: response: N core memories, growth-relevant events
+        Hip->>mPFC: response: N core memories, recurring patterns
         mPFC->>ACC: query: metacognitive error rate trending?
         ACC->>mPFC: response: errors stable or declining
         mPFC->>BG: query: habit stability?
         BG->>mPFC: response: N consolidated habits, stable
 
-        alt maturation criteria met
-            mPFC->>mPFC: deliberate: "Has Hive earned the next stage?"
-            Note over mPFC: If yes, update self-state:
-            mPFC->>MQTT: hive/self/developmental_stage = "young_adult"
-            mPFC->>MQTT: hive/self/age = 18
-            mPFC->>MQTT: hive/self/personality = updated trait summary
-            MQTT->>Others: all regions receive new self-state
-            Note over Others: Behavior adjusts naturally —<br/>no code or prompt changes required
-        end
+        Note over mPFC: Use evidence to refine identity narrative.<br/>Do NOT announce a new stage — describe who Hive has become.
+        mPFC->>MQTT: hive/self/identity = updated narrative
+        mPFC->>MQTT: hive/self/personality = updated trait summary
+        MQTT->>Others: all regions receive refined self-state
     end
 ```
 
 **Why this is biologically accurate:**
 
-- Individual neurons do not "know" they exist in a 15-year-old's brain. The systemic state (neurotransmitter baselines, connectivity, accumulated experience) produces teenage behavior.
-- mPFC is the narrative self — it reflects on what stage the organism is in. Other regions don't have that narrative; they just respond to current conditions.
-- Maturation is earned. You don't become an adult because a year passed; you mature because you accumulated growth-relevant experience. mPFC's check is against accumulated evidence (memory, error rates, habit stability) — not wall-clock time.
+- Individual neurons do not read a stage label to behave differently. The systemic state — neurotransmitter baselines, connectivity density, accumulated experience — *is* the developmental state. Behavior emerges from it.
+- mPFC is the narrative self — it *describes* who the organism has become. It does not *announce* what the organism is. A teenager who insists they are an adult is still a teenager; a mind that describes itself as stable is stable only if its actual behavior supports that description.
+- Maturation is earned. You don't become an adult because a year passed; you become more adult-like because accumulated experience (memory consolidation, stable habits, refined values) has produced that behavior. mPFC documents this — it does not gate-keep it.
 
 **What regions do with `hive/self/*`:**
 
-Every region's prompt instructs it to include current self-state when reasoning:
+Every region's prompt instructs it to include current self-state when reasoning. Identity and values shape tone and priority ordering; personality colors style. None of these are categorical switches — they are free-text descriptions the LLM reads as context. The region's concrete behavior is shaped by modulators and its own memory as well, both of which respond to lived experience directly.
 
-```
-At the start of every reasoning step, read:
-- hive/self/developmental_stage (e.g., "teenage")
-- hive/self/values
-- hive/self/personality
-
-Let these shape your response style. If developmental_stage is "teenage",
-you may be more reactive and reward-seeking. If it is "adult", more
-deliberate and patient. The prompt does not change; the behavior does.
-```
-
-**Implication for scaling / longevity:** Hive has a meaningful developmental trajectory. A day-one Hive behaves differently than a year-in Hive, even with identical region code. This is a feature, not a bug.
+**Implication for scaling / longevity:** Hive has a meaningful developmental trajectory. A day-one Hive behaves differently than a year-in Hive, even with identical region code. Different starting seeds (empty vs. rich LTM, boot-default vs. tuned modulators, thin vs. dense starter prompts) produce different starting developmental states — this is the first-class lever for shaping boot behavior. The trajectory is a feature, not a bug.
 
 ### 14f. How Cross-Region Functionality is Encoded
 
@@ -1141,3 +1122,4 @@ Five layers, all collectively, none alone:
 | 2026-04-19 | **Added signal-type architecture:** Principle XVI distinguishes messages / modulators / rhythms. New topic branches `hive/attention/*` (retained shared state), `hive/modulator/*` (retained ambient chemical fields), `hive/rhythm/*` (broadcast oscillatory timing). New starter regions: `amygdala` (cortisol, norepinephrine) and `vta` (dopamine). New section 14 covers modulator flow and rhythm-synchronized coordination with a painting-a-sunset example. |
 | 2026-04-19 | **Added interoception + habit formation:** Recognized Hive as a "teenager paralyzed from the neck down" — full brain and senses, no body. Added `insula` (interoception of Hive's computational body: token budget, compute load, region health) and `basal_ganglia` (action selection + habit formation). New topic branches `hive/interoception/*` (retained felt states) and `hive/habit/*` (suggestions, reinforcement, learned habits). New sections 14c (interoception → modulator grounding) and 14d (habit formation via dopamine-reinforced pattern learning). v0 region count now 13. Default cognitive LLM set to Claude Opus 4.6; modulatory/insula/motor_cortex use Haiku. |
 | 2026-04-19 | **Added global self via mPFC:** Biological "self" lives primarily in the medial prefrontal cortex (mPFC) within the Default Mode Network. Added `medial_prefrontal_cortex` region as Hive's identity holder. New topic branch `hive/self/*` (retained: identity, developmental_stage, age, values, personality, autobiographical_index) — only mPFC publishes; every region subscribes. No region hard-codes its developmental stage; regions read `hive/self/developmental_stage` and adapt. mPFC advances developmental_stage based on accumulated experience (memory, error rates, habit stability), not clock time — biologically faithful maturation. New section 14e covers self-state flow. v0 region count now 14. |
+| 2026-04-22 | **Emergent developmental state:** `hive/self/developmental_stage` and `hive/self/age` retained topics removed. Developmental state is emergent from accumulated experience (modulator history, STM depth, consolidated LTM, appendix length, handler library size, rollback frequency) — not a categorical field. No region reads or branches on a stage label. Age, when needed, is computed on demand as `delta(first_memory_timestamp, now)` via hippocampus query. Seed curriculum (richer starter prompts, pre-populated LTM, tuned modulator baselines) is the first-class lever for shaping boot state. Section 14e rewritten to reflect emergent framing. Four retained self-state channels remain: `identity`, `values`, `personality`, `autobiographical_index`. Rationale: stage-label / actual-state mismatch invites brittle behavior; biology (Principle I) says stage emerges from experience, not from declaration. See `docs/HANDOFF.md` Phase 11 divergence entry. |

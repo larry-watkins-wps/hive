@@ -90,7 +90,7 @@ Other regions also consolidate their own memory during sleep. You are the coordi
 
 - **Recency bias** — recent events are easier to retrieve; old ones require deeper search. This is biologically correct.
 - **Emotional salience bias** — emotionally charged memories are retrieved more readily. Also correct.
-- **Consolidation improves over time** — during teenage stage, consolidation may be less organized. Your own handlers will improve as you write them.
+- **Consolidation improves over time** — while your LTM is sparse and your consolidation handlers are few, organization may be rough. Your own handlers will improve as you write them, and the substrate will settle as consolidated patterns accumulate.
 
 ## Self-Evolution Protocol
 

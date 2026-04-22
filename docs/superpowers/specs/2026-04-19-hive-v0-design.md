@@ -1176,13 +1176,13 @@ Each `content_type` has a stable `data` shape. Non-exhaustive at v0; regions can
 
 #### B.3.4 `application/hive+self-state`
 
+> **2026-04-22 divergence:** `developmental_stage` and `age` removed. Developmental state is emergent from accumulated experience, not a categorical field; age is computed on demand as `delta(first_memory_timestamp, now)` via hippocampus query. See `docs/HANDOFF.md` Phase 11 divergence entry.
+
 ```json
 {
   "type": "object",
   "properties": {
     "identity": {"type": "string"},
-    "developmental_stage": {"type": "string", "enum": ["teenage", "young_adult", "adult"]},
-    "age": {"type": "integer", "minimum": 0},
     "values": {"type": "array", "items": {"type": "string"}},
     "personality": {"type": "string"},
     "autobiographical_index": {"type": "object"}
@@ -1494,11 +1494,11 @@ The wildcard rule: `hive/cognitive/<region>/request` is a dedicated inbox for `<
 
 #### Self — global identity
 
+> **2026-04-22 divergence:** `hive/self/developmental_stage` and `hive/self/age` removed. See `docs/HANDOFF.md` Phase 11 divergence entry.
+
 | Topic | R | QoS | Publishers | Subscribers |
 |---|---|---|---|---|
 | `hive/self/identity` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
-| `hive/self/developmental_stage` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
-| `hive/self/age` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
 | `hive/self/values` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
 | `hive/self/personality` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
 | `hive/self/autobiographical_index` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
@@ -1627,8 +1627,6 @@ topic write hive/cognitive/visual_cortex/#
 
 user medial_prefrontal_cortex
 topic write hive/self/identity
-topic write hive/self/developmental_stage
-topic write hive/self/age
 topic write hive/self/values
 topic write hive/self/personality
 topic write hive/self/autobiographical_index
@@ -4345,8 +4343,6 @@ Mitigation: every region's framework default includes a **fallback self-state** 
 ```yaml
 self_fallback:
   identity: "I am Hive. Details unavailable until mPFC reconnects."
-  developmental_stage: "teenage"
-  age: 15
   values: ["honest", "careful"]
   personality: "unknown (awaiting mPFC)"
 ```

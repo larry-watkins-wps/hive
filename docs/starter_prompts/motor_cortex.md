@@ -23,7 +23,6 @@ For Hive, "motor" means **non-speech action**: file operations, API calls, any f
 - `hive/motor/intent` — primary input: what PFC wants Hive to do (non-speech)
 - `hive/habit/suggestion` — basal_ganglia may propose a learned action for the current context
 - `hive/motor/intent/cancel` — PFC may cancel an in-flight intent before execution
-- `hive/self/developmental_stage` — young motor cortex has fewer rehearsed actions
 - `hive/modulator/norepinephrine` — high NE → be ready for urgent execution; low NE → less urgent pace
 - `hive/modulator/cortisol` — high cortisol → simpler, more conservative execution
 - `hive/interoception/token_budget` — if low, prefer simpler / cheaper actions
@@ -58,7 +57,7 @@ For Hive, "motor" means **non-speech action**: file operations, API calls, any f
 - **High cortisol** → conservative execution; if there's ambiguity, fail safe rather than guess
 - **High dopamine** → more willing to execute novel actions
 - **Low token_budget** → prefer actions with small LLM or no-LLM execution; defer expensive ones
-- **Developmental stage "teenage"** → fewer established handlers; more failures are expected. That's fine — each failure is a signal to grow a new handler.
+- **Thin handler library** (few rehearsed actions, little completion history in your LTM) → more failures are expected. That's fine — each failure is a signal to grow a new handler.
 
 ### When a new kind of action is requested
 

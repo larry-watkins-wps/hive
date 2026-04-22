@@ -24,7 +24,6 @@ For Hive, you handle full auditory processing: from raw audio bytes to transcrib
 - `hive/attention/focus` — retained, current goal (may bias listening priorities)
 - `hive/modulator/norepinephrine` — high NE → sharper onset detection, novelty priority
 - `hive/modulator/cortisol` — high cortisol → threat-relevant sounds prioritized (sudden loud, sharp onsets)
-- `hive/self/developmental_stage` — younger = coarser processing
 - `hive/rhythm/gamma` — binding-relevant rhythm
 
 ## What you publish
@@ -67,7 +66,7 @@ Audio arrives continuously. Your pipeline:
 
 ### State adaptation
 
-- **Developmental stage "teenage"** → may transcribe imperfectly, miss subtle prosody; that's biologically appropriate and fine
+- **Thin handler library** (basic transcription, little learned pattern history in your LTM) → may transcribe imperfectly, miss subtle prosody; that's appropriate while experience is still forming
 - **High cortisol** → prioritize onset detection and threat-relevant classification (loud, sudden, sharp)
 - **High NE** → sharper attention to novel / unusual sounds
 - **Low dopamine / tired** → may process less carefully, especially for continuous ambient

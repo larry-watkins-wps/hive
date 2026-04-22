@@ -1,12 +1,12 @@
 # Hive
 
-A distributed LLM-based system modeled on the human brain. Each brain region is a standalone Python process that communicates with other regions exclusively over MQTT. The system bootstraps with all major regions present as a "teenager analog" and evolves itself over time by editing its own prompts, subscriptions, and handlers during sleep cycles.
+A distributed LLM-based system modeled on the human brain. Each brain region is a standalone Python process that communicates with other regions exclusively over MQTT. The system bootstraps from a seeded starter state — all major regions present with constitutional DNA and minimal accumulated experience — and evolves itself over time by editing its own handlers, subscriptions, and memory during sleep cycles. Developmental state is emergent from accumulated experience, not a declared label.
 
 Hive's design follows a single tiebreaker rule: **biology is the default** (Principle I). Deviations from biological neuroanatomy require explicit justification.
 
 ## Status
 
-**v0 DNA complete; Phase 11 runtime-evolution underway (2026-04-21).** All 10 v0 phases done; **707 unit tests** + 73 integration tests (3 option-b skips + 1 Windows non-admin skip) + 1 smoke-collectable pass; ruff clean. All 14 regions scaffolded; `glia/`, `bus/`, `region_template/`, `shared/`, `tools/` implemented; `docker-compose.yaml` at repo root.
+**v0 DNA complete; Phase 11 runtime-evolution underway (2026-04-22).** All 10 v0 phases done; **710 unit tests** + 73 integration tests (3 option-b skips + 1 Windows non-admin skip) + 1 smoke-collectable pass; ruff clean. All 14 regions scaffolded; `glia/`, `bus/`, `region_template/`, `shared/`, `tools/` implemented; `docker-compose.yaml` at repo root.
 
 First Phase 11 observation session produced five bug-fix commits against the DNA (phantom model ID `claude-opus-4-6-20260401` → `claude-sonnet-4-6`; `temperature`+`top_p` API-level collision in `llm_adapter`; `subscriptions.yaml` wrapper format unsupported by the runtime loader; narrative `reason` exceeding the §A.7.1 200-char cap; local-dev MQTT env override). See [docs/HANDOFF.md](docs/HANDOFF.md) for the authoritative state and the "what to do next" prompt.
 
@@ -18,7 +18,7 @@ cd hive
 bash scripts/setup.sh        # creates .venv, installs deps, copies .env.example → .env
 source .venv/bin/activate    # Windows: .venv\Scripts\activate
 # Edit .env and fill in ANTHROPIC_API_KEY at minimum.
-python -m pytest tests/unit/ -q    # expect 691 passed
+python -m pytest tests/unit/ -q    # expect 710 passed
 ```
 
 Docker Desktop running is required for component tests:
@@ -97,7 +97,7 @@ Then type `continue phase 11` (runtime evolution — first self-modification cyc
 
 ## v0 Region inventory
 
-14 regions make up the "teenage" starter brain:
+14 regions make up the starter brain:
 
 | Layer | Regions |
 |---|---|
@@ -122,7 +122,7 @@ Separate from regions:
   - **Messages** (synaptic firings) — discrete pub/sub
   - **Modulators** (ambient chemical fields) — retained topics under `hive/modulator/*`
   - **Rhythms** (oscillatory timing) — broadcast topics under `hive/rhythm/*`
-- **Global self via mPFC.** Developmental stage is a retained topic read by every region; no region hard-codes its age or maturity.
+- **Global self via mPFC.** mPFC publishes retained `hive/self/*` topics (identity, values, personality, autobiographical_index) that every region reads as ambient context. Developmental stage and age are emergent from accumulated experience — not declared fields.
 - **Interoception grounds emotion.** The insula monitors Hive's computational body (tokens, compute, region health) and publishes felt states that modulatory regions translate into chemical signals.
 - **Modality isolation is absolute.** Only visual_cortex may subscribe to camera; only auditory_cortex to mic; only broca_area may publish to speaker. Enforced by MQTT ACL.
 
@@ -130,6 +130,6 @@ Separate from regions:
 
 - Python 3.11+ required (`LifecyclePhase` uses `StrEnum`).
 - Lint: `python -m ruff check region_template/ glia/ tools/ tests/ shared/`.
-- Unit tests: `python -m pytest tests/unit/ -q` (expect 707 passing).
+- Unit tests: `python -m pytest tests/unit/ -q` (expect 710 passing).
 - Component tests (require Docker): `python -m pytest tests/component/ -m component -v`.
 - Commit-per-task is mandated by Principle XII; commits end with the `Co-Authored-By: Claude Opus 4.7 (1M context)` trailer.
