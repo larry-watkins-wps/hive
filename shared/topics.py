@@ -87,8 +87,6 @@ ATTENTION_SALIENCE = "hive/attention/salience"
 # Self (retained — mPFC only publishes)
 # ---------------------------------------------------------------------------
 SELF_IDENTITY = "hive/self/identity"
-SELF_DEVELOPMENTAL_STAGE = "hive/self/developmental_stage"
-SELF_AGE = "hive/self/age"
 SELF_VALUES = "hive/self/values"
 SELF_PERSONALITY = "hive/self/personality"
 SELF_AUTOBIOGRAPHICAL_INDEX = "hive/self/autobiographical_index"

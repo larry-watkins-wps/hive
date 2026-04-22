@@ -108,8 +108,6 @@ Only `<region>` subscribes. Any region publishes.
 | Topic | R | QoS | Publishers | Subscribers |
 |---|---|---|---|---|
 | `hive/self/identity` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
-| `hive/self/developmental_stage` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
-| `hive/self/age` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
 | `hive/self/values` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
 | `hive/self/personality` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
 | `hive/self/autobiographical_index` | **R** | 1 | `medial_prefrontal_cortex` | `*` |
