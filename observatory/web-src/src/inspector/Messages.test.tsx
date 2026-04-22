@@ -73,4 +73,25 @@ describe('Messages', () => {
     expect(container.textContent).toContain('kind');
     expect(container.textContent).toContain('LlmError');
   });
+
+  it('pendingEnvelopeKey set before render still scrolls + expands after mount', async () => {
+    // Simulates the dock click-through path: set pendingKey FIRST (via
+    // selectRegionFromRow), then Inspector mounts Messages which must pick up
+    // the key after the initial filtered seed commits.
+    useStore.getState().pushEnvelope({
+      observed_at: 200, topic: 'hive/metacog/error',
+      envelope: { kind: 'LlmError', detail: 'pre-mount-race' },
+      source_region: 'r', destinations: [],
+    });
+    // Set the key BEFORE rendering Messages — simulates dock dispatch.
+    useStore.getState().setPendingEnvelopeKey('200|hive/metacog/error');
+    // Now mount Messages.
+    const { container } = render(<Messages name="r" />);
+    await waitFor(() => {
+      expect(useStore.getState().pendingEnvelopeKey).toBeNull();
+    });
+    // Row should be expanded — JsonTree renders "detail" and the fingerprint value.
+    expect(container.textContent).toContain('detail');
+    expect(container.textContent).toContain('pre-mount-race');
+  });
 });

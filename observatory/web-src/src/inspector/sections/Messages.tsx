@@ -52,6 +52,10 @@ export function Messages({ name }: { name: string }) {
   // of the ring, so a `take = min(delta, ring.length)` tail read picks
   // them up correctly.
   useEffect(() => {
+    // Reset local expand state on region change so expand identity (which is
+    // `observed_at|topic`) doesn't leak across regions — two regions that
+    // happen to share an id would otherwise render pre-expanded.
+    setExpanded(new Set());
     const unsub = useStore.subscribe((s) => {
       const total = s.envelopesReceivedTotal;
       const delta = total - lastTotalRef.current;
@@ -105,6 +109,15 @@ export function Messages({ name }: { name: string }) {
   // doesn't yank the viewport back to the tail), then clear the key. jsdom
   // 29 does not implement `scrollIntoView`, so we guard the call — tests
   // assert the expand + clear side effects, which is sufficient.
+  //
+  // `filtered` is in the dep array so the effect re-runs after the initial
+  // filtered seed commits. The dock click-through path (Firehose/Metacog row
+  // → `selectRegionFromRow`) sets `pendingEnvelopeKey` in the SAME tick that
+  // flips `selectedRegion`, which remounts Messages with pendingKey already
+  // set and `rowRefs` still empty. Without `filtered` in the deps, the first
+  // run of this effect would miss the row, clear the key, and leave the user
+  // with no scroll + no expand. The `if (!pendingKey) return;` early-exit
+  // keeps the per-envelope re-run cost at one ref read.
   useEffect(() => {
     if (!pendingKey) return;
     const node = rowRefs.current.get(pendingKey);
@@ -122,7 +135,7 @@ export function Messages({ name }: { name: string }) {
     }
     // Always clear — spec §7.2 "consumes + clears" covers the miss path too.
     setPendingKey(null);
-  }, [pendingKey, setPendingKey]);
+  }, [pendingKey, setPendingKey, filtered]);
 
   return (
     <details open className="border-b border-[#1f1f27]">
