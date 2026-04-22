@@ -120,3 +120,79 @@ describe('selection', () => {
     expect(store.getState().selectedRegion).toBe('charlie');
   });
 });
+
+describe('dock state', () => {
+  it('has sensible defaults', () => {
+    const s = createStore().getState();
+    expect(s.dockTab).toBe('firehose');
+    expect(s.dockCollapsed).toBe(false);
+    expect(s.dockHeight).toBe(220);
+    expect(s.dockPaused).toBe(false);
+    expect(s.firehoseFilter).toBe('');
+    expect(s.expandedRowIds.size).toBe(0);
+    expect(s.pendingEnvelopeKey).toBeNull();
+  });
+
+  it('setDockTab switches tab and clears expandedRowIds', () => {
+    const store = createStore();
+    store.getState().toggleRowExpand('row-1');
+    expect(store.getState().expandedRowIds.has('row-1')).toBe(true);
+    store.getState().setDockTab('topics');
+    expect(store.getState().dockTab).toBe('topics');
+    expect(store.getState().expandedRowIds.size).toBe(0);
+  });
+
+  it('setDockHeight clamps to [120, 520]', () => {
+    const store = createStore();
+    store.getState().setDockHeight(50);
+    expect(store.getState().dockHeight).toBe(120);
+    store.getState().setDockHeight(1000);
+    expect(store.getState().dockHeight).toBe(520);
+    store.getState().setDockHeight(300);
+    expect(store.getState().dockHeight).toBe(300);
+  });
+
+  it('toggleRowExpand toggles set membership', () => {
+    const store = createStore();
+    store.getState().toggleRowExpand('a');
+    expect(store.getState().expandedRowIds.has('a')).toBe(true);
+    store.getState().toggleRowExpand('a');
+    expect(store.getState().expandedRowIds.has('a')).toBe(false);
+  });
+
+  it('setPendingEnvelopeKey sets and clears', () => {
+    const store = createStore();
+    store.getState().setPendingEnvelopeKey('123|hive/a');
+    expect(store.getState().pendingEnvelopeKey).toBe('123|hive/a');
+    store.getState().setPendingEnvelopeKey(null);
+    expect(store.getState().pendingEnvelopeKey).toBeNull();
+  });
+});
+
+describe('self-state retained handling', () => {
+  it('applySnapshot picks up identity / values / personality / autobiographical_index', () => {
+    const store = createStore();
+    store.getState().applySnapshot({
+      regions: {},
+      retained: {
+        'hive/self/identity': { payload: { value: 'I am Hive.' } },
+        'hive/self/values': { payload: { value: ['curiosity', 'care'] } },
+        'hive/self/personality': { payload: { value: { warmth: 0.8 } } },
+        'hive/self/autobiographical_index': { payload: { value: [{ ts: '2026-04-22', headline: 'first wake' }] } },
+      },
+      recent: [],
+      server_version: 'test',
+    });
+    const self = store.getState().ambient.self;
+    expect(self.identity).toBe('I am Hive.');
+    expect(self.values).toEqual(['curiosity', 'care']);
+    expect(self.personality).toEqual({ warmth: 0.8 });
+    expect(self.autobiographical_index).toEqual([{ ts: '2026-04-22', headline: 'first wake' }]);
+  });
+
+  it('applyRetained handles the four self topics live', () => {
+    const store = createStore();
+    store.getState().applyRetained('hive/self/values', { value: ['a', 'b'] });
+    expect(store.getState().ambient.self.values).toEqual(['a', 'b']);
+  });
+});

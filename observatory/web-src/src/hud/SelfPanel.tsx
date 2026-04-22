@@ -7,8 +7,6 @@ export function SelfPanel() {
       <div className="text-[10px] tracking-widest opacity-60 uppercase">Self</div>
       <div className="text-sm leading-snug line-clamp-2">{self.identity ?? '—'}</div>
       <div className="flex gap-2 mt-1 text-xs">
-        <span className="px-1.5 py-0.5 bg-white/10 rounded">{self.developmental_stage ?? 'unknown'}</span>
-        <span className="px-1.5 py-0.5 bg-white/10 rounded">age {self.age ?? '—'}</span>
         <span className="px-1.5 py-0.5 bg-white/10 rounded">{self.felt_state ?? '—'}</span>
       </div>
     </div>
