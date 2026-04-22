@@ -13,11 +13,15 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+import pytest
+
 from tests.unit.test_sleep import (
     _build_coordinator,
     _completion,
     _review_json,
 )
+
+pytestmark = pytest.mark.integration
 
 
 async def test_two_sleeps_produce_two_appendix_sections(tmp_path: Path) -> None:
