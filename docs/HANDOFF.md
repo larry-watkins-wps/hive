@@ -1,6 +1,6 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-21 (v0 COMPLETE — all 10 phases ✅; Phase 11 runtime evolution next)
+**Last updated:** 2026-04-21 (Phase 11 — append-only prompt evolution landed; prompt.md now immutable DNA)
 **Current phase:** v0 DNA complete; Phase 11 (Runtime evolution — first self-mod cycles, post-v0 region additions) next
 **Repo path:** `C:/repos/hive/`
 
@@ -934,6 +934,72 @@ Not a checklist — observables:
 ### What this means for the repo
 
 The `region_template/` directory is DNA and should rarely change in Phase 11. Any edits to shared runtime code must flow through the code-change gate (`glia/codechange_executor.py`) just like any region self-modification — cosign-gated by design, not a casual edit. The `regions/<name>/` directories are gene expression and change continuously; those changes belong to the regions themselves. The `glia/` and `tools/` directories may receive small wiring fixes (bridge wiring, offline LLM stub) but should not see architectural changes without Larry's explicit direction.
+
+### 2026-04-21 — Append-only prompt evolution (§A.7.1 divergence)
+
+**Decision.** Regions no longer self-modify ``prompt.md``. The starter
+prompt is now truly immutable constitutional DNA, written once at
+region birth by ``glia/spawn_executor.py`` and never overwritten.
+Evolution happens via a per-region append-only appendix at
+``regions/<name>/memory/appendices/rolling.md`` managed by
+``region_template.appendix.AppendixStore``.
+
+**Why.** The first real PFC self-mod cycle in the prior observation
+session replaced the 200-line constitutional starter prompt with a
+4-item TODO list — the pipeline worked, but the LLM's judgment on
+rewriting its own DNA was self-destructive. Rather than add fragile
+guardrails around prompt rewrites, we remove the footgun entirely.
+
+**Mechanism.**
+- ``region_template.appendix.AppendixStore`` — single writer of
+  ``rolling.md``. Lazy-creates on first append. Dated H2 headers
+  (``## <ISO-timestamp> — <trigger>``). Atomic read-modify-write via
+  the existing ``_atomic_write_text`` helper.
+- ``region_template.prompt_assembly.load_system_prompt`` — joins
+  starter prompt + explicit ``# Evolution appendix`` delimiter +
+  rolling appendix. Called at every LLM call that builds a system
+  prompt (today: sleep review; future: handler-driven LLM calls).
+- Sleep review schema: ``prompt_edit`` is gone, replaced by
+  ``appendix_entry``. LLM emits only the new section body; framework
+  prepends the timestamp header.
+- Sleep now sends a ``role="system"`` message with starter + appendix
+  plus a ``role="user"`` message with STM/events/schema. Previously
+  the sleep LLM never saw the region's own starter prompt; it does now.
+- ``SelfModifyTools.edit_prompt`` is **deleted**. No deprecation shim —
+  zero production callers remain after the sleep wiring swap.
+
+**Spec divergence from §A.7.1.** The spec lists ``edit_prompt`` as one
+of the self-modification tools. It no longer exists. ``prompt.md`` is
+not a writable surface for regions at all. Any future spec revision
+should reframe §A.7.1 around the rolling appendix.
+
+**What to check on resume.**
+- ``regions/<name>/memory/appendices/rolling.md`` — grows over time.
+- ``regions/<name>/prompt.md`` — should be byte-identical to its
+  git-HEAD state across every sleep cycle. A non-zero diff here is a
+  regression.
+- Every ``SleepCoordinator.run()`` that appends commits the new
+  rolling.md section through the region's per-region git.
+
+**Follow-ups (explicitly deferred).**
+- Consolidation pass: summarize older appendix sections into a gist
+  so rolling.md doesn't grow unbounded over months. Out of scope for
+  this session; revisit once we have real multi-week appendix data.
+- Token-budget check on the assembled system prompt. No hard cap
+  today (biology as tiebreaker, Principle I). Anthropic prompt
+  caching on the stable system half is the first-line mitigation.
+- Sleep-test harness helpers (``_build_coordinator``, ``_review_json``,
+  ``_completion``) are currently imported from ``tests/unit/test_sleep.py``
+  by the Task 9 integration test. Promote them to
+  ``tests/fakes/sleep_harness.py`` in a follow-up so integration
+  tests don't have to reach into unit-test internals.
+- Polish the sleep-review user template's point 4 wording: the prose
+  uses "evolution log" / "rolling appendix" where the JSON schema
+  field is literally ``appendix_entry``. A one-word alignment would
+  reduce schema-drift risk on first cycles (flagged by Task 5 review).
+- ``_format_commit_message``'s per-change line currently reads
+  ``"appendix: +1 section"`` / ``"unchanged"`` — sibling lines are
+  ``"handlers: changed"`` / ``"unchanged"``. Minor symmetry polish.
 
 ---
 
