@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore, type Envelope } from '../../store';
+import { JsonTree, type JsonValue } from './JsonTree';
 
 const MAX_ROWS = 100;
 const AUTOSCROLL_PX = 40;
@@ -28,9 +29,18 @@ function previewPayload(env: Envelope): string {
 export function Messages({ name }: { name: string }) {
   const [filtered, setFiltered] = useState<Envelope[]>([]);
   const lastTotalRef = useRef(0);
+  // Expand state is LOCAL to Messages, NOT shared with the store's
+  // `expandedRowIds` set. Spec §12 scopes `expandedRowIds` to the dock
+  // (`setDockTab` clears it on tab switch); sharing it here would let
+  // dock tab changes collapse Messages rows and let same-id Firehose +
+  // Messages rows expand together. Only `pendingEnvelopeKey` crosses
+  // the boundary, and only read-once-then-clear.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement | null>(null);
   const followTailRef = useRef(true);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const pendingKey = useStore((s) => s.pendingEnvelopeKey);
+  const setPendingKey = useStore((s) => s.setPendingEnvelopeKey);
 
   // Incremental scan of the envelope ring buffer.
   //
@@ -90,6 +100,30 @@ export function Messages({ name }: { name: string }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [filtered]);
 
+  // Consume `pendingEnvelopeKey` (spec §7.2): scroll the matching row into
+  // view, auto-expand it, flip followTail off (so the next inbound envelope
+  // doesn't yank the viewport back to the tail), then clear the key. jsdom
+  // 29 does not implement `scrollIntoView`, so we guard the call — tests
+  // assert the expand + clear side effects, which is sufficient.
+  useEffect(() => {
+    if (!pendingKey) return;
+    const node = rowRefs.current.get(pendingKey);
+    if (node) {
+      if (typeof node.scrollIntoView === 'function') {
+        node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+      setExpanded((s) => {
+        if (s.has(pendingKey)) return s;
+        const n = new Set(s);
+        n.add(pendingKey);
+        return n;
+      });
+      followTailRef.current = false;
+    }
+    // Always clear — spec §7.2 "consumes + clears" covers the miss path too.
+    setPendingKey(null);
+  }, [pendingKey, setPendingKey]);
+
   return (
     <details open className="border-b border-[#1f1f27]">
       <summary className="px-4 py-2 cursor-pointer flex items-center justify-between">
@@ -102,9 +136,17 @@ export function Messages({ name }: { name: string }) {
           const isExpanded = expanded.has(id);
           const direction = e.source_region === name ? '↑' : '↓';
           return (
-            <div key={id} className="py-1 border-b border-dotted border-[#23232b]">
+            <div
+              key={id}
+              ref={(n) => {
+                if (n) rowRefs.current.set(id, n);
+                else rowRefs.current.delete(id);
+              }}
+              className="py-1 border-b border-dotted border-[#23232b]"
+            >
               <div
-                className="grid grid-cols-[60px_14px_1fr] gap-2 cursor-pointer"
+                data-testid="message-row-grid"
+                className="grid grid-cols-[60px_14px_1fr_16px] gap-2 cursor-pointer items-start"
                 onClick={() => setExpanded((s) => {
                   const n = new Set(s);
                   if (n.has(id)) n.delete(id); else n.add(id);
@@ -117,11 +159,12 @@ export function Messages({ name }: { name: string }) {
                   {e.topic}
                   {!isExpanded && <span className="text-[#8a8e99]"> &nbsp;{previewPayload(e)}</span>}
                 </span>
+                <span className="text-[#8a8e99] text-[10px]">{isExpanded ? '▾' : '▸'}</span>
               </div>
               {isExpanded && (
-                <pre className="text-[10px] text-[#8a8e99] whitespace-pre-wrap pl-[76px] pt-1">
-                  {JSON.stringify(e.envelope, null, 2)}
-                </pre>
+                <div className="text-[10px] pl-[76px] pt-1">
+                  <JsonTree value={e.envelope as unknown as JsonValue} />
+                </div>
               )}
             </div>
           );
