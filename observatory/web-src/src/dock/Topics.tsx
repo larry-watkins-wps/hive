@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import type { TopicStat } from './useTopicStats';
 import { selectRegionFromRow } from './selectRegionFromRow';
-import { kindTag } from '../scene/topicColors';
 
 /**
  * `< 1 s ago` / `X.Y s ago` / `X.Y min ago` (spec §6.1 "last-seen
@@ -54,7 +53,13 @@ function ts(ms: number): string {
 /**
  * One topic row (spec §6.1).
  *
- * Columns (grid): topic · kind · rate · sparkline · publishers · last-seen · chevron.
+ * Columns (grid): topic · rate · sparkline · publishers · last-seen · chevron.
+ * Spec §6.1 line 168 lists exactly 5 content columns (topic, rate,
+ * sparkline, publishers, last-seen) plus a chevron (§6.1 line 172);
+ * the plan's earlier code sample added a kind badge between topic and
+ * rate — removed per spec. Row text is proportional (Inter 300) per
+ * §4.3; the grid layout (not monospace font) provides tabular alignment.
+ * Row height is pinned at 22 px per §6.1 line 169.
  *
  * Row click: selectRegionFromRow with the most recent publisher on this
  * topic (spec §6.1 "select the publisher with the most recent envelope").
@@ -85,13 +90,10 @@ function Row({ stat }: { stat: TopicStat }) {
       <div
         data-testid="topics-row"
         className="grid items-center gap-2 px-2 h-[22px] cursor-pointer hover:bg-[rgba(230,232,238,.05)]"
-        style={{ gridTemplateColumns: '1fr auto auto auto auto auto auto' }}
+        style={{ gridTemplateColumns: '1fr auto auto auto auto auto' }}
         onClick={onRowClick}
       >
-        <span className="font-mono text-[11px] truncate min-w-0">{stat.topic}</span>
-        <span className="font-mono text-[10px] px-1 rounded bg-[rgba(255,255,255,.05)]">
-          {kindTag(stat.topic)}
-        </span>
+        <span className="text-[11px] truncate min-w-0">{stat.topic}</span>
         <span className="font-mono text-[10px] text-[rgba(230,232,238,.9)]">
           {stat.ewmaRate.toFixed(1)} msg/s
         </span>

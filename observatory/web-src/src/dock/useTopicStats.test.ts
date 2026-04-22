@@ -57,4 +57,29 @@ describe('useTopicStats', () => {
     });
     expect(result.current.get('hive/a')!.publishers.has('r')).toBe(false);
   });
+
+  it('sparkline rolls buckets every 10 seconds', () => {
+    const { result } = renderHook(() => useTopicStats());
+    for (let i = 0; i < 3; i++) {
+      useStore.getState().pushEnvelope({
+        observed_at: Date.now(),
+        topic: 'hive/a',
+        envelope: {},
+        source_region: 'r',
+        destinations: [],
+      });
+    }
+    // Tick 1: rightmost bucket absorbs 3; no roll yet (tickCount % 10 !== 0)
+    act(() => {
+      vi.advanceTimersByTime(1100);
+    });
+    expect(result.current.get('hive/a')!.sparkBuckets).toEqual([0, 0, 0, 0, 0, 3]);
+    // Advance to tick 10 (9 more ticks = 9000 ms): first roll happens.
+    act(() => {
+      vi.advanceTimersByTime(9_000);
+    });
+    // At tick 10, the previous rightmost (3) shifts left one slot, new
+    // rightmost starts at 0.
+    expect(result.current.get('hive/a')!.sparkBuckets).toEqual([0, 0, 0, 0, 3, 0]);
+  });
 });

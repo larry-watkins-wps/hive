@@ -29,6 +29,7 @@ export type TopicStat = {
 
 const ALPHA = 0.1;
 const BUCKETS = 6;
+const BUCKET_TICKS = 10;
 const PUBLISHER_DECAY_MS = 60_000;
 const RECENT_N = 5;
 
@@ -36,16 +37,21 @@ const RECENT_N = 5;
  * Spec §6.2 / §15 — 1 Hz selector producing `Map<topic, TopicStat>`.
  *
  * Runs once per second on a setInterval (NOT reactively per envelope):
- *   1. Rolls each topic's 6-bucket spark window forward by one slot.
- *   2. Decays any publisher whose `publisherLastSeen` > 60 s old.
+ *   1. Every 10th tick, rolls each topic's 6-bucket spark window forward
+ *      by one slot — spec §6.1 prescribes "6 buckets of 10 s each" for
+ *      a 60 s window (plan's code sample rolled every tick, which would
+ *      only cover 6 s; spec wins per authority ordering).
+ *   2. Decays any publisher whose `publisherLastSeen` > 60 s old (runs
+ *      every tick — it's time-based, not bucket-based).
  *   3. Reads the new envelopes since last tick (monotonic
  *      `envelopesReceivedTotal` delta — decisions entry 82 pattern —
  *      so the scan still works after the ring caps at 5000).
  *   4. Absorbs them into per-topic state (new-topic bootstrap, bucket
- *      accumulate, publisher re-ping).
+ *      accumulate into the rightmost slot, publisher re-ping). The
+ *      rightmost bucket collects count across 10 s before shifting.
  *   5. Updates EWMA rates (α=0.1) on every known topic, not just those
  *      with fresh envelopes — so a topic that went silent this tick
- *      still decays toward zero.
+ *      still decays toward zero. Per-second cadence unchanged.
  *   6. Rebuilds per-topic `recent5` by a single reverse walk of the
  *      envelope ring (Drift B), so each Row reads `stat.recent5`
  *      statically from the snapshot instead of re-filtering on every
@@ -59,6 +65,7 @@ export function useTopicStats(): Map<string, TopicStat> {
   const [snapshot, setSnapshot] = useState<Map<string, TopicStat>>(new Map());
   const stateRef = useRef<Map<string, TopicStat>>(new Map());
   const lastIndexRef = useRef<number>(0);
+  const tickCountRef = useRef<number>(0);
 
   useEffect(() => {
     const tick = () => {
@@ -76,13 +83,20 @@ export function useTopicStats(): Map<string, TopicStat> {
       const fresh = envs.slice(envs.length - take);
       lastIndexRef.current = total;
 
-      // Roll bucket window forward + decay old publishers. Boundary is
-      // `>= PUBLISHER_DECAY_MS` so a publisher re-ping'd exactly 60 s
-      // ago evicts this tick rather than sticking around for one more.
-      // Matches spec §6.2 "publishers: source_region seen last 60 s".
+      tickCountRef.current += 1;
+      const rollBucket = tickCountRef.current % BUCKET_TICKS === 0;
+
+      // Roll bucket window forward only every 10th tick (spec §6.1:
+      // "6 buckets of 10 s each" = 60 s window). Publisher decay runs
+      // every tick — boundary is `>= PUBLISHER_DECAY_MS` so a publisher
+      // re-ping'd exactly 60 s ago evicts this tick rather than sticking
+      // around for one more. Matches spec §6.2 "publishers: source_region
+      // seen last 60 s".
       for (const stat of stateRef.current.values()) {
-        stat.sparkBuckets.shift();
-        stat.sparkBuckets.push(0);
+        if (rollBucket) {
+          stat.sparkBuckets.shift();
+          stat.sparkBuckets.push(0);
+        }
         for (const [pub, last] of stat.publisherLastSeen) {
           if (now - last >= PUBLISHER_DECAY_MS) {
             stat.publisherLastSeen.delete(pub);
