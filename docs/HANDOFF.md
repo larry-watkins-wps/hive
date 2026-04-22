@@ -1046,14 +1046,17 @@ footgun.
   remaining retained self-state channels are ``identity``, ``values``,
   ``personality``, ``autobiographical_index``.
 
-**Spec divergence from §A.7.1 and §B.4.** §A.7.1's ``self`` schema
-lists ``developmental_stage`` with enum
-``["teenage", "young_adult", "adult"]``. §B.4's topic table lists both
+**Spec divergence from §B.3.4 and §B.4.** §B.3.4's
+``application/hive+self-state`` schema lists ``developmental_stage``
+with enum ``["teenage", "young_adult", "adult"]`` and ``age`` as a
+non-negative integer. §B.4's topic table lists both
 ``hive/self/developmental_stage`` and ``hive/self/age`` as retained
 mPFC-published topics. Neither is part of v0's runtime surface any
-more. A future spec revision should drop both fields; retain
-``identity``, ``values``, ``personality``, ``autobiographical_index``
-as the four retained self-state channels.
+more — both sections received divergence banners on 2026-04-22. A
+future spec revision should drop both fields; retain ``identity``,
+``values``, ``personality``, ``autobiographical_index`` as the four
+retained self-state channels. (Separate from §A.7.1, which covers
+``append_appendix`` — see the 2026-04-21 append-only divergence entry.)
 
 **What to check on resume.**
 - No region prompt references ``hive/self/developmental_stage`` or

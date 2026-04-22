@@ -183,7 +183,9 @@ region_template/
 ├── mqtt_client.py          # Async MQTT client with envelope wrap/unwrap
 ├── llm_adapter.py          # LiteLLM wrapper, capability gating
 ├── memory.py               # STM/LTM interface, consolidation hooks
-├── self_modify.py          # Sleep-only tools: edit_prompt, edit_handlers, …
+├── self_modify.py          # Sleep-only tools: append_appendix, edit_handlers, …
+├── appendix.py             # AppendixStore — single writer of rolling.md appendix
+├── prompt_assembly.py      # load_system_prompt — joins starter prompt + appendix
 ├── sleep.py                # Sleep state machine, consolidation driver
 ├── capability.py           # Capability enforcement decorator + registry
 ├── config_loader.py        # config.yaml loader + schema validation
@@ -598,20 +600,38 @@ Every tool:
 3. Performs the action.
 4. Returns a structured result (no exceptions for expected failures).
 
-#### A.7.1 `edit_prompt`
+#### A.7.1 `append_appendix`
+
+> **2026-04-21 divergence (append-only prompt evolution).** The prior `edit_prompt` tool has been **removed**. `regions/<name>/prompt.md` is now immutable constitutional DNA — written once at region birth by `glia/spawn_executor.py` and never overwritten. Evolution of a region's self-instructions happens via a per-region append-only appendix at `regions/<name>/memory/appendices/rolling.md`, owned by `region_template.appendix.AppendixStore`. Rationale: an early PFC self-mod cycle replaced its ~200-line constitutional starter prompt with a 4-item TODO list; the pipeline worked but the LLM's judgment on rewriting its own DNA was self-destructive. Removing the footgun is safer than adding guardrails around full prompt rewrites. See `docs/HANDOFF.md` Phase 11 "2026-04-21 — Append-only prompt evolution" divergence entry.
 
 ```python
-async def edit_prompt(self, new_text: str, reason: str) -> EditResult:
-    """Overwrite regions/<name>/prompt.md.
+async def append_appendix(self, section_body: str, trigger: str) -> AppendixResult:
+    """Append a new dated section to regions/<name>/memory/appendices/rolling.md.
 
     Constraints:
-    - reason must be non-empty and < 200 chars (goes into git commit)
-    - new_text must be valid UTF-8, < 64 KB
-    - Atomicity: write to prompt.md.tmp, fsync, rename
+    - trigger: non-empty, < 200 chars (used as H2 heading suffix and commit message)
+    - section_body: valid UTF-8, < 64 KB
+    - Lazy-creates rolling.md on first append
+    - Framework prepends an H2 heading: '## <ISO-8601-timestamp> — <trigger>'
+    - Atomicity: write to rolling.md.tmp, fsync, rename (via shared _atomic_write_text)
     """
 ```
 
-`EditResult`: `{path: Path, bytes_written: int, diff_lines: int}`.
+`AppendixResult`: `{path: Path, bytes_appended: int, section_count: int}`.
+
+**System-prompt assembly.** At every LLM call that builds a system prompt (today: sleep review; future: handler-driven LLM calls), `region_template.prompt_assembly.load_system_prompt` joins:
+
+```
+<prompt.md starter DNA>
+
+# Evolution appendix
+
+<rolling.md content>
+```
+
+The starter half is stable across calls (Anthropic cache-friendly); the appendix half grows over sleep cycles. The effective system prompt is `starter + "\n\n# Evolution appendix\n\n" + appendix`, presented to the LLM as a single `role="system"` message. STM / events / schema come through a separate `role="user"` message.
+
+**Consolidation follow-up (deferred).** `rolling.md` is unbounded; summarization of older sections into a gist will be added once multi-week appendix data exists. Anthropic prompt caching on the stable starter half is the first-line token-cost mitigation in the meantime.
 
 #### A.7.2 `edit_subscriptions`
 
@@ -778,7 +798,7 @@ Applied:
 class SelfModifyTools:
     @requires_capability("self_modify")
     @sleep_only
-    async def edit_prompt(self, ...): ...
+    async def append_appendix(self, ...): ...
 
     @requires_capability("self_modify")
     @sleep_only
@@ -2623,8 +2643,8 @@ class SleepCoordinator:
         await self._prune_stm()
         await self._rebuild_index()
         proposals = await self._propose_self_mods(review)
-        if proposals.prompt_edit:
-            await self._apply_prompt_edit(proposals.prompt_edit)
+        if proposals.appendix_entry:
+            await self._append_appendix(proposals.appendix_entry)
         if proposals.handler_edits:
             ok = await self._apply_handler_edits(proposals.handler_edits)
             if not ok:
