@@ -1,7 +1,7 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-22 (Phase 11 — `hive/self/developmental_stage` and `hive/self/age` topics dropped; stage + age are emergent from accumulated experience)
-**Current phase:** v0 DNA complete; Phase 11 (Runtime evolution — first self-mod cycles, post-v0 region additions) next
+**Last updated:** 2026-04-23 (Phase 11 — broker portability, bridge wiring, spawn pipeline landed; see commits `b179dbe..e924659`)
+**Current phase:** v0 DNA complete; Phase 11 (Runtime evolution — first self-mod cycles, post-v0 region additions) **in progress**
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
@@ -24,7 +24,7 @@ v0 is **complete** — all 10 phases done. The "DNA" (shared runtime, 14 regions
 | 8. Region scaffolding ×14 | ✅ Complete (2026-04-21) | `regions/<14 names>/` |
 | 9. Integration + smoke + CI | ✅ Complete (2026-04-21) | `tests/integration/`, `tests/smoke/`, `.github/workflows/ci.yml` |
 | 10. Docs + HANDOFF polish | ✅ Complete (2026-04-21) | `README.md`, `docs/HANDOFF.md`, `CLAUDE.md` |
-| 11. Runtime evolution | ⏳ **Next era** | See Phase 11 section below |
+| 11. Runtime evolution | 🔄 **In progress** (2026-04-23) | See Phase 11 section below |
 
 **Totals:** 710 unit + 73 integration (3 option-b skips + 1 Windows non-admin skip) + 1 smoke-collectable. Ruff clean. Minimal CI green on every push + PR.
 
