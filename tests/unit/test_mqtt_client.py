@@ -275,8 +275,12 @@ class TestMqttClientConnect:
         assert kw["hostname"] == "broker.example"
         assert kw["port"] == _TEST_BROKER_PORT
         assert kw["identifier"] == "hive-amygdala"
-        # MQTT v5 uses clean_start+properties; see §B.11.
-        assert kw["clean_start"] is False
+        # MQTT v5 uses clean_start+properties; see §B.11. clean_start=True
+        # discards any half-built server-side session on CONNECT
+        # (broker-portability workaround — see _build_client docstring);
+        # SessionExpiryInterval keeps the FRESH session alive after each
+        # disconnect so QoS-1 queueing still works during reconnect windows.
+        assert kw["clean_start"] is True
         assert kw["protocol"] == mqtt_client_mod.ProtocolVersion.V5
         # Session-expiry property retains QoS-1 queue for 1h.
         assert kw["properties"].SessionExpiryInterval == _EXPECTED_SESSION_EXPIRY_S

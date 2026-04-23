@@ -172,10 +172,35 @@ class MqttClient:
             will=will,
             keepalive=self._cfg.keepalive_s,
             protocol=ProtocolVersion.V5,
-            # MQTT v5 uses clean_start + SessionExpiryInterval instead of
-            # v3.1.1's clean_session (see §B.11). False = resume if a session
-            # exists on the broker.
-            clean_start=False,
+            # MQTT v5 splits the v3.1.1 "clean_session" bit into two independent
+            # knobs (spec §3.1.2.4 / §B.11):
+            #   - `clean_start=True`   → discard ANY existing server-side
+            #     session for this Client Identifier at CONNECT time and begin
+            #     a fresh one.
+            #   - `SessionExpiryInterval=N` (set in `_connect_properties`) →
+            #     keep the new session alive for N seconds AFTER disconnect,
+            #     so QoS-1 messages queue up during brief reconnect windows
+            #     and subscriptions survive.
+            #
+            # Previous setting was `clean_start=False` to resume a prior
+            # session on reconnect. That was correct by the spec but tripped
+            # a bug in at least one broker implementation (RxMqtt.Broker):
+            # if the broker had any server-side session state for a Client
+            # Identifier (even a half-initialized one from an earlier
+            # aborted CONNECT), it never sent the mandatory CONNACK when a
+            # new connection arrived with `clean_start=False` — just hung.
+            # Clean-start sidesteps the broker's session-resume code path
+            # entirely while still preserving the only behavior Hive
+            # actually depends on (broker-side queueing during brief
+            # reconnect windows), because the freshly-created session still
+            # respects `SessionExpiryInterval`.
+            #
+            # The tradeoff: when a region crashes hard and restarts, any
+            # QoS-1 messages the broker queued for it during the downtime
+            # are dropped rather than replayed. Regions already recover
+            # from checkpoints on boot, so missing a handful of pre-crash
+            # envelopes is tolerable; broker-portability is not.
+            clean_start=True,
             properties=_connect_properties(),
         )
 
