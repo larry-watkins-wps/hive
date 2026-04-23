@@ -26,6 +26,12 @@ services:
       OBSERVATORY_MQTT_URL: mqtt://host.docker.internal:1883
       OBSERVATORY_REGIONS_ROOT: /hive/regions
       OBSERVATORY_HIVE_ROOT: /hive
+      # Per-client envelope rate cap (decimator threshold). Default 200 is too
+      # high — at ~70 env/s the frontend's per-envelope React re-render can
+      # fall behind, queue overflows _QUEUE_HIGH_WATER=1000, and the hub
+      # drops all envelopes for that client. 30/s keeps sparks continuous
+      # while giving the frontend breathing room.
+      OBSERVATORY_MAX_WS_RATE: "30"
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"    # Linux only
     volumes:

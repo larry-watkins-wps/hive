@@ -68,6 +68,11 @@ type State = {
   applyBaselinePairs: (pairs: Array<[string, string]>) => void;
   applyRetained: (topic: string, payload: Record<string, unknown>) => void;
   pushEnvelope: (env: Envelope) => void;
+  /** Append N envelopes in a single state update. Used by the ws layer's
+   * 10Hz batcher so high-traffic bursts don't trigger a React re-render
+   * per envelope (see `ws.ts` scheduleFlush). Keeps Firehose + Sparks
+   * subscribers bounded to ~10Hz even at 70+ env/s. */
+  pushEnvelopes: (envs: Envelope[]) => void;
   select: (name: string | null) => void;
   cycle: (direction: 1 | -1) => void;
   setDockTab: (tab: 'firehose' | 'topics' | 'metacog') => void;
@@ -185,6 +190,16 @@ export function createStore() {
       // `envelopesReceivedTotal` is monotonic (unlike `envelopes.length` which
       // plateaus at RING_CAP); Counters HUD samples it to compute msg/s.
       set({ envelopes: next, envelopesReceivedTotal: get().envelopesReceivedTotal + 1 });
+    },
+    pushEnvelopes: (envs) => {
+      if (envs.length === 0) return;
+      const cur = get().envelopes;
+      // Single array copy regardless of batch size, vs. N copies for N
+      // individual pushEnvelope calls. At RING_CAP=5000 this is the
+      // difference between O(N·batch) and O(N+batch) on each flush.
+      const next = cur.length === 0 ? envs.slice() : cur.concat(envs);
+      if (next.length > RING_CAP) next.splice(0, next.length - RING_CAP);
+      set({ envelopes: next, envelopesReceivedTotal: get().envelopesReceivedTotal + envs.length });
     },
     select: (name) => set({ selectedRegion: name }),
     cycle: (direction) => {

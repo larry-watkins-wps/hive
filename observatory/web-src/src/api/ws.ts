@@ -17,11 +17,34 @@ type ServerMessage =
     }
   | { type: 'decimated'; payload: { dropped: number } };
 
+// Envelope batcher: accumulate arrivals and flush to the store at ~10Hz so
+// Firehose re-renders and sparks updates are bounded regardless of inbound
+// envelope rate. Before this, a 70 env/s stream triggered 70 zustand set()
+// calls/sec → 70 Firehose re-renders/sec → main thread fell behind the WS
+// receive loop → server-side queue exceeded _QUEUE_HIGH_WATER (1000) → hub
+// dropped all envelopes for that client → sparks stalled ~30s in.
+const _FLUSH_INTERVAL_MS = 100;
+let _pending: any[] = [];
+let _flushTimer: ReturnType<typeof setTimeout> | null = null;
+function _scheduleFlush(store: UseBoundStore<StoreApi<any>>): void {
+  if (_flushTimer !== null) return;
+  _flushTimer = setTimeout(() => {
+    _flushTimer = null;
+    if (_pending.length === 0) return;
+    const batch = _pending;
+    _pending = [];
+    store.getState().pushEnvelopes(batch);
+  }, _FLUSH_INTERVAL_MS);
+}
+
 export function handleServerMessage(store: UseBoundStore<StoreApi<any>>, msg: ServerMessage): void {
   const s = store.getState();
   switch (msg.type) {
     case 'snapshot': s.applySnapshot(msg.payload); break;
-    case 'envelope': s.pushEnvelope(msg.payload); break;
+    case 'envelope':
+      _pending.push(msg.payload);
+      _scheduleFlush(store);
+      break;
     case 'region_delta': s.applyRegionDelta(msg.payload.regions); break;
     case 'adjacency':
       s.applyAdjacency(msg.payload.pairs);
