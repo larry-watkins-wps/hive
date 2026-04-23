@@ -253,12 +253,12 @@ class RegionRegistry:
         host_root = os.environ.get("HIVE_HOST_ROOT", "").replace("\\", "/").rstrip("/")
         if host_root:
             regions_src = f"{host_root}/regions/{name}"
-            template_src = f"{host_root}/region_template"
-            shared_src = f"{host_root}/shared"
+            template_src = f"{host_root}/src/region_template"
+            shared_src = f"{host_root}/src/shared"
         else:
             regions_src = f"./regions/{name}"
-            template_src = "./region_template"
-            shared_src = "./shared"
+            template_src = "./src/region_template"
+            shared_src = "./src/shared"
 
         return {
             "image": "hive-region:v0",

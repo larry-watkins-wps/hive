@@ -161,10 +161,10 @@ def test_docker_spec_active_relative(monkeypatch):
     volumes = spec["volumes"]
     assert volumes["./regions/amygdala"]["bind"] == "/hive/region"
     assert volumes["./regions/amygdala"]["mode"] == "rw"
-    assert volumes["./region_template"]["bind"] == "/hive/region_template"
-    assert volumes["./region_template"]["mode"] == "ro"
-    assert volumes["./shared"]["bind"] == "/hive/shared"
-    assert volumes["./shared"]["mode"] == "ro"
+    assert volumes["./src/region_template"]["bind"] == "/hive/region_template"
+    assert volumes["./src/region_template"]["mode"] == "ro"
+    assert volumes["./src/shared"]["bind"] == "/hive/shared"
+    assert volumes["./src/shared"]["mode"] == "ro"
 
 
 def test_docker_spec_active_absolute_posix(monkeypatch):
@@ -176,10 +176,10 @@ def test_docker_spec_active_absolute_posix(monkeypatch):
     volumes = spec["volumes"]
     assert volumes["/home/op/hive/regions/amygdala"]["bind"] == "/hive/region"
     assert volumes["/home/op/hive/regions/amygdala"]["mode"] == "rw"
-    assert volumes["/home/op/hive/region_template"]["bind"] == "/hive/region_template"
-    assert volumes["/home/op/hive/region_template"]["mode"] == "ro"
-    assert volumes["/home/op/hive/shared"]["bind"] == "/hive/shared"
-    assert volumes["/home/op/hive/shared"]["mode"] == "ro"
+    assert volumes["/home/op/hive/src/region_template"]["bind"] == "/hive/region_template"
+    assert volumes["/home/op/hive/src/region_template"]["mode"] == "ro"
+    assert volumes["/home/op/hive/src/shared"]["bind"] == "/hive/shared"
+    assert volumes["/home/op/hive/src/shared"]["mode"] == "ro"
 
 
 def test_docker_spec_active_absolute_windows(monkeypatch):
@@ -191,8 +191,8 @@ def test_docker_spec_active_absolute_windows(monkeypatch):
     volumes = spec["volumes"]
     assert "C:/repos/hive/regions/amygdala" in volumes
     assert volumes["C:/repos/hive/regions/amygdala"]["bind"] == "/hive/region"
-    assert volumes["C:/repos/hive/region_template"]["bind"] == "/hive/region_template"
-    assert volumes["C:/repos/hive/shared"]["bind"] == "/hive/shared"
+    assert volumes["C:/repos/hive/src/region_template"]["bind"] == "/hive/region_template"
+    assert volumes["C:/repos/hive/src/shared"]["bind"] == "/hive/shared"
 
 
 def test_docker_spec_host_root_trailing_slash_stripped(monkeypatch):

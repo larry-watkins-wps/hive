@@ -101,11 +101,11 @@ def test_launch_region_calls_docker_run_with_expected_kwargs(
         "bind": "/hive/region",
         "mode": "rw",
     }
-    assert volumes["./region_template"] == {
+    assert volumes["./src/region_template"] == {
         "bind": "/hive/region_template",
         "mode": "ro",
     }
-    assert volumes["./shared"] == {
+    assert volumes["./src/shared"] == {
         "bind": "/hive/shared",
         "mode": "ro",
     }
