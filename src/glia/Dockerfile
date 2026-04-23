@@ -1,7 +1,7 @@
-# glia/Dockerfile — Hive infrastructure container (spec §E.1, §E.2; plan 5.1).
+# src/glia/Dockerfile — Hive infrastructure container (spec §E.1, §E.2; plan 5.1).
 #
 # Build from repo root:
-#   docker build -t hive-glia:v0 -f glia/Dockerfile .
+#   docker build -t hive-glia:v0 -f src/glia/Dockerfile .
 #
 # Runtime mounts (configured in docker-compose.yaml — plan 6.1):
 #   /var/run/docker.sock   Docker socket (RW; bind-mounted from host so the
@@ -59,9 +59,9 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 # Copy glia source and shared utilities. At runtime docker-compose bind-mounts
 # the host directories over these paths for live reload during development.
-COPY --chown=hive:hive shared/ /hive/shared/
+COPY --chown=hive:hive src/shared/ /hive/shared/
 COPY --chown=hive:hive bus/ /hive/bus/
-COPY --chown=hive:hive glia/ /hive/glia/
+COPY --chown=hive:hive src/glia/ /hive/glia/
 
 USER hive
 

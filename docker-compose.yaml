@@ -5,7 +5,7 @@ services:
   glia:
     build:
       context: .
-      dockerfile: glia/Dockerfile
+      dockerfile: src/glia/Dockerfile
     image: hive-glia:v0
     container_name: glia
     # Host networking: glia (and every region glia spawns) shares the host
@@ -31,8 +31,8 @@ services:
       - .env
     volumes:
       - ./regions:/hive/regions:rw
-      - ./region_template:/hive/region_template:ro
-      - ./shared:/hive/shared:ro
+      - ./src/region_template:/hive/region_template:ro
+      - ./src/shared:/hive/shared:ro
       - ./bus:/hive/bus:rw
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped

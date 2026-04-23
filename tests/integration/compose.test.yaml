@@ -13,8 +13,8 @@
 # require container-side assertion logic.
 #
 # Prerequisites (images must be built before `docker compose up`):
-#   docker build -t hive-region:v0 -f region_template/Dockerfile .
-#   docker build -t hive-glia:v0   -f glia/Dockerfile .
+#   docker build -t hive-region:v0 -f src/region_template/Dockerfile .
+#   docker build -t hive-glia:v0   -f src/glia/Dockerfile .
 #
 # Project name is `hive_test` (matches tests/conftest.py's compose_stack
 # fixture which passes `-p hive_test`).  Container names are prefixed with
@@ -53,7 +53,7 @@ services:
   glia:
     build:
       context: .
-      dockerfile: glia/Dockerfile
+      dockerfile: src/glia/Dockerfile
     image: hive-glia:v0
     container_name: hive-test-glia
     depends_on:
@@ -66,8 +66,8 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - ./regions:/hive/regions:rw
-      - ./region_template:/hive/region_template:ro
-      - ./shared:/hive/shared:ro
+      - ./src/region_template:/hive/region_template:ro
+      - ./src/shared:/hive/shared:ro
       - ./bus:/hive/bus:rw
       - /var/run/docker.sock:/var/run/docker.sock
     networks: [hive_net]
@@ -86,8 +86,8 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - ./regions/medial_prefrontal_cortex:/hive/region:rw
-      - ./region_template:/hive/region_template:ro
-      - ./shared:/hive/shared:ro
+      - ./src/region_template:/hive/region_template:ro
+      - ./src/shared:/hive/shared:ro
     networks: [hive_net]
 
   prefrontal_cortex:
@@ -104,6 +104,6 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - ./regions/prefrontal_cortex:/hive/region:rw
-      - ./region_template:/hive/region_template:ro
-      - ./shared:/hive/shared:ro
+      - ./src/region_template:/hive/region_template:ro
+      - ./src/shared:/hive/shared:ro
     networks: [hive_net]

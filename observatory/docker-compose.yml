@@ -32,5 +32,5 @@ services:
       # Read-only mounts: observatory is a sidecar instrument and MUST NOT
       # write to region disk (principle from observatory/CLAUDE.md).
       - ../regions:/hive/regions:ro
-      - ../glia/regions_registry.yaml:/hive/glia/regions_registry.yaml:ro
+      - ../src/glia/regions_registry.yaml:/hive/glia/regions_registry.yaml:ro
     restart: unless-stopped

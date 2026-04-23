@@ -39,10 +39,10 @@ jobs:
 
       - name: Ruff
         env:
-          PYTHONPATH: ${{ github.workspace }}
-        run: python -m ruff check region_template/ glia/ tools/ tests/ shared/
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: python -m ruff check src/region_template/ src/glia/ tools/ tests/ src/shared/
 
       - name: Unit tests
         env:
-          PYTHONPATH: ${{ github.workspace }}
+          PYTHONPATH: ${{ github.workspace }}/src
         run: python -m pytest tests/unit/ -q

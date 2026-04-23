@@ -17,7 +17,7 @@ When the user types something like `continue phase 11`, `resume runtime evolutio
    ```bash
    git fetch origin && git checkout main && git log --oneline -10
    python -m pytest tests/unit/ -q            # expect 691 passed
-   python -m ruff check region_template/ glia/ tools/ tests/ shared/
+   python -m ruff check src/region_template/ src/glia/ tools/ tests/ src/shared/
    ```
 3. Read the relevant sections of:
    - `docs/superpowers/specs/2026-04-19-hive-v0-design.md` — **authoritative design spec** (4,792 lines).
@@ -37,7 +37,7 @@ Per-task discipline:
 - **Verify after each task:**
   ```bash
   python -m pytest tests/unit/ -q
-  python -m ruff check region_template/ glia/ tools/ tests/ shared/
+  python -m ruff check src/region_template/ src/glia/ tools/ tests/ src/shared/
   ```
 
 ## Authority ordering
@@ -52,7 +52,8 @@ Per-task discipline:
 - **`LifecyclePhase` is `StrEnum`** (Python 3.11+). `str(phase)` is lowercase (`"wake"`, not `"LifecyclePhase.WAKE"`).
 - **`LlmError`** first positional arg is the kind string; `.kind` property exposes it.
 - **`tool_use: "wizard"` raises `ConfigError`** — only `none | basic | advanced` per spec §F.2.
-- **Ruff config lives at workspace root `pyproject.toml`.** Package-level `region_template/pyproject.toml` and `shared/pyproject.toml` MUST NOT re-declare `[tool.ruff]` / `[tool.mypy]` / `[tool.pytest.ini_options]` blocks.
+- **Ruff config lives at workspace root `pyproject.toml`.** Package-level `src/region_template/pyproject.toml` and `src/shared/pyproject.toml` MUST NOT re-declare `[tool.ruff]` / `[tool.mypy]` / `[tool.pytest.ini_options]` blocks.
+- **`src/` layout (2026-04-23):** `region_template/`, `glia/`, `shared/` live under `src/`. Container-side paths (`/hive/region_template`, `/hive/shared`, `/hive/glia`) unchanged — only host-side moved. CI `PYTHONPATH=${{ github.workspace }}/src`. Developers running locally need `PYTHONPATH=./src` or equivalent until full pip-install cleanup lands.
 - **`MemoryStore.stm_size_bytes_sync()`** is the lock-free sync helper for `_check_sleep_triggers`. Async path is `stm_size_bytes()`.
 - **litellm pinned `>=1.54,<2`** — pre-1.54 has Windows long-path extraction issues; 1.60+ may have `cost_per_token` signature drift.
 - **Windows-specific:**

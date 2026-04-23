@@ -129,7 +129,7 @@ Separate from regions:
 ## Development
 
 - Python 3.11+ required (`LifecyclePhase` uses `StrEnum`).
-- Lint: `python -m ruff check region_template/ glia/ tools/ tests/ shared/`.
+- Lint: `python -m ruff check src/region_template/ src/glia/ tools/ tests/ src/shared/`.
 - Unit tests: `python -m pytest tests/unit/ -q` (expect 710 passing).
 - Component tests (require Docker): `python -m pytest tests/component/ -m component -v`.
 - Commit-per-task is mandated by Principle XII; commits end with the `Co-Authored-By: Claude Opus 4.7 (1M context)` trailer.

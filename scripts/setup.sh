@@ -10,10 +10,10 @@
 #   3. Copies .env.example → .env (via bootstrap_env.sh) if .env is absent.
 #   4. Prints the next-step hint.
 #
-# Note: the local `shared/` and `region_template/` packages are NOT
-# pip-installed — the repo uses a flat layout and tests resolve imports
-# via conftest.py's sys.path munging. The Phase 4 Dockerfile task will
-# introduce a proper installable layout.
+# Note: the local `src/shared/`, `src/region_template/`, and `src/glia/`
+# packages are NOT pip-installed — the repo uses an `src/` layout and
+# tests resolve imports via conftest.py's sys.path munging. A follow-up
+# will introduce a proper installable layout.
 #
 # Idempotent — safe to re-run.
 set -euo pipefail
@@ -44,7 +44,7 @@ else
 fi
 
 # ---- 2. deps ---------------------------------------------------------------
-# Dependency list mirrors region_template/pyproject.toml — kept in sync
+# Dependency list mirrors src/region_template/pyproject.toml — kept in sync
 # by eye. Phase 4 Dockerfile work will replace this with a proper
 # pyproject-driven install.
 echo "==> Upgrading pip..."

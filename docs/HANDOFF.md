@@ -1,6 +1,6 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-23 (Phase 11 — broker portability, bridge wiring, spawn pipeline landed; see commits `b179dbe..e924659`)
+**Last updated:** 2026-04-23 (Phase 11 — broker portability, bridge wiring, spawn pipeline landed; `src/` layout refactor; scoped out docker-events listener + mypy CI job)
 **Current phase:** v0 DNA complete; Phase 11 (Runtime evolution — first self-mod cycles, post-v0 region additions) **in progress**
 **Repo path:** `C:/repos/hive/`
 
@@ -840,19 +840,22 @@ Pull these from the per-phase "Follow-up items" sections:
 - **`compose.test.yaml` `test_harness` service** (spec §I.4). Currently
   pytest itself acts as the harness. Wire once Phase 11 integration
   tests need a dedicated test-harness container.
-- **Bridge wiring in `glia/__main__.py`.** `RhythmGenerator` +
-  `InputTextBridge` (the two enabled-by-default bridges) are
-  implemented but not started in `_main()`. Wire them in alongside
-  supervisor + stop in the finally block. `SpeakerBridge` and
-  `MotorBridge` are a second pass once motor regions have handlers.
+- ~~**Bridge wiring in `glia/__main__.py`.**~~ Resolved 2026-04-22 in
+  commit `7dc2471`: both `RhythmGenerator` and `InputTextBridge` are
+  now imported, instantiated, started, and stopped in the finally
+  block. `SpeakerBridge` and `MotorBridge` remain second-pass.
 - **Docker-events listener for exit-code-based restart** (§E.3). Wire
-  a `docker.events.listen()` call in `glia/__main__.py`; supervisor's
-  `on_region_exit(region, exit_code)` already exists.
-- **Flat-layout flit install cleanup.** CI uses `PYTHONPATH` workaround.
-  A proper setuptools package-dir or nested module dir would remove the
-  paper cut from every developer environment.
-- **Type-checking job in CI.** Mypy was deferred post-v0. A `mypy
-  region_template/ glia/ shared/` run in CI would surface drift early.
+  a `docker.events.listen()` call in `src/glia/__main__.py`; supervisor's
+  `on_region_exit(region, exit_code)` already exists. **Scoped out
+  2026-04-23** (Larry) — heartbeat-loss detection is sufficient at
+  current volume; revisit if real crash patterns demand it.
+- **`src/` layout refactor** — Resolved 2026-04-23: `region_template/`,
+  `glia/`, `shared/` moved into `src/`. Container paths unchanged
+  (`/hive/region_template` etc.). CI `PYTHONPATH` now points at
+  `${{ github.workspace }}/src`. Full pip-install cleanup (so
+  `PYTHONPATH` disappears entirely) is a follow-up.
+- ~~**Type-checking job in CI.**~~ Scoped out 2026-04-23 (Larry) —
+  post-v0 nicety, not blocking Phase 11.
 
 ## Reminders
 

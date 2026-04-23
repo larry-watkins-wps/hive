@@ -1,7 +1,7 @@
-# region_template/Dockerfile — shared image for all Hive regions (spec §0.5, §G.7; plan 4.1).
+# src/region_template/Dockerfile — shared image for all Hive regions (spec §0.5, §G.7; plan 4.1).
 #
 # Build from repo root:
-#   docker build -t hive-region:v0 -f region_template/Dockerfile .
+#   docker build -t hive-region:v0 -f src/region_template/Dockerfile .
 #
 # Runtime layout (bind-mounted by glia at container launch — spec §0.5, §G.7):
 #   /hive/region/          region state dir (RW; per-region host volume)
@@ -59,8 +59,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Copy DNA and shared code. At runtime glia bind-mounts the host directories
 # read-only over these paths (spec §0.5); the baked copies serve standalone
 # `docker run --rm hive-region:v0 --help` and act as a fallback.
-COPY --chown=hive:hive shared/ /hive/shared/
-COPY --chown=hive:hive region_template/ /hive/region_template/
+COPY --chown=hive:hive src/shared/ /hive/shared/
+COPY --chown=hive:hive src/region_template/ /hive/region_template/
 
 USER hive
 
