@@ -21,7 +21,7 @@ import type { ForceNode } from './useForceGraph';
 // reactive pulse does the actual work of surfacing "who's talking right
 // now".
 const BASE_COLOR_HEX = 0x3a4a6a;
-const BASE_OPACITY = 0.18;
+const BASE_OPACITY = 0.22;
 const REACTIVE_GAIN = 0.9;
 const DECAY_PER_SEC = 1 / 0.8;
 
