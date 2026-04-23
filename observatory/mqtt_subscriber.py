@@ -33,9 +33,27 @@ _HEARTBEAT_PREFIX = "hive/system/heartbeat/"
 def load_subscription_map(hive_repo_root: Path) -> dict[str, list[str]]:
     """Scan regions/<name>/subscriptions.yaml and return {region: [topic, ...]}.
 
+    Supports two shapes so the observatory stays useful regardless of which
+    schema a region file uses:
+
+    1. Flat list (simple, used by unit tests + sidecar/standalone demos)::
+
+            topics:
+              - hive/foo/#
+              - hive/bar
+
+    2. Rich-record list (production Hive schema with qos / description
+       metadata per subscription)::
+
+            schema_version: 1
+            subscriptions:
+              - topic: hive/foo/#
+                qos: 1
+                description: ...
+
     Malformed YAML in one region is logged and skipped — one bad file must
-    not poison the observatory for the rest of the tree. Non-string items
-    in `topics:` are filtered out. Missing files are skipped silently.
+    not poison the observatory for the rest of the tree. Non-string / non-
+    dict items are filtered out. Missing files are skipped silently.
     """
     out: dict[str, list[str]] = {}
     regions_dir = hive_repo_root / "regions"
@@ -53,14 +71,47 @@ def load_subscription_map(hive_repo_root: Path) -> dict[str, list[str]]:
         if not isinstance(data, dict):
             log.debug("observatory.subscriptions_non_mapping", path=str(sub_file))
             continue
-        topics_raw = data.get("topics") or []
-        if not isinstance(topics_raw, list):
-            log.debug("observatory.subscriptions_topics_non_list", path=str(sub_file))
-            continue
-        topics = [t for t in topics_raw if isinstance(t, str)]
+        topics = _extract_topics(data, path=sub_file)
         if topics:
             out[region_dir.name] = topics
     return out
+
+
+def _extract_topics(data: dict, *, path: Path) -> list[str]:
+    """Pull the subscription topic list out of either schema shape.
+
+    Prefers `subscriptions:` (Hive production shape, list of dicts with a
+    `topic` key) because real region files all use it; falls back to a
+    flat `topics:` list when present. A region file that contains both
+    keys is extremely unlikely in practice, but if it happens we union
+    the two and dedupe while preserving order so no subscription is lost.
+    """
+    topics: list[str] = []
+    seen: set[str] = set()
+
+    def _push(t: object) -> None:
+        if isinstance(t, str) and t not in seen:
+            seen.add(t)
+            topics.append(t)
+
+    subs_raw = data.get("subscriptions")
+    if isinstance(subs_raw, list):
+        for item in subs_raw:
+            if isinstance(item, dict):
+                _push(item.get("topic"))
+            elif isinstance(item, str):
+                _push(item)
+    elif subs_raw is not None:
+        log.debug("observatory.subscriptions_field_non_list", path=str(path))
+
+    topics_raw = data.get("topics")
+    if isinstance(topics_raw, list):
+        for item in topics_raw:
+            _push(item)
+    elif topics_raw is not None:
+        log.debug("observatory.subscriptions_topics_non_list", path=str(path))
+
+    return topics
 
 
 def _mqtt_pattern_to_regex(pattern: str) -> re.Pattern[str]:

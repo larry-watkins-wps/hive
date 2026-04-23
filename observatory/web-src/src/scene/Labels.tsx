@@ -206,9 +206,12 @@ export function Labels({ refMap }: LabelsProps) {
         labelObjRefs.current.delete(name);
       }
     }
-    // Add new — y-offset scales with region size (spec §5.2: `r.size × 1.6`)
-    // so executive (mPFC, size=1.8) labels sit above the larger orb instead
-    // of midway through it.
+    // Add new — y-offset scales with region size so executive (mPFC,
+    // size=1.8) labels sit above its larger orb. `0.9 × size` puts the
+    // label anchor ~0.35 world units above the core sphere surface
+    // (sphere radius is `size × 0.55`); combined with CSS's
+    // `translate(-50%, -130%)` the label text reads as sitting right
+    // above the orb instead of floating far away from it.
     for (const name of names) {
       if (labelObjRefs.current.has(name)) continue;
       const parent = refMap.current.get(name);
@@ -217,7 +220,7 @@ export function Labels({ refMap }: LabelsProps) {
       const size = regionSize(meta);
       const els = buildLabelEl();
       const obj = new CSS2DObject(els.root);
-      obj.position.set(0, 1.6 * size, 0);
+      obj.position.set(0, 0.9 * size, 0);
       parent.add(obj);
       labelObjRefs.current.set(name, { obj, els });
     }
