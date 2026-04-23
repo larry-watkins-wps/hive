@@ -286,15 +286,20 @@ export function Labels({ refMap }: LabelsProps) {
     };
   }, [gl, camera]);
 
-  // --- Per-frame text + class update + CSS2D render -------------------------
+  // --- Per-frame text + class update + WebGL + CSS2D render -----------------
   //
-  // priority=1 runs after the default r3f WebGL render at priority=0, so the
-  // DOM overlay is updated with the same-frame WebGL output underneath it.
+  // Priority > 0 takes over the render loop in r3f — once any `useFrame`
+  // registers with non-zero priority, r3f stops calling `gl.render` itself
+  // (see https://r3f.docs.pmnd.rs/api/hooks#taking-over-the-render-loop).
+  // So we MUST render the WebGL scene manually here, then the CSS2D overlay
+  // on top. Without the `state.gl.render(...)` line, the canvas never
+  // receives any draw calls — only the DOM labels appear while orbs, edges,
+  // sparks, etc. render to nothing.
   //
   // `.hover` is forced if the label's region is either pointer-hovered OR
   // the selected region — spec §5.2 requires the selected region's stats
   // to remain visible regardless of pointer position.
-  useFrame(() => {
+  useFrame((state) => {
     for (const [name, { els }] of labelObjRefs.current.entries()) {
       const meta: RegionMeta | undefined = regions[name];
       const stats = meta?.stats;
@@ -313,6 +318,7 @@ export function Labels({ refMap }: LabelsProps) {
         name === hoveredName.current || name === selectedRegion;
       els.root.classList.toggle('hover', force);
     }
+    state.gl.render(state.scene, state.camera);
     rendererRef.current?.render(scene, camera);
   }, 1);
 
