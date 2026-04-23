@@ -1,0 +1,36 @@
+# Observatory standalone deploy.
+#
+# Assumes a mosquitto broker is already running on the host at :1883.
+# The container reaches it via `host.docker.internal` (Docker Desktop
+# on Windows / Mac). On Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]`
+# or replace with the host's LAN IP.
+#
+# Run from the repo root:
+#   docker compose -f observatory/docker-compose.yml up --build
+#
+# Then open http://127.0.0.1:8765
+
+services:
+  observatory:
+    build:
+      context: ..                     # repo root so COPY observatory/... works
+      dockerfile: observatory/Dockerfile
+    image: observatory:v3
+    container_name: observatory-app
+    ports:
+      - "8765:8765"
+    environment:
+      # Host broker on Windows / Mac Docker Desktop. On Linux this DNS
+      # name needs the extra_hosts line below uncommented, or swap for
+      # the host's actual LAN IP.
+      OBSERVATORY_MQTT_URL: mqtt://host.docker.internal:1883
+      OBSERVATORY_REGIONS_ROOT: /hive/regions
+      OBSERVATORY_HIVE_REPO_ROOT: /hive
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"    # Linux only
+    volumes:
+      # Read-only mounts: observatory is a sidecar instrument and MUST NOT
+      # write to region disk (principle from observatory/CLAUDE.md).
+      - ../regions:/hive/regions:ro
+      - ../glia/regions_registry.yaml:/hive/glia/regions_registry.yaml:ro
+    restart: unless-stopped
