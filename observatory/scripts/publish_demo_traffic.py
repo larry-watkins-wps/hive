@@ -106,7 +106,9 @@ async def main() -> None:
     # value is per-connection so uniquify it with a pid + timestamp suffix
     # in case two copies of this script run back-to-back.
     client_id = f"hive-demo-publisher-{__import__('os').getpid()}-{int(time.time())}"
-    async with aiomqtt.Client(hostname=BROKER_HOST, port=BROKER_PORT, identifier=client_id) as client:
+    async with aiomqtt.Client(
+        hostname=BROKER_HOST, port=BROKER_PORT, identifier=client_id
+    ) as client:
         print(f"Connected to mqtt://{BROKER_HOST}:{BROKER_PORT}")
         print(f"Publishing {len(SCRIPT)} demo envelopes over ~30s…")
         for i, (source, topic, payload) in enumerate(SCRIPT, start=1):

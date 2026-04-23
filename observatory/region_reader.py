@@ -7,6 +7,7 @@ malformed region names, missing files, and files larger than MAX_FILE_BYTES.
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -140,16 +141,19 @@ class RegionReader:
         if not handlers_dir.exists() or not handlers_dir.is_dir():
             return []
 
-        # Walk with follow_symlinks=False so in-sandbox symlinked directories
+        # Walk with followlinks=False so in-sandbox symlinked directories
         # do not silently cause infinite traversal (cycle / DoS) and do not
         # yield .py files whose path string hides a symlink hop. `_validate`
-        # in the per-entry loop below also rejects leaf symlinks.
+        # in the per-entry loop below also rejects leaf symlinks. ``os.walk``
+        # (not ``Path.walk``) because the observatory runtime is Python 3.11
+        # and ``Path.walk`` only landed in 3.12.
         entries: list[HandlerEntry] = []
         py_paths: list[Path] = []
-        for dirpath, _dirnames, filenames in handlers_dir.walk(follow_symlinks=False):
+        for dirpath, _dirnames, filenames in os.walk(handlers_dir, followlinks=False):
+            dirpath_p = Path(dirpath)
             for fname in filenames:
                 if fname.endswith(".py"):
-                    py_paths.append(dirpath / fname)
+                    py_paths.append(dirpath_p / fname)
         for py in sorted(py_paths):
             try:
                 rel = py.relative_to(region_dir).as_posix()

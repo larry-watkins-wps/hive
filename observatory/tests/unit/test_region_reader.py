@@ -157,6 +157,29 @@ def test_list_handlers_is_sorted(regions_root: Path) -> None:
     assert "handlers/sub/b.py" in paths
 
 
+def test_list_handlers_works_without_pathlib_walk(
+    regions_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``pathlib.Path.walk`` landed in Python 3.12. The observatory's
+    container runs Python 3.11 (observatory/pyproject.toml declares
+    ``requires-python = ">=3.11"``), so the implementation must not rely
+    on it. Simulate 3.11 by removing the attribute and confirm handlers
+    still list correctly."""
+    import pathlib  # noqa: PLC0415 — scoped here so the delattr only affects this test
+
+    base = regions_root / "testregion" / "handlers"
+    (base / "sub").mkdir()
+    (base / "sub" / "deep.py").write_text("", encoding="utf-8")
+
+    monkeypatch.delattr(pathlib.Path, "walk", raising=False)
+    monkeypatch.delattr(pathlib.PurePath, "walk", raising=False)
+
+    reader = RegionReader(regions_root)
+    paths = [e.path for e in reader.list_handlers("testregion")]
+    assert "handlers/on_wake.py" in paths
+    assert "handlers/sub/deep.py" in paths
+
+
 def test_read_appendix_happy_path(regions_root: Path) -> None:
     reader = RegionReader(regions_root)
     appendix_dir = regions_root / "testregion" / "memory" / "appendices"
