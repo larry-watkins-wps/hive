@@ -7,6 +7,7 @@ conventions so the YAML stays clean of deployment concerns.
 """
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -241,24 +242,77 @@ class RegionRegistry:
                 f"Region {name!r} is reserved — no container runs at v0"
             )
 
+        # Volume host-paths: when glia runs inside a container, it cannot
+        # know the host's absolute project path from its own filesystem
+        # view. HIVE_HOST_ROOT (injected by compose) carries that path.
+        # When unset (local dev, unit tests), fall back to the ``./<rel>``
+        # shape the tests assert against. The Docker daemon will reject
+        # the relative form as a named-volume name at runtime — that is
+        # fine for tests that only inspect the spec dict shape; production
+        # compose always sets HIVE_HOST_ROOT.
+        host_root = os.environ.get("HIVE_HOST_ROOT", "").replace("\\", "/").rstrip("/")
+        if host_root:
+            regions_src = f"{host_root}/regions/{name}"
+            template_src = f"{host_root}/region_template"
+            shared_src = f"{host_root}/shared"
+        else:
+            regions_src = f"./regions/{name}"
+            template_src = "./region_template"
+            shared_src = "./shared"
+
         return {
             "image": "hive-region:v0",
             "name": f"hive-{name}",
-            "env": {"HIVE_REGION": name},
+            "env": {
+                "HIVE_REGION": name,
+                # On Windows Docker Desktop / WSL2 bind-mounts, the host
+                # directory's UID does not match the container's ``hive``
+                # UID, so git's ``dubious ownership`` check blocks every
+                # ``git rev-parse`` in region bootstrap. GIT_CONFIG_COUNT /
+                # KEY / VALUE is an env-only form of ``safe.directory`` —
+                # narrower than a baked ``git config --system`` in the DNA
+                # image, and a no-op on Linux where the mount UID lines up.
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "safe.directory",
+                "GIT_CONFIG_VALUE_0": "/hive/region",
+            },
             "volumes": {
-                f"./regions/{name}": {
+                regions_src: {
                     "bind": "/hive/region",
                     "mode": "rw",
                 },
-                "./region_template": {
+                template_src: {
                     "bind": "/hive/region_template",
                     "mode": "ro",
                 },
-                "./shared": {
+                shared_src: {
                     "bind": "/hive/shared",
                     "mode": "ro",
                 },
             },
-            "network": "hive_net",
+            # ``host`` network mode — regions share the host's network
+            # namespace so they can reach the external MQTT broker listening
+            # on 127.0.0.1. No bridge network (``hive_net``) is needed; no
+            # ``extra_hosts`` mapping is needed. Regions talk to each other
+            # exclusively via MQTT, so losing container-to-container DNS is
+            # a no-op.
+            "network_mode": "host",
+            # Labels that make ``docker compose ps`` / ``docker compose down``
+            # recognise region containers as part of the ``hive`` project
+            # even though glia — not compose — spawns them. ``working_dir``
+            # and ``config_files`` are what compose itself writes on its own
+            # managed containers; without them, ``docker compose ps`` filters
+            # the region rows out even though they carry the project label.
+            "labels": {
+                "com.docker.compose.project": "hive",
+                "com.docker.compose.service": name,
+                "com.docker.compose.oneoff": "False",
+                "com.docker.compose.container-number": "1",
+                "com.docker.compose.project.working_dir": host_root or ".",
+                "com.docker.compose.project.config_files": (
+                    f"{host_root}/docker-compose.yaml" if host_root
+                    else "./docker-compose.yaml"
+                ),
+            },
             "detach": True,
         }

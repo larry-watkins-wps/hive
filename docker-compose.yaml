@@ -1,49 +1,32 @@
 # docker-compose.yaml
-version: "3.9"
 name: hive
 
-networks:
-  hive_net:
-    driver: bridge
-
-volumes:
-  mosquitto_data:
-  mosquitto_log:
-
 services:
-  broker:
-    image: eclipse-mosquitto:2.0.20
-    container_name: mosquitto
-    ports:
-      - "127.0.0.1:1883:1883"  # dev inspection only
-    volumes:
-      - ./bus/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./bus/acl.conf:/mosquitto/config/acl.conf:ro
-      - ./bus/passwd:/mosquitto/config/passwd:ro
-      - mosquitto_data:/mosquitto/data
-      - mosquitto_log:/mosquitto/log
-    networks: [hive_net]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-W", "5"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   glia:
     build:
       context: .
       dockerfile: glia/Dockerfile
     image: hive-glia:v0
     container_name: glia
-    depends_on:
-      broker:
-        condition: service_healthy
+    # Host networking: glia (and every region glia spawns) shares the host
+    # network namespace so all of Hive can reach a broker running on the
+    # host's 127.0.0.1 without bridges or extra_hosts. Region containers
+    # inherit this via the ``network_mode: host`` entry in their docker
+    # spec (see glia/registry.py::docker_spec).
+    network_mode: host
     environment:
       - HIVE_ENV=${HIVE_ENV:-dev}
-      - MQTT_HOST=broker
-      - MQTT_PORT=1883
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - MQTT_HOST=${MQTT_HOST:-127.0.0.1}
+      - MQTT_PORT=${MQTT_PORT:-1883}
+      # Host-side absolute path to this repo. glia uses it to build bind
+      # mounts for region containers it spawns via the docker SDK, since
+      # compose's ``./`` resolution is not available inside the container.
+      - HIVE_HOST_ROOT=${HIVE_HOST_ROOT:?HIVE_HOST_ROOT must be set in .env to this repo's absolute path (forward-slash form, e.g. C:/repos/hive)}
+    # ANTHROPIC_API_KEY, HIVE_HUMAN_COSIGN_PUBKEY, MQTT_PASSWORD_*, and
+    # HIVE_LOG_LEVEL all come in via env_file rather than ``${VAR}``
+    # interpolation — interpolation only picks up shell-exported vars and
+    # vars declared in ``.env`` at the compose-project root, and empty
+    # interpolation silently overrides env_file values.
     env_file:
       - .env
     volumes:
@@ -52,8 +35,9 @@ services:
       - ./shared:/hive/shared:ro
       - ./bus:/hive/bus:rw
       - /var/run/docker.sock:/var/run/docker.sock
-    networks: [hive_net]
     restart: unless-stopped
 
   # NOTE: region containers are launched by glia at runtime, NOT by compose.
-  # Compose only provides the broker and the supervisor.
+  # They inherit ``network_mode: host`` from their docker spec and are tagged
+  # with ``com.docker.compose.project=hive`` labels so they appear under
+  # ``docker compose ps`` / ``docker compose down``.

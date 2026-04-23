@@ -67,11 +67,13 @@ class Launcher:
         client: docker.DockerClient | None = None,
         *,
         broker_host: str = "broker",
+        broker_port: int = 1883,
         env_loader: Callable[[str], dict[str, str]] | None = None,
     ) -> None:
         self._registry = registry
         self._client = client if client is not None else docker.from_env()
         self._broker_host = broker_host
+        self._broker_port = broker_port
         self._env_loader = env_loader or self._default_env_loader
 
     # ------------------------------------------------------------------
@@ -131,20 +133,33 @@ class Launcher:
             raise GliaError(f"region already running: {name}")
 
         env = dict(spec["env"])
-        env["MQTT_HOST"] = self._broker_host
+        # region_template/config_loader.py reads these two env names as
+        # last-word overrides on mqtt.broker_host / mqtt.broker_port. glia
+        # forwards its own broker coordinates so every region points at the
+        # same MQTT broker glia itself connects to.
+        env["HIVE_MQTT_BROKER_HOST"] = self._broker_host
+        env["HIVE_MQTT_BROKER_PORT"] = str(self._broker_port)
         env.update(self._env_loader(name))
 
         try:
-            container = self._client.containers.run(
+            kwargs = dict(
                 image=spec["image"],
                 name=spec["name"],
-                network=spec["network"],
                 volumes=spec["volumes"],
                 environment=env,
+                labels=spec.get("labels", {}),
+                extra_hosts=spec.get("extra_hosts", {}),
                 detach=True,
                 restart_policy={"Name": "unless-stopped"},
                 **DEFAULT_RESOURCE_LIMITS,
             )
+            # Prefer ``network_mode`` (host / none) when set; otherwise use
+            # the bridge ``network`` name. Docker rejects both at once.
+            if "network_mode" in spec:
+                kwargs["network_mode"] = spec["network_mode"]
+            elif "network" in spec:
+                kwargs["network"] = spec["network"]
+            container = self._client.containers.run(**kwargs)
         except ImageNotFound as exc:
             raise GliaError(f"image not found for {name}: {exc}") from exc
         except APIError as exc:

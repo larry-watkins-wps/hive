@@ -369,7 +369,15 @@ async def _run(  # noqa: PLR0915 — linear bootstrap sequence; easier to read f
         return _EXIT_UNHANDLED
 
     # Sub-modules that don't need the MQTT publish callable yet.
-    launcher = Launcher(registry, client=docker_client)
+    # broker_host / broker_port are forwarded to every region container via
+    # HIVE_MQTT_BROKER_HOST / HIVE_MQTT_BROKER_PORT so the whole Hive stack
+    # shares glia's view of the broker (compose env or CLI arg).
+    launcher = Launcher(
+        registry,
+        client=docker_client,
+        broker_host=mqtt_host,
+        broker_port=mqtt_port,
+    )
     heartbeat_monitor = HeartbeatMonitor()
     acl_manager = AclManager(registry, docker_client=docker_client)
 

@@ -130,27 +130,80 @@ def test_get_missing_raises():
 # ---------------------------------------------------------------------------
 
 
-def test_docker_spec_active():
-    """docker_spec('amygdala') returns the expected launcher-consumable dict."""
+def test_docker_spec_active_relative(monkeypatch):
+    """Without HIVE_HOST_ROOT: relative paths (dev/test default)."""
+    monkeypatch.delenv("HIVE_HOST_ROOT", raising=False)
     registry = RegionRegistry.load()
     spec = registry.docker_spec("amygdala")
 
     assert spec["image"] == "hive-region:v0"
     assert spec["name"] == "hive-amygdala"
-    assert spec["env"] == {"HIVE_REGION": "amygdala"}
-    assert spec["network"] == "hive_net"
+    env = spec["env"]
+    assert env["HIVE_REGION"] == "amygdala"
+    # Windows-Docker-Desktop bind-mount workaround — applied unconditionally,
+    # no-op on Linux where UIDs align.
+    assert env["GIT_CONFIG_COUNT"] == "1"
+    assert env["GIT_CONFIG_KEY_0"] == "safe.directory"
+    assert env["GIT_CONFIG_VALUE_0"] == "/hive/region"
+    # Regions share the host network namespace so 127.0.0.1 reaches the
+    # host's MQTT broker without bridge networking.
+    assert spec["network_mode"] == "host"
+    assert "network" not in spec
+    assert "extra_hosts" not in spec
     assert spec["detach"] is True
 
+    # Labels make region containers visible to ``docker compose ps``.
+    labels = spec["labels"]
+    assert labels["com.docker.compose.project"] == "hive"
+    assert labels["com.docker.compose.service"] == "amygdala"
+    assert labels["com.docker.compose.oneoff"] == "False"
+
     volumes = spec["volumes"]
-    # Direct key lookups — all three keys are forward-slash relative paths.
     assert volumes["./regions/amygdala"]["bind"] == "/hive/region"
     assert volumes["./regions/amygdala"]["mode"] == "rw"
-
     assert volumes["./region_template"]["bind"] == "/hive/region_template"
     assert volumes["./region_template"]["mode"] == "ro"
-
     assert volumes["./shared"]["bind"] == "/hive/shared"
     assert volumes["./shared"]["mode"] == "ro"
+
+
+def test_docker_spec_active_absolute_posix(monkeypatch):
+    """With HIVE_HOST_ROOT set: absolute host paths (prod mount from glia container)."""
+    monkeypatch.setenv("HIVE_HOST_ROOT", "/home/op/hive")
+    registry = RegionRegistry.load()
+    spec = registry.docker_spec("amygdala")
+
+    volumes = spec["volumes"]
+    assert volumes["/home/op/hive/regions/amygdala"]["bind"] == "/hive/region"
+    assert volumes["/home/op/hive/regions/amygdala"]["mode"] == "rw"
+    assert volumes["/home/op/hive/region_template"]["bind"] == "/hive/region_template"
+    assert volumes["/home/op/hive/region_template"]["mode"] == "ro"
+    assert volumes["/home/op/hive/shared"]["bind"] == "/hive/shared"
+    assert volumes["/home/op/hive/shared"]["mode"] == "ro"
+
+
+def test_docker_spec_active_absolute_windows(monkeypatch):
+    """Windows host paths are normalized to forward-slash form Docker accepts."""
+    monkeypatch.setenv("HIVE_HOST_ROOT", r"C:\repos\hive")
+    registry = RegionRegistry.load()
+    spec = registry.docker_spec("amygdala")
+
+    volumes = spec["volumes"]
+    assert "C:/repos/hive/regions/amygdala" in volumes
+    assert volumes["C:/repos/hive/regions/amygdala"]["bind"] == "/hive/region"
+    assert volumes["C:/repos/hive/region_template"]["bind"] == "/hive/region_template"
+    assert volumes["C:/repos/hive/shared"]["bind"] == "/hive/shared"
+
+
+def test_docker_spec_host_root_trailing_slash_stripped(monkeypatch):
+    """Trailing slash on HIVE_HOST_ROOT must not double-up."""
+    monkeypatch.setenv("HIVE_HOST_ROOT", "/home/op/hive/")
+    registry = RegionRegistry.load()
+    spec = registry.docker_spec("amygdala")
+
+    volumes = spec["volumes"]
+    assert "/home/op/hive/regions/amygdala" in volumes
+    assert "/home/op/hive//regions/amygdala" not in volumes
 
 
 # ---------------------------------------------------------------------------

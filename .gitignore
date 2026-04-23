@@ -64,3 +64,7 @@ regions/*/memory/ltm/*
 
 # Per-region git repos (nested repos, managed independently)
 regions/*/.git/
+# Per-region .gitignore is owned by each region's own git repo (committed
+# as part of the ``initial region state`` bootstrap commit), not the main
+# hive repo. Ignoring it keeps ``git status`` clean at the hive level.
+regions/*/.gitignore

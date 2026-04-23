@@ -66,6 +66,9 @@ def test_launch_region_calls_docker_run_with_expected_kwargs(
     # Strip out any ambient secrets so env asserts are tight.
     monkeypatch.delenv("MQTT_PASSWORD_AMYGDALA", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # Force the relative-path volume shape so assertions below are deterministic
+    # regardless of whether the developer has HIVE_HOST_ROOT set for `hive up`.
+    monkeypatch.delenv("HIVE_HOST_ROOT", raising=False)
 
     returned = MagicMock(name="Container")
     mock_client.containers.run.return_value = returned
@@ -78,13 +81,16 @@ def test_launch_region_calls_docker_run_with_expected_kwargs(
 
     assert kwargs["image"] == "hive-region:v0"
     assert kwargs["name"] == "hive-amygdala"
-    assert kwargs["network"] == "hive_net"
+    # Regions run on the host network so 127.0.0.1 reaches the broker.
+    assert kwargs["network_mode"] == "host"
+    assert "network" not in kwargs
     assert kwargs["detach"] is True
     assert kwargs["restart_policy"] == {"Name": "unless-stopped"}
 
     env = kwargs["environment"]
     assert env["HIVE_REGION"] == "amygdala"
-    assert env["MQTT_HOST"] == "broker"
+    assert env["HIVE_MQTT_BROKER_HOST"] == "broker"
+    assert env["HIVE_MQTT_BROKER_PORT"] == "1883"
     assert "MQTT_PASSWORD" not in env
     assert "ANTHROPIC_API_KEY" not in env
 
@@ -107,6 +113,10 @@ def test_launch_region_calls_docker_run_with_expected_kwargs(
     # Resource limits per spec §G.7.
     for key, val in DEFAULT_RESOURCE_LIMITS.items():
         assert kwargs[key] == val
+
+    # Compose labels are forwarded from the spec.
+    assert kwargs["labels"]["com.docker.compose.project"] == "hive"
+    assert kwargs["labels"]["com.docker.compose.service"] == "amygdala"
 
 
 # ---------------------------------------------------------------------------
@@ -200,8 +210,17 @@ def test_launch_region_env_omits_missing_secrets(
     launcher.launch_region("amygdala")
     _, kwargs = mock_client.containers.run.call_args
     env = kwargs["environment"]
-    # HIVE_REGION + MQTT_HOST only.
-    assert set(env.keys()) == {"HIVE_REGION", "MQTT_HOST"}
+    # HIVE_REGION + broker-host/port overrides + safe.directory trio.
+    assert set(env.keys()) == {
+        "HIVE_REGION",
+        "HIVE_MQTT_BROKER_HOST",
+        "HIVE_MQTT_BROKER_PORT",
+        "GIT_CONFIG_COUNT",
+        "GIT_CONFIG_KEY_0",
+        "GIT_CONFIG_VALUE_0",
+    }
+    assert env["HIVE_MQTT_BROKER_HOST"] == "broker"
+    assert env["HIVE_MQTT_BROKER_PORT"] == "1883"
 
 
 # ---------------------------------------------------------------------------
@@ -318,11 +337,16 @@ def test_launcher_uses_custom_broker_host(
     registry: RegionRegistry, mock_client: MagicMock
 ) -> None:
     launcher = Launcher(
-        registry=registry, client=mock_client, broker_host="mqtt.internal"
+        registry=registry,
+        client=mock_client,
+        broker_host="mqtt.internal",
+        broker_port=8883,
     )
     launcher.launch_region("amygdala")
     _, kwargs = mock_client.containers.run.call_args
-    assert kwargs["environment"]["MQTT_HOST"] == "mqtt.internal"
+    env = kwargs["environment"]
+    assert env["HIVE_MQTT_BROKER_HOST"] == "mqtt.internal"
+    assert env["HIVE_MQTT_BROKER_PORT"] == "8883"
 
 
 def test_launcher_uses_custom_env_loader(
