@@ -26,7 +26,12 @@ from observatory.region_registry import RegionRegistry
 from observatory.retained_cache import RetainedCache
 from observatory.ring_buffer import RingBuffer
 from observatory.types import RingRecord
-from observatory.ws import _QUEUE_HIGH_WATER, ConnectionHub, _Client, build_ws_router
+from observatory.ws import (
+    _QUEUE_HIGH_WATER,
+    ConnectionHub,
+    _Client,
+    build_ws_router,
+)
 
 
 @pytest.fixture
@@ -66,6 +71,24 @@ def test_snapshot_message_shape_unit(pieces) -> None:
     assert "recent" in p
     assert isinstance(p["recent"], list)
     assert "server_version" in p
+    assert "baseline_pairs" in p
+    assert isinstance(p["baseline_pairs"], list)
+
+
+def test_snapshot_baseline_pairs_reflects_recent_traffic(pieces) -> None:
+    """Baseline pairs come from the adjacency's windowed recent set (not
+    the complete graph). Fresh fixture → empty. After traffic flows, the
+    pairs that fired (within the baseline window) appear canonicalised."""
+    import time as _time
+
+    hub, _ring, _cache, _reg, adj = pieces
+    assert hub.snapshot_message()["payload"]["baseline_pairs"] == []
+
+    # Record at "now" (real monotonic clock) so the 30 s baseline window
+    # inside recent_pairs() contains the pair when snapshot_message fires.
+    adj.record("thalamus", ["amygdala", "vta"], now=_time.monotonic())
+    pairs = hub.snapshot_message()["payload"]["baseline_pairs"]
+    assert pairs == [["amygdala", "thalamus"], ["thalamus", "vta"]]
 
 
 def test_snapshot_on_connect_via_testclient(pieces) -> None:

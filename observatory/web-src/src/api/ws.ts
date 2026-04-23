@@ -4,7 +4,17 @@ type ServerMessage =
   | { type: 'snapshot'; payload: any }
   | { type: 'envelope'; payload: any }
   | { type: 'region_delta'; payload: { regions: Record<string, any> } }
-  | { type: 'adjacency'; payload: { pairs: Array<[string, string, number]> } }
+  | {
+      type: 'adjacency';
+      payload: {
+        pairs: Array<[string, string, number]>;
+        // Ever-seen baseline union, shipped on every tick so a client
+        // connected before a given pair's first envelope still picks it
+        // up within one delta interval. Optional for back-compat with
+        // older servers.
+        baseline?: Array<[string, string]>;
+      };
+    }
   | { type: 'decimated'; payload: { dropped: number } };
 
 export function handleServerMessage(store: UseBoundStore<StoreApi<any>>, msg: ServerMessage): void {
@@ -13,7 +23,10 @@ export function handleServerMessage(store: UseBoundStore<StoreApi<any>>, msg: Se
     case 'snapshot': s.applySnapshot(msg.payload); break;
     case 'envelope': s.pushEnvelope(msg.payload); break;
     case 'region_delta': s.applyRegionDelta(msg.payload.regions); break;
-    case 'adjacency': s.applyAdjacency(msg.payload.pairs); break;
+    case 'adjacency':
+      s.applyAdjacency(msg.payload.pairs);
+      if (msg.payload.baseline) s.applyBaselinePairs(msg.payload.baseline);
+      break;
     case 'decimated': /* ignore for v1; hook for a future "lagging" badge */ break;
   }
 }

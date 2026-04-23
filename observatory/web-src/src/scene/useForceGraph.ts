@@ -109,7 +109,15 @@ export function useForceGraph(names: string[], adjacency: Array<[string, string,
 
   useEffect(() => {
     if (!simRef.current) return;
-    const links: ForceLink[] = adjacency.map(([s, t, w]) => ({ source: s, target: t, weight: w }));
+    // Filter out links whose endpoints aren't in `names` (i.e. not seeded
+    // nodes in the simulation). The backend's `ever_seen_pairs` can include
+    // publishers like `glia` and filesystem-present-but-not-registered
+    // regions like `test_self_mod`; passing them to d3-force-3d's
+    // `forceLink` throws "node not found" and kills the whole r3f canvas.
+    const known = new Set(names);
+    const links: ForceLink[] = adjacency
+      .filter(([s, t]) => known.has(s) && known.has(t))
+      .map(([s, t, w]) => ({ source: s, target: t, weight: w }));
     simRef.current
       .force('link', forceLink<ForceNode, ForceLink>(links).id((d) => d.id).distance(2.5).strength(0.1))
       // Small warm-up per spec §5.1 ("smooth transition rather than snapping").
@@ -121,7 +129,7 @@ export function useForceGraph(names: string[], adjacency: Array<[string, string,
     // fresh array every 2 s even when pairs are unchanged, and keying on
     // the reference restarted the simulation indefinitely.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adjKey]);
+  }, [adjKey, namesKey]);
 
   return nodesRef;
 }

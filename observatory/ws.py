@@ -86,6 +86,15 @@ class ConnectionHub:
                 "regions": self.registry.to_json(),
                 "retained": self.cache.snapshot(),
                 "recent": [_ring_record_to_payload(r) for r in recent_records],
+                # Baseline topology: pairs observed within the adjacency's
+                # baseline window (30 s). Rendered as a faint always-on web
+                # on the frontend; old pairs that stop firing drop out so
+                # the viz reflects current connectivity, not every pair
+                # ever seen. Empty until traffic flows.
+                "baseline_pairs": [
+                    [a, b]
+                    for a, b in self.adjacency.recent_pairs(now=time.monotonic())
+                ],
                 "server_version": __version__,
             },
         }
@@ -115,10 +124,22 @@ class ConnectionHub:
         while True:
             try:
                 await asyncio.sleep(_DELTA_INTERVAL_S)
-                pairs = self.adjacency.snapshot(now=time.monotonic())
+                now = time.monotonic()
+                pairs = self.adjacency.snapshot(now=now)
                 adjacency_msg = {
                     "type": "adjacency",
-                    "payload": {"pairs": [[s, d, round(r, 3)] for s, d, r in pairs]},
+                    "payload": {
+                        "pairs": [[s, d, round(r, 3)] for s, d, r in pairs],
+                        # Ship the windowed baseline on every tick so the
+                        # frontend's edge set tracks current topology —
+                        # pairs that stop firing drop out after the 30 s
+                        # window, pairs that fire for the first time appear
+                        # within one delta interval. Payload is bounded by
+                        # the complete graph of seeded regions.
+                        "baseline": [
+                            [a, b] for a, b in self.adjacency.recent_pairs(now=now)
+                        ],
+                    },
                 }
                 region_msg = {
                     "type": "region_delta",

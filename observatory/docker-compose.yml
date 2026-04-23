@@ -25,7 +25,7 @@ services:
       # the host's actual LAN IP.
       OBSERVATORY_MQTT_URL: mqtt://host.docker.internal:1883
       OBSERVATORY_REGIONS_ROOT: /hive/regions
-      OBSERVATORY_HIVE_REPO_ROOT: /hive
+      OBSERVATORY_HIVE_ROOT: /hive
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"    # Linux only
     volumes:

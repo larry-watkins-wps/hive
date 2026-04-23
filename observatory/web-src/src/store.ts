@@ -42,6 +42,7 @@ type Snapshot = {
   regions: Record<string, RegionMeta>;
   retained: Record<string, { payload?: Record<string, unknown> }>;
   recent: Envelope[];
+  baseline_pairs?: Array<[string, string]>;
   server_version: string;
 };
 
@@ -50,6 +51,7 @@ type State = {
   envelopes: Envelope[];
   envelopesReceivedTotal: number;
   adjacency: Array<[string, string, number]>;
+  baselinePairs: Array<[string, string]>;
   ambient: Ambient;
   retained: Record<string, unknown>;
   selectedRegion: string | null;
@@ -63,6 +65,7 @@ type State = {
   applySnapshot: (s: Snapshot) => void;
   applyRegionDelta: (regions: Record<string, RegionMeta>) => void;
   applyAdjacency: (pairs: Array<[string, string, number]>) => void;
+  applyBaselinePairs: (pairs: Array<[string, string]>) => void;
   applyRetained: (topic: string, payload: Record<string, unknown>) => void;
   pushEnvelope: (env: Envelope) => void;
   select: (name: string | null) => void;
@@ -117,6 +120,7 @@ export function createStore() {
     envelopes: [],
     envelopesReceivedTotal: 0,
     adjacency: [],
+    baselinePairs: [],
     ambient: { modulators: {}, self: {} },
     retained: {},
     selectedRegion: null,
@@ -131,6 +135,7 @@ export function createStore() {
       regions: s.regions,
       envelopes: s.recent,
       envelopesReceivedTotal: s.recent.length,
+      baselinePairs: s.baseline_pairs ?? [],
       ambient: extractAmbient(s.retained),
       // Unwrap each retained envelope's `.payload` into the flat
       // `retained[topic]` map so consumers (e.g. SystemMetrics tile) can
@@ -144,6 +149,7 @@ export function createStore() {
     }),
     applyRegionDelta: (regions) => set({ regions }),
     applyAdjacency: (pairs) => set({ adjacency: pairs }),
+    applyBaselinePairs: (pairs) => set({ baselinePairs: pairs }),
     applyRetained: (topic, payload) => {
       // Per Task 9 Drift D: every retained topic lands in the raw `retained`
       // map, even if the branch logic below can't classify it into `ambient`

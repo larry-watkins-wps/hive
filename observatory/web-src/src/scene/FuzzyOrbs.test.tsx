@@ -16,8 +16,21 @@ describe('phaseBase', () => {
     expect(phaseBase('sleep').emissive).toBeCloseTo(0.15);
   });
 
-  it('unknown phase falls back to wake-blue', () => {
-    expect(phaseBase('gobbledygook').color).toBe(0x6aa8ff);
+  it('explicit "unknown" phase (pre-heartbeat offline) reads as faint grey', () => {
+    // Regions seeded from the registry but not yet heartbeated emit
+    // `phase: "unknown"` — they render at a faint slate-grey so offline
+    // regions are visibly distinct from live wake-blue orbs.
+    const offline = phaseBase('unknown');
+    expect(offline.color).toBe(0x2e3442);
+    expect(offline.emissive).toBeLessThan(0.15);
+    expect(offline.coreOpacity).toBeLessThan(0.85);
+  });
+
+  it('forward-compat unknown phase string falls back to offline colour', () => {
+    // A novel phase string we don't model yet still resolves via the
+    // `PHASE_COLOR[phase] ?? PHASE_COLOR.unknown` fallback, so it lands on
+    // the offline grey rather than any other live colour.
+    expect(phaseBase('gobbledygook').color).toBe(0x2e3442);
   });
 
   it('outer scale differs by phase', () => {

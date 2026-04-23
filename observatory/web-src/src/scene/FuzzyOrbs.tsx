@@ -6,8 +6,10 @@ import type { ForceNode } from './useForceGraph';
 import { getGlowTexture } from './glowTexture';
 
 /**
- * Phase → color hex. Wake/unknown share the same blue so unrecognized phase
- * strings fall back to a sensible baseline instead of going black.
+ * Phase → color hex. `unknown` — emitted by the backend for any region we
+ * have seeded from the registry but haven't yet received a heartbeat for —
+ * reads as a faint slate-grey so offline/not-yet-booted regions are visibly
+ * distinct from live `wake`-blue orbs.
  */
 const PHASE_COLOR: Record<string, number> = {
   wake: 0x6aa8ff,
@@ -15,7 +17,7 @@ const PHASE_COLOR: Record<string, number> = {
   bootstrap: 0x5a8a78,
   shutdown: 0x805a5a,
   processing: 0xffd56a,
-  unknown: 0x6aa8ff,
+  unknown: 0x2e3442,
 };
 
 /**
@@ -68,14 +70,27 @@ const _BOOT_BASE: PhaseBase = {
   speckleOpacity: 0.40,
   outerScale: 4.5,
 };
-// Wake/unknown share the same high-energy shape but with phase-looked-up
-// color. Cache by phase string so `unknown` / `shutdown` / `processing`
-// each land in their own singleton slot.
+// Offline shape: a region the registry has seeded but we haven't heard from
+// yet. Dim core, near-zero glow, narrow outer halo — visibly present so
+// layout reads, but clearly not-alive until the first heartbeat arrives.
+const _OFFLINE_BASE: PhaseBase = {
+  color: PHASE_COLOR.unknown,
+  emissive: 0.05,
+  coreOpacity: 0.55,
+  outerOpacity: 0.04,
+  midOpacity: 0.12,
+  speckleOpacity: 0.0,
+  outerScale: 3.0,
+};
+// Known-but-non-default phases (`shutdown`, `processing`, and any forward-
+// compatible string the backend may emit) land here. Cached per-phase to
+// avoid per-frame PhaseBase allocations at 60 Hz × 14 regions.
 const _DEFAULT_BASE_CACHE: Record<string, PhaseBase> = {};
 
 export function phaseBase(phase: string): PhaseBase {
   if (phase === 'sleep') return _SLEEP_BASE;
   if (phase === 'bootstrap') return _BOOT_BASE;
+  if (phase === 'unknown') return _OFFLINE_BASE;
   const cached = _DEFAULT_BASE_CACHE[phase];
   if (cached) return cached;
   const built: PhaseBase = {

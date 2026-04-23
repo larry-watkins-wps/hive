@@ -14,9 +14,15 @@ import type { ForceNode } from './useForceGraph';
 // decays pulses at rate 1/0.8s and applies opacity / color formulae.
 // -----------------------------------------------------------------------------
 
-const BASE_COLOR_HEX = 0x2a3550;
-const BASE_OPACITY = 0.08;
-const REACTIVE_GAIN = 0.55;
+// Baseline edges are deliberately very faint — with ~14 regions each
+// publishing on base-bundle topics (every region subscribes), the recent
+// pair set trends toward the complete graph (~91 edges) during even
+// moderate traffic. Dim baseline keeps that dense web subtle; the
+// reactive pulse does the actual work of surfacing "who's talking right
+// now".
+const BASE_COLOR_HEX = 0x3a4a6a;
+const BASE_OPACITY = 0.06;
+const REACTIVE_GAIN = 0.9;
 const DECAY_PER_SEC = 1 / 0.8;
 
 export type EdgePulseEntry = {
@@ -79,14 +85,36 @@ type LineRec = { line: THREE.Line; a: string; b: string };
  */
 export function Edges({ dimFactor, nodesRef }: EdgesProps) {
   const adjacency = useStore((s) => s.adjacency);
+  const baselinePairs = useStore((s) => s.baselinePairs);
+  const regions = useStore((s) => s.regions);
 
-  // Stable string identity for the adjacency set. `adjacency` is a fresh
-  // array reference on every store delta even when contents are unchanged;
-  // keying the rebuild effect on the sorted-join prevents it re-firing
-  // unnecessarily. Same pattern as `namesKey` in FuzzyOrbs / Labels.
+  // Union of baseline (always-on topology) + active adjacency (recent
+  // traffic) pairs, filtered to pairs where BOTH endpoints are registered
+  // regions. The backend's ever-seen set legitimately includes sources
+  // like `glia` (publisher of rhythms) and filesystem-present regions like
+  // `test_self_mod` that aren't in `regions_registry.yaml`; passing those
+  // as force-graph links makes `d3-force-3d`'s `forceLink` throw
+  // "node not found" and crash the whole r3f canvas. Drop them here.
+  const allPairs = useMemo<Array<[string, string]>>(() => {
+    const seen = new Set<string>();
+    const out: Array<[string, string]> = [];
+    const push = (a: string, b: string) => {
+      if (!regions[a] || !regions[b]) return;
+      const k = edgeKey(a, b);
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push([a, b]);
+    };
+    for (const [a, b] of baselinePairs) push(a, b);
+    for (const [a, b] of adjacency) push(a, b);
+    return out;
+  }, [adjacency, baselinePairs, regions]);
+
+  // Stable string identity for the edge set. Contents-based so we skip
+  // the rebuild effect when the pair set is structurally unchanged.
   const adjKey = useMemo(
-    () => adjacency.map(([a, b]) => edgeKey(a, b)).sort().join('~'),
-    [adjacency],
+    () => allPairs.map(([a, b]) => edgeKey(a, b)).sort().join('~'),
+    [allPairs],
   );
 
   // Per-edge lines keyed by canonical edge key. Ref (not state) because
@@ -94,12 +122,18 @@ export function Edges({ dimFactor, nodesRef }: EdgesProps) {
   // reassigning state each frame would re-render the React tree at 60 Hz.
   const linesRef = useRef<Map<string, LineRec>>(new Map());
 
-  useEffect(() => {
-    // Build / rebuild line objects. Preserve existing entries to avoid
-    // churning in-flight pulse state when adjacency reports the same
-    // pair a second time (server may re-emit the full set on reconnect).
+  // Materialize lines SYNCHRONOUSLY during render, not in useEffect.
+  // Previous version ran line creation in an effect, which fires after
+  // paint — on the first render after the snapshot arrived with 91
+  // baseline pairs, `linesRef.current.get(k)` returned undefined for
+  // every pair and the JSX emitted `null`, so no lines rendered until
+  // the NEXT store-triggered re-render (up to 2s later via the adjacency
+  // delta). Doing the materialization in useMemo(adjKey) is side-effectful
+  // but idempotent (we guard via `linesRef.current.has(k)`) and makes
+  // lines visible on the very first render that sees the pair.
+  useMemo(() => {
     const present = new Set<string>();
-    for (const [a, b] of adjacency) {
+    for (const [a, b] of allPairs) {
       const k = edgeKey(a, b);
       present.add(k);
       if (!EDGE_PULSE.has(k)) {
@@ -126,9 +160,7 @@ export function Edges({ dimFactor, nodesRef }: EdgesProps) {
       }
     }
     // GC stale entries — dispose both GL resources (geometry + material)
-    // so WebGL releases the VBOs / program-state. Skipping dispose here
-    // would leak one material/geometry pair per dropped edge, which adds
-    // up under adjacency churn.
+    // so WebGL releases the VBOs / program-state.
     for (const k of Array.from(EDGE_PULSE.keys())) {
       if (!present.has(k)) {
         const entry = EDGE_PULSE.get(k);
@@ -142,7 +174,6 @@ export function Edges({ dimFactor, nodesRef }: EdgesProps) {
         linesRef.current.delete(k);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adjKey]);
 
   // Component-unmount cleanup. Without this, the adjacency-GC loop above
@@ -203,13 +234,13 @@ export function Edges({ dimFactor, nodesRef }: EdgesProps) {
     }
   });
 
-  // Render from `adjacency` (reactive state) rather than `linesRef.current`
-  // (ref — no re-render signal). Each `<primitive>` hosts a pre-built
-  // THREE.Line keyed by canonical edge key so adjacency churn doesn't
-  // swap identities or leak WebGL objects.
+  // Render from the unioned `allPairs` set (reactive) rather than
+  // `linesRef.current` (ref — no re-render signal). Each `<primitive>` hosts
+  // a pre-built THREE.Line keyed by canonical edge key so adjacency churn
+  // doesn't swap identities or leak WebGL objects.
   return (
     <group>
-      {adjacency.map(([a, b]) => {
+      {allPairs.map(([a, b]) => {
         const k = edgeKey(a, b);
         const rec = linesRef.current.get(k);
         if (!rec) return null;
