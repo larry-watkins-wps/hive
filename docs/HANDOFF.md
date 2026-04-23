@@ -1,6 +1,6 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-23 (Phase 11 — broker portability, bridge wiring, spawn pipeline landed; `src/` layout refactor; scoped out docker-events listener + mypy CI job)
+**Last updated:** 2026-04-23 (Phase 11 — broker portability, bridge wiring, spawn pipeline, `src/` layout refactor; observatory client-backpressure + ring-full broadcast drops fixed; scoped out docker-events listener, mypy CI job, offline LLM stub, smoke_operator cred, test_harness container)
 **Current phase:** v0 DNA complete; Phase 11 (Runtime evolution — first self-mod cycles, post-v0 region additions) **in progress**
 **Repo path:** `C:/repos/hive/`
 
@@ -827,35 +827,59 @@ build. When a region's handler library grows to the point where
 Track B (a new region addition) becomes appropriate, that is a
 deliberate Larry + ACC decision — not an automatic dispatch.
 
-## Known open tasks for Phase 11
+## Phase 11 follow-ups — state as of 2026-04-23
 
-Pull these from the per-phase "Follow-up items" sections:
+### ✅ Resolved
 
-- **Offline LLM stub** (`HIVE_TEST_OFFLINE=1`). Un-gates Tasks 9.3 /
-  9.5 / 9.6 in CI without an API key. Small code change in
-  `region_template/llm_adapter.py` factory.
-- **`smoke_operator` MQTT credential.** Add a dedicated entry to
-  `bus/acl_templates/_base.j2` + `MQTT_PASSWORD_SMOKE_OPERATOR` in
-  `.env`. Needed for smoke-test observer connectivity.
-- **`compose.test.yaml` `test_harness` service** (spec §I.4). Currently
-  pytest itself acts as the harness. Wire once Phase 11 integration
-  tests need a dedicated test-harness container.
-- ~~**Bridge wiring in `glia/__main__.py`.**~~ Resolved 2026-04-22 in
-  commit `7dc2471`: both `RhythmGenerator` and `InputTextBridge` are
-  now imported, instantiated, started, and stopped in the finally
-  block. `SpeakerBridge` and `MotorBridge` remain second-pass.
-- **Docker-events listener for exit-code-based restart** (§E.3). Wire
-  a `docker.events.listen()` call in `src/glia/__main__.py`; supervisor's
-  `on_region_exit(region, exit_code)` already exists. **Scoped out
-  2026-04-23** (Larry) — heartbeat-loss detection is sufficient at
-  current volume; revisit if real crash patterns demand it.
-- **`src/` layout refactor** — Resolved 2026-04-23: `region_template/`,
-  `glia/`, `shared/` moved into `src/`. Container paths unchanged
-  (`/hive/region_template` etc.). CI `PYTHONPATH` now points at
+- **Bridge wiring in `glia/__main__.py`** (commit `7dc2471`,
+  2026-04-22). `RhythmGenerator` + `InputTextBridge` are now imported,
+  instantiated, started, and stopped. `SpeakerBridge` + `MotorBridge`
+  remain second-pass.
+- **`src/` layout refactor** (commits `314a69c` → `3a887c9`,
+  2026-04-23). `region_template/`, `glia/`, `shared/` moved into
+  `src/`. Container paths unchanged. CI `PYTHONPATH` now points at
   `${{ github.workspace }}/src`. Full pip-install cleanup (so
-  `PYTHONPATH` disappears entirely) is a follow-up.
-- ~~**Type-checking job in CI.**~~ Scoped out 2026-04-23 (Larry) —
-  post-v0 nicety, not blocking Phase 11.
+  `PYTHONPATH` disappears entirely) is a follow-up, not yet scheduled.
+- **Observatory client-side envelope backpressure stall** (commit
+  `5b93ce5`, 2026-04-23). Lowered `OBSERVATORY_MAX_WS_RATE` 200→30
+  via compose env; added a 10 Hz envelope-batcher in
+  `web-src/src/api/ws.ts` + `pushEnvelopes` store action. Fixes
+  "sparks stop after ~30 s" when the frontend fell behind the WS.
+- **Observatory ring-full broadcast drop + MQTT stall-watchdog**
+  (commit `83b0bd3`, 2026-04-23). Fixed `dispatch_and_fanout`'s
+  broadcast trigger (was using `len(ring)` delta, broke once
+  `deque(maxlen=10000)` filled — ≈20 s at 500 msg/s). Added a
+  defensive watchdog that force-reconnects aiomqtt if
+  `messages_received_total` stops advancing (aiomqtt 2.5.1 has a
+  known silent-stall mode when paho's `loop_read` degrades without
+  firing `on_disconnect`). Validation: 180 s steady 30 env/s to the
+  frontend, zero stalls.
+
+### ❌ Scoped out 2026-04-23 (Larry's call — not implementing)
+
+- **Offline LLM stub** (`HIVE_TEST_OFFLINE=1`). Would un-gate Tasks
+  9.3 / 9.5 / 9.6 in CI without an API key. Not worth the complexity
+  until CI actually needs full-flow assertions.
+- **`smoke_operator` MQTT credential.** Dedicated read-only ACL +
+  `MQTT_PASSWORD_SMOKE_OPERATOR` in `.env`. Hardening pass, deferred.
+- **`compose.test.yaml` `test_harness` service** (spec §I.4). pytest
+  acts as the harness from the host; no dedicated container needed
+  until integration tests outgrow that.
+- **Docker-events listener for exit-code-based restart** (§E.3).
+  Heartbeat-loss detection is sufficient at current volume.
+  `Supervisor.on_region_exit()` is wired and ready if we revisit.
+- **Mypy CI job.** Post-v0 nicety; ruff + pytest are enough for now.
+
+### 🟡 Open (not scoped out, just unscheduled)
+
+- **Post-v0 region authoring pattern.** Before Track B spawns
+  (raphe_nuclei, locus_coeruleus, etc.), we need a decided flow
+  for writing + reviewing + committing a new region's starter prompt.
+  Currently undecided. Decide before the first post-v0 spawn.
+- **Full pip-install cleanup of src/ layout.** The `PYTHONPATH` env
+  override in CI still exists, just now pointing at `src/`. A
+  proper `pip install -e ./src/<pkg>` flow (or setuptools
+  `package-dir`) would drop it entirely.
 
 ## Reminders
 
