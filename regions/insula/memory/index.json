@@ -1,0 +1,694 @@
+{
+  "schema_version": 1,
+  "built_at": "2026-04-23T19:58:05.282Z",
+  "documents": {
+    "bootstrap_cold_start_2026_04_23.md": {
+      "tags": [
+        "cold_start",
+        "calibration",
+        "initialization"
+      ],
+      "topic": "bootstrap",
+      "created_at": "2026-04-23T19:58:05.224Z",
+      "updated_at": "2026-04-23T19:58:05.224Z",
+      "importance": 0.7,
+      "term_counts": {
+        "2026": 2,
+        "23t19": 1,
+        "224z": 1,
+        "cold": 1,
+        "start": 1,
+        "observation": 2,
+        "23t17": 1,
+        "context": 1,
+        "initial": 2,
+        "boot": 1,
+        "insula": 2,
+        "region": 3,
+        "prior": 1,
+        "metric": 5,
+        "history": 1,
+        "modulators": 1,
+        "present": 1,
+        "self": 1,
+        "state": 5,
+        "established": 1,
+        "stm": 1,
+        "empty": 2,
+        "event": 1,
+        "log": 1,
+        "this": 1,
+        "the": 1,
+        "expected": 1,
+        "for": 4,
+        "freshly": 1,
+        "instantiated": 1,
+        "waiting": 1,
+        "first": 2,
+        "mqtt": 1,
+        "subscriptions": 1,
+        "activate": 1,
+        "and": 5,
+        "streams": 1,
+        "flow": 1,
+        "implication": 1,
+        "cannot": 1,
+        "yet": 2,
+        "publish": 1,
+        "felt": 3,
+        "label": 1,
+        "with": 2,
+        "confidence": 1,
+        "thresholds": 2,
+        "compute": 1,
+        "load": 1,
+        "token": 1,
+        "budget": 1,
+        "health": 1,
+        "are": 2,
+        "not": 1,
+        "calibrated": 1,
+        "against": 1,
+        "observed": 1,
+        "outcomes": 2,
+        "early": 1,
+        "emissions": 1,
+        "will": 2,
+        "rule": 1,
+        "based": 2,
+        "threshold": 1,
+        "lookup": 1,
+        "reactive": 1,
+        "learned": 1,
+        "calibration": 2,
+        "emerge": 1,
+        "only": 1,
+        "after": 1,
+        "sufficient": 1,
+        "episodes": 2,
+        "snapshots": 2,
+        "paired": 1,
+        "stored": 1,
+        "ltm": 1,
+        "next": 1,
+        "steps": 1,
+        "confirm": 1,
+        "subscription": 1,
+        "hive": 2,
+        "system": 2,
+        "metrics": 1,
+        "heartbeat": 1,
+        "topics": 1,
+        "collect": 1,
+        "store": 1,
+        "baseline": 1,
+        "tune": 1,
+        "distribution": 1,
+        "begin": 1,
+        "logging": 1,
+        "transitions": 1,
+        "their": 1,
+        "antecedents": 1,
+        "future": 1
+      }
+    },
+    "metric_subscription_checklist.md": {
+      "tags": [
+        "subscriptions",
+        "metrics",
+        "startup"
+      ],
+      "topic": "infrastructure",
+      "created_at": "2026-04-23T19:58:05.243Z",
+      "updated_at": "2026-04-23T19:58:05.243Z",
+      "importance": 0.8,
+      "term_counts": {
+        "2026": 1,
+        "23t19": 1,
+        "243z": 1,
+        "metric": 4,
+        "subscriptions": 1,
+        "checklist": 1,
+        "insula": 2,
+        "depends": 1,
+        "the": 1,
+        "following": 1,
+        "mqtt": 2,
+        "topics": 2,
+        "being": 1,
+        "published": 2,
+        "glia": 1,
+        "verify": 1,
+        "boot": 1,
+        "hive": 6,
+        "system": 6,
+        "metrics": 6,
+        "compute": 2,
+        "cpu": 1,
+        "memory": 1,
+        "gpu": 1,
+        "utilization": 1,
+        "tokens": 1,
+        "per": 4,
+        "provider": 1,
+        "llm": 1,
+        "token": 2,
+        "spend": 1,
+        "and": 3,
+        "budget": 2,
+        "headroom": 1,
+        "region": 5,
+        "health": 3,
+        "aggregate": 1,
+        "summary": 1,
+        "heartbeat": 3,
+        "liveness": 1,
+        "signals": 1,
+        "queue": 1,
+        "depth": 1,
+        "backlog": 1,
+        "error": 2,
+        "rate": 2,
+        "recent": 1,
+        "count": 1,
+        "fallback": 1,
+        "behavior": 1,
+        "topic": 1,
+        "not": 2,
+        "assume": 1,
+        "safe": 1,
+        "default": 1,
+        "load": 1,
+        "log": 1,
+        "warning": 1,
+        "block": 1,
+        "missing": 1,
+        "must": 1,
+        "always": 1,
+        "publish": 1,
+        "felt": 1,
+        "state": 1,
+        "even": 1,
+        "incomplete": 1,
+        "monitoring": 1,
+        "track": 1,
+        "subscription": 1,
+        "success": 1,
+        "freshness": 1,
+        "time": 1,
+        "since": 1,
+        "last": 1,
+        "update": 1,
+        "becomes": 1,
+        "stale": 1,
+        "interval": 1,
+        "flag": 1,
+        "degraded": 1
+      }
+    }
+  },
+  "postings": {
+    "2026": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "23t19": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "224z": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "cold": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "start": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "observation": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "23t17": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "context": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "initial": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "boot": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "insula": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "region": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "prior": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "metric": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "history": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "modulators": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "present": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "self": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "state": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "established": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "stm": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "empty": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "event": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "log": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "this": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "the": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "expected": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "for": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "freshly": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "instantiated": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "waiting": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "first": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "mqtt": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "subscriptions": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "activate": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "and": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "streams": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "flow": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "implication": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "cannot": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "yet": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "publish": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "felt": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "label": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "with": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "confidence": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "thresholds": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "compute": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "load": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "token": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "budget": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "health": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "are": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "not": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "calibrated": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "against": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "observed": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "outcomes": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "early": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "emissions": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "will": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "rule": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "based": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "threshold": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "lookup": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "reactive": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "learned": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "calibration": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "emerge": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "only": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "after": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "sufficient": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "episodes": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "snapshots": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "paired": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "stored": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "ltm": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "next": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "steps": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "confirm": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "subscription": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "hive": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "system": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "metrics": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "heartbeat": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "topics": [
+      "bootstrap_cold_start_2026_04_23.md",
+      "metric_subscription_checklist.md"
+    ],
+    "collect": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "store": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "baseline": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "tune": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "distribution": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "begin": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "logging": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "transitions": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "their": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "antecedents": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "future": [
+      "bootstrap_cold_start_2026_04_23.md"
+    ],
+    "243z": [
+      "metric_subscription_checklist.md"
+    ],
+    "checklist": [
+      "metric_subscription_checklist.md"
+    ],
+    "depends": [
+      "metric_subscription_checklist.md"
+    ],
+    "following": [
+      "metric_subscription_checklist.md"
+    ],
+    "being": [
+      "metric_subscription_checklist.md"
+    ],
+    "published": [
+      "metric_subscription_checklist.md"
+    ],
+    "glia": [
+      "metric_subscription_checklist.md"
+    ],
+    "verify": [
+      "metric_subscription_checklist.md"
+    ],
+    "cpu": [
+      "metric_subscription_checklist.md"
+    ],
+    "memory": [
+      "metric_subscription_checklist.md"
+    ],
+    "gpu": [
+      "metric_subscription_checklist.md"
+    ],
+    "utilization": [
+      "metric_subscription_checklist.md"
+    ],
+    "tokens": [
+      "metric_subscription_checklist.md"
+    ],
+    "per": [
+      "metric_subscription_checklist.md"
+    ],
+    "provider": [
+      "metric_subscription_checklist.md"
+    ],
+    "llm": [
+      "metric_subscription_checklist.md"
+    ],
+    "spend": [
+      "metric_subscription_checklist.md"
+    ],
+    "headroom": [
+      "metric_subscription_checklist.md"
+    ],
+    "aggregate": [
+      "metric_subscription_checklist.md"
+    ],
+    "summary": [
+      "metric_subscription_checklist.md"
+    ],
+    "liveness": [
+      "metric_subscription_checklist.md"
+    ],
+    "signals": [
+      "metric_subscription_checklist.md"
+    ],
+    "queue": [
+      "metric_subscription_checklist.md"
+    ],
+    "depth": [
+      "metric_subscription_checklist.md"
+    ],
+    "backlog": [
+      "metric_subscription_checklist.md"
+    ],
+    "error": [
+      "metric_subscription_checklist.md"
+    ],
+    "rate": [
+      "metric_subscription_checklist.md"
+    ],
+    "recent": [
+      "metric_subscription_checklist.md"
+    ],
+    "count": [
+      "metric_subscription_checklist.md"
+    ],
+    "fallback": [
+      "metric_subscription_checklist.md"
+    ],
+    "behavior": [
+      "metric_subscription_checklist.md"
+    ],
+    "topic": [
+      "metric_subscription_checklist.md"
+    ],
+    "assume": [
+      "metric_subscription_checklist.md"
+    ],
+    "safe": [
+      "metric_subscription_checklist.md"
+    ],
+    "default": [
+      "metric_subscription_checklist.md"
+    ],
+    "warning": [
+      "metric_subscription_checklist.md"
+    ],
+    "block": [
+      "metric_subscription_checklist.md"
+    ],
+    "missing": [
+      "metric_subscription_checklist.md"
+    ],
+    "must": [
+      "metric_subscription_checklist.md"
+    ],
+    "always": [
+      "metric_subscription_checklist.md"
+    ],
+    "even": [
+      "metric_subscription_checklist.md"
+    ],
+    "incomplete": [
+      "metric_subscription_checklist.md"
+    ],
+    "monitoring": [
+      "metric_subscription_checklist.md"
+    ],
+    "track": [
+      "metric_subscription_checklist.md"
+    ],
+    "success": [
+      "metric_subscription_checklist.md"
+    ],
+    "freshness": [
+      "metric_subscription_checklist.md"
+    ],
+    "time": [
+      "metric_subscription_checklist.md"
+    ],
+    "since": [
+      "metric_subscription_checklist.md"
+    ],
+    "last": [
+      "metric_subscription_checklist.md"
+    ],
+    "update": [
+      "metric_subscription_checklist.md"
+    ],
+    "becomes": [
+      "metric_subscription_checklist.md"
+    ],
+    "stale": [
+      "metric_subscription_checklist.md"
+    ],
+    "interval": [
+      "metric_subscription_checklist.md"
+    ],
+    "flag": [
+      "metric_subscription_checklist.md"
+    ],
+    "degraded": [
+      "metric_subscription_checklist.md"
+    ]
+  }
+}

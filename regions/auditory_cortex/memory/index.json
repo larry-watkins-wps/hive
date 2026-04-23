@@ -1,0 +1,1437 @@
+{
+  "schema_version": 1,
+  "built_at": "2026-04-23T20:21:12.899Z",
+  "documents": {
+    "bootstrap_state_v0.md": {
+      "tags": [
+        "bootstrap",
+        "v0",
+        "pipeline",
+        "milestone",
+        "handler-roadmap"
+      ],
+      "topic": "hive/sensory/auditory/events",
+      "created_at": "2026-04-23T20:21:12.792Z",
+      "updated_at": "2026-04-23T20:21:12.792Z",
+      "importance": 0.9,
+      "term_counts": {
+        "2026": 1,
+        "23t20": 1,
+        "792z": 1,
+        "auditory": 5,
+        "cortex": 2,
+        "bootstrap": 1,
+        "state": 1,
+        "first": 3,
+        "wake": 1,
+        "handlers": 7,
+        "directory": 1,
+        "empty": 1,
+        "hive": 5,
+        "cannot": 1,
+        "hear": 1,
+        "this": 1,
+        "episode": 1,
+        "marks": 1,
+        "the": 1,
+        "starting": 1,
+        "condition": 1,
+        "capture": 2,
+        "vad": 2,
+        "transcription": 2,
+        "classification": 3,
+        "pipeline": 1,
+        "exists": 1,
+        "yet": 1,
+        "priority": 1,
+        "build": 1,
+        "order": 1,
+        "mic": 1,
+        "initialization": 1,
+        "audio": 1,
+        "streaming": 1,
+        "disconnect": 1,
+        "handling": 1,
+        "voice": 1,
+        "activity": 1,
+        "detection": 2,
+        "features": 2,
+        "amplitude": 2,
+        "pitch": 1,
+        "onset": 2,
+        "timing": 1,
+        "extraction": 1,
+        "transcribe": 1,
+        "speech": 2,
+        "text": 2,
+        "whisper": 1,
+        "equivalent": 1,
+        "classify": 1,
+        "sound": 1,
+        "music": 1,
+        "ambient": 1,
+        "event": 2,
+        "publish": 3,
+        "package": 1,
+        "and": 2,
+        "route": 1,
+        "outputs": 1,
+        "mqtt": 1,
+        "topics": 1,
+        "fast": 1,
+        "pathway": 2,
+        "llm": 2,
+        "sensory": 3,
+        "events": 1,
+        "immediately": 1,
+        "careful": 1,
+        "may": 1,
+        "use": 1,
+        "prosody": 1,
+        "milestone": 1,
+        "successfully": 1,
+        "understood": 1,
+        "spoken": 1,
+        "word": 1,
+        "true": 1,
+        "hearing": 1,
+        "for": 1
+      }
+    },
+    "dual_pathway_architecture.md": {
+      "tags": [
+        "architecture",
+        "dual-pathway",
+        "fast-path",
+        "careful-path",
+        "LLM-usage"
+      ],
+      "topic": "hive/sensory/auditory/features",
+      "created_at": "2026-04-23T20:21:12.807Z",
+      "updated_at": "2026-04-23T20:21:12.807Z",
+      "importance": 0.85,
+      "term_counts": {
+        "2026": 1,
+        "23t20": 1,
+        "807z": 1,
+        "dual": 1,
+        "pathway": 3,
+        "architecture": 1,
+        "auditory": 5,
+        "processing": 2,
+        "biological": 1,
+        "inspiration": 1,
+        "subcortical": 1,
+        "fast": 4,
+        "route": 2,
+        "amygdala": 2,
+        "cortical": 1,
+        "careful": 2,
+        "llm": 3,
+        "involvement": 1,
+        "processes": 2,
+        "onset": 1,
+        "detection": 1,
+        "amplitude": 1,
+        "basic": 1,
+        "vad": 1,
+        "flag": 1,
+        "latency": 2,
+        "target": 2,
+        "immediate": 1,
+        "each": 1,
+        "chunk": 3,
+        "publishes": 2,
+        "hive": 4,
+        "sensory": 4,
+        "features": 1,
+        "events": 2,
+        "critical": 1,
+        "for": 3,
+        "threat": 1,
+        "response": 1,
+        "thalamus": 1,
+        "routing": 1,
+        "may": 1,
+        "invoke": 1,
+        "opus": 1,
+        "ambiguous": 3,
+        "cases": 1,
+        "transcription": 1,
+        "prosody": 1,
+        "speaker": 2,
+        "intent": 2,
+        "sound": 2,
+        "classification": 2,
+        "pipeline": 1,
+        "allows": 1,
+        "but": 1,
+        "not": 2,
+        "blocking": 1,
+        "path": 1,
+        "text": 1,
+        "richer": 1,
+        "invocation": 1,
+        "criteria": 1,
+        "noisy": 1,
+        "transcript": 1,
+        "needing": 1,
+        "disambiguation": 1,
+        "unclear": 1,
+        "demand": 1,
+        "from": 1,
+        "pfc": 1,
+        "every": 1,
+        "expensive": 1,
+        "window": 1,
+        "500ms": 1,
+        "audio": 1,
+        "windows": 1,
+        "continuous": 1
+      }
+    },
+    "modality_isolation_boundary.md": {
+      "tags": [
+        "boundaries",
+        "modality-isolation",
+        "constitutional",
+        "sandbox"
+      ],
+      "topic": "hive/cognitive/auditory_cortex/boundary",
+      "created_at": "2026-04-23T20:21:12.855Z",
+      "updated_at": "2026-04-23T20:21:12.855Z",
+      "importance": 0.7,
+      "term_counts": {
+        "2026": 1,
+        "23t20": 1,
+        "855z": 1,
+        "modality": 1,
+        "isolation": 1,
+        "auditory": 5,
+        "cortex": 6,
+        "boundaries": 1,
+        "what": 2,
+        "owns": 1,
+        "exclusively": 1,
+        "hive": 2,
+        "hardware": 2,
+        "mic": 1,
+        "subscription": 1,
+        "mqtt": 1,
+        "acl": 1,
+        "enforced": 1,
+        "other": 2,
+        "region": 2,
+        "may": 1,
+        "subscribe": 1,
+        "all": 2,
+        "audio": 2,
+        "processing": 1,
+        "pipeline": 1,
+        "publication": 1,
+        "sensory": 1,
+        "topics": 1,
+        "does": 10,
+        "not": 8,
+        "access": 1,
+        "camera": 1,
+        "speaker": 1,
+        "motor": 1,
+        "speak": 1,
+        "broca": 1,
+        "integrate": 1,
+        "across": 1,
+        "modalities": 1,
+        "association": 2,
+        "command": 1,
+        "regions": 2,
+        "publish": 1,
+        "modulators": 1,
+        "hold": 1,
+        "long": 1,
+        "term": 1,
+        "memory": 1,
+        "hippocampus": 1,
+        "encodes": 1,
+        "salient": 1,
+        "events": 1,
+        "interpret": 1,
+        "meaning": 1,
+        "deeply": 1,
+        "pfc": 1,
+        "filesystem": 1,
+        "sandbox": 1,
+        "self": 1,
+        "evolution": 1,
+        "stays": 1,
+        "within": 1,
+        "writes": 1,
+        "outside": 1,
+        "this": 1,
+        "boundary": 1
+      }
+    },
+    "modulator_response_rules.md": {
+      "tags": [
+        "modulators",
+        "norepinephrine",
+        "cortisol",
+        "dopamine",
+        "gamma",
+        "adaptation"
+      ],
+      "topic": "hive/cognitive/auditory_cortex/modulator",
+      "created_at": "2026-04-23T20:21:12.821Z",
+      "updated_at": "2026-04-23T20:21:12.821Z",
+      "importance": 0.75,
+      "term_counts": {
+        "2026": 1,
+        "23t20": 1,
+        "821z": 1,
+        "auditory": 2,
+        "cortex": 2,
+        "modulator": 3,
+        "response": 1,
+        "rules": 1,
+        "norepinephrine": 2,
+        "hive": 4,
+        "high": 3,
+        "sharpen": 1,
+        "onset": 1,
+        "detection": 1,
+        "sensitivity": 1,
+        "prioritize": 2,
+        "novel": 1,
+        "unusual": 1,
+        "sounds": 3,
+        "increase": 1,
+        "temporal": 1,
+        "resolution": 1,
+        "feature": 2,
+        "extraction": 1,
+        "cortisol": 4,
+        "threat": 1,
+        "relevant": 2,
+        "specifically": 1,
+        "sudden": 1,
+        "loud": 1,
+        "sharp": 1,
+        "onsets": 1,
+        "frequency": 1,
+        "transients": 1,
+        "publish": 1,
+        "sensory": 1,
+        "events": 1,
+        "with": 2,
+        "urgency": 1,
+        "flag": 1,
+        "when": 2,
+        "elevated": 1,
+        "dopamine": 2,
+        "low": 2,
+        "fatigue": 1,
+        "state": 2,
+        "permit": 1,
+        "reduced": 1,
+        "careful": 1,
+        "pathway": 2,
+        "fidelity": 1,
+        "fast": 1,
+        "remains": 1,
+        "uncompromised": 1,
+        "log": 1,
+        "degraded": 1,
+        "processing": 1,
+        "metacognition": 1,
+        "error": 1,
+        "sustained": 1,
+        "gamma": 3,
+        "rhythm": 2,
+        "binding": 2,
+        "synchronize": 1,
+        "publication": 1,
+        "timing": 1,
+        "phase": 1,
+        "possible": 1,
+        "supports": 1,
+        "cross": 1,
+        "modal": 1,
+        "association": 1
+      }
+    },
+    "transcription_honesty_principle.md": {
+      "tags": [
+        "honesty",
+        "confidence",
+        "transcription",
+        "constitutional",
+        "error-handling"
+      ],
+      "topic": "hive/sensory/auditory/text",
+      "created_at": "2026-04-23T20:21:12.837Z",
+      "updated_at": "2026-04-23T20:21:12.837Z",
+      "importance": 0.8,
+      "term_counts": {
+        "2026": 1,
+        "23t20": 1,
+        "837z": 1,
+        "transcription": 3,
+        "honesty": 2,
+        "principle": 2,
+        "core": 1,
+        "rule": 1,
+        "confidence": 3,
+        "low": 1,
+        "include": 1,
+        "that": 1,
+        "uncertainty": 2,
+        "explicitly": 1,
+        "the": 2,
+        "published": 1,
+        "output": 2,
+        "not": 1,
+        "fabricate": 1,
+        "clarity": 1,
+        "rationale": 1,
+        "downstream": 2,
+        "regions": 2,
+        "association": 1,
+        "cortex": 1,
+        "pfc": 1,
+        "hippocampus": 1,
+        "trust": 1,
+        "auditory": 1,
+        "text": 1,
+        "confidently": 1,
+        "wrong": 1,
+        "transcript": 3,
+        "propagates": 1,
+        "errors": 1,
+        "through": 1,
+        "entire": 1,
+        "cognitive": 1,
+        "stack": 1,
+        "flagged": 1,
+        "uncertain": 1,
+        "allows": 1,
+        "weight": 1,
+        "appropriately": 1,
+        "request": 1,
+        "clarification": 1,
+        "implementation": 1,
+        "guidance": 1,
+        "publish": 2,
+        "score": 1,
+        "with": 2,
+        "every": 1,
+        "segment": 1,
+        "threshold": 1,
+        "suggest": 1,
+        "initial": 1,
+        "value": 1,
+        "add": 1,
+        "explicit": 1,
+        "flag": 1,
+        "complete": 1,
+        "failure": 1,
+        "hive": 1,
+        "metacognition": 1,
+        "error": 1,
+        "detected": 1,
+        "rather": 1,
+        "than": 1,
+        "guessed": 1,
+        "string": 1,
+        "partial": 1,
+        "transcripts": 1,
+        "gaps": 1,
+        "are": 1,
+        "preferable": 1,
+        "filled": 1,
+        "guesses": 1,
+        "boundary": 1,
+        "this": 1,
+        "constitutional": 1,
+        "commitment": 1,
+        "capability": 1,
+        "cannot": 1,
+        "overridden": 1,
+        "attention": 1,
+        "focus": 1,
+        "modulator": 1,
+        "state": 1
+      }
+    }
+  },
+  "postings": {
+    "2026": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md",
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "23t20": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md",
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "792z": [
+      "bootstrap_state_v0.md"
+    ],
+    "auditory": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md",
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "cortex": [
+      "bootstrap_state_v0.md",
+      "modality_isolation_boundary.md",
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "bootstrap": [
+      "bootstrap_state_v0.md"
+    ],
+    "state": [
+      "bootstrap_state_v0.md",
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "first": [
+      "bootstrap_state_v0.md"
+    ],
+    "wake": [
+      "bootstrap_state_v0.md"
+    ],
+    "handlers": [
+      "bootstrap_state_v0.md"
+    ],
+    "directory": [
+      "bootstrap_state_v0.md"
+    ],
+    "empty": [
+      "bootstrap_state_v0.md"
+    ],
+    "hive": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md",
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "cannot": [
+      "bootstrap_state_v0.md",
+      "transcription_honesty_principle.md"
+    ],
+    "hear": [
+      "bootstrap_state_v0.md"
+    ],
+    "this": [
+      "bootstrap_state_v0.md",
+      "modality_isolation_boundary.md",
+      "transcription_honesty_principle.md"
+    ],
+    "episode": [
+      "bootstrap_state_v0.md"
+    ],
+    "marks": [
+      "bootstrap_state_v0.md"
+    ],
+    "the": [
+      "bootstrap_state_v0.md",
+      "transcription_honesty_principle.md"
+    ],
+    "starting": [
+      "bootstrap_state_v0.md"
+    ],
+    "condition": [
+      "bootstrap_state_v0.md"
+    ],
+    "capture": [
+      "bootstrap_state_v0.md"
+    ],
+    "vad": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md"
+    ],
+    "transcription": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "transcription_honesty_principle.md"
+    ],
+    "classification": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md"
+    ],
+    "pipeline": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md"
+    ],
+    "exists": [
+      "bootstrap_state_v0.md"
+    ],
+    "yet": [
+      "bootstrap_state_v0.md"
+    ],
+    "priority": [
+      "bootstrap_state_v0.md"
+    ],
+    "build": [
+      "bootstrap_state_v0.md"
+    ],
+    "order": [
+      "bootstrap_state_v0.md"
+    ],
+    "mic": [
+      "bootstrap_state_v0.md",
+      "modality_isolation_boundary.md"
+    ],
+    "initialization": [
+      "bootstrap_state_v0.md"
+    ],
+    "audio": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md"
+    ],
+    "streaming": [
+      "bootstrap_state_v0.md"
+    ],
+    "disconnect": [
+      "bootstrap_state_v0.md"
+    ],
+    "handling": [
+      "bootstrap_state_v0.md"
+    ],
+    "voice": [
+      "bootstrap_state_v0.md"
+    ],
+    "activity": [
+      "bootstrap_state_v0.md"
+    ],
+    "detection": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modulator_response_rules.md"
+    ],
+    "features": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md"
+    ],
+    "amplitude": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md"
+    ],
+    "pitch": [
+      "bootstrap_state_v0.md"
+    ],
+    "onset": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modulator_response_rules.md"
+    ],
+    "timing": [
+      "bootstrap_state_v0.md",
+      "modulator_response_rules.md"
+    ],
+    "extraction": [
+      "bootstrap_state_v0.md",
+      "modulator_response_rules.md"
+    ],
+    "transcribe": [
+      "bootstrap_state_v0.md"
+    ],
+    "speech": [
+      "bootstrap_state_v0.md"
+    ],
+    "text": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "transcription_honesty_principle.md"
+    ],
+    "whisper": [
+      "bootstrap_state_v0.md"
+    ],
+    "equivalent": [
+      "bootstrap_state_v0.md"
+    ],
+    "classify": [
+      "bootstrap_state_v0.md"
+    ],
+    "sound": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md"
+    ],
+    "music": [
+      "bootstrap_state_v0.md"
+    ],
+    "ambient": [
+      "bootstrap_state_v0.md"
+    ],
+    "event": [
+      "bootstrap_state_v0.md"
+    ],
+    "publish": [
+      "bootstrap_state_v0.md",
+      "modality_isolation_boundary.md",
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "package": [
+      "bootstrap_state_v0.md"
+    ],
+    "and": [
+      "bootstrap_state_v0.md"
+    ],
+    "route": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md"
+    ],
+    "outputs": [
+      "bootstrap_state_v0.md"
+    ],
+    "mqtt": [
+      "bootstrap_state_v0.md",
+      "modality_isolation_boundary.md"
+    ],
+    "topics": [
+      "bootstrap_state_v0.md",
+      "modality_isolation_boundary.md"
+    ],
+    "fast": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modulator_response_rules.md"
+    ],
+    "pathway": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modulator_response_rules.md"
+    ],
+    "llm": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md"
+    ],
+    "sensory": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md",
+      "modulator_response_rules.md"
+    ],
+    "events": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md",
+      "modulator_response_rules.md"
+    ],
+    "immediately": [
+      "bootstrap_state_v0.md"
+    ],
+    "careful": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modulator_response_rules.md"
+    ],
+    "may": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md"
+    ],
+    "use": [
+      "bootstrap_state_v0.md"
+    ],
+    "prosody": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md"
+    ],
+    "milestone": [
+      "bootstrap_state_v0.md"
+    ],
+    "successfully": [
+      "bootstrap_state_v0.md"
+    ],
+    "understood": [
+      "bootstrap_state_v0.md"
+    ],
+    "spoken": [
+      "bootstrap_state_v0.md"
+    ],
+    "word": [
+      "bootstrap_state_v0.md"
+    ],
+    "true": [
+      "bootstrap_state_v0.md"
+    ],
+    "hearing": [
+      "bootstrap_state_v0.md"
+    ],
+    "for": [
+      "bootstrap_state_v0.md",
+      "dual_pathway_architecture.md"
+    ],
+    "807z": [
+      "dual_pathway_architecture.md"
+    ],
+    "dual": [
+      "dual_pathway_architecture.md"
+    ],
+    "architecture": [
+      "dual_pathway_architecture.md"
+    ],
+    "processing": [
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md",
+      "modulator_response_rules.md"
+    ],
+    "biological": [
+      "dual_pathway_architecture.md"
+    ],
+    "inspiration": [
+      "dual_pathway_architecture.md"
+    ],
+    "subcortical": [
+      "dual_pathway_architecture.md"
+    ],
+    "amygdala": [
+      "dual_pathway_architecture.md"
+    ],
+    "cortical": [
+      "dual_pathway_architecture.md"
+    ],
+    "involvement": [
+      "dual_pathway_architecture.md"
+    ],
+    "processes": [
+      "dual_pathway_architecture.md"
+    ],
+    "basic": [
+      "dual_pathway_architecture.md"
+    ],
+    "flag": [
+      "dual_pathway_architecture.md",
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "latency": [
+      "dual_pathway_architecture.md"
+    ],
+    "target": [
+      "dual_pathway_architecture.md"
+    ],
+    "immediate": [
+      "dual_pathway_architecture.md"
+    ],
+    "each": [
+      "dual_pathway_architecture.md"
+    ],
+    "chunk": [
+      "dual_pathway_architecture.md"
+    ],
+    "publishes": [
+      "dual_pathway_architecture.md"
+    ],
+    "critical": [
+      "dual_pathway_architecture.md"
+    ],
+    "threat": [
+      "dual_pathway_architecture.md",
+      "modulator_response_rules.md"
+    ],
+    "response": [
+      "dual_pathway_architecture.md",
+      "modulator_response_rules.md"
+    ],
+    "thalamus": [
+      "dual_pathway_architecture.md"
+    ],
+    "routing": [
+      "dual_pathway_architecture.md"
+    ],
+    "invoke": [
+      "dual_pathway_architecture.md"
+    ],
+    "opus": [
+      "dual_pathway_architecture.md"
+    ],
+    "ambiguous": [
+      "dual_pathway_architecture.md"
+    ],
+    "cases": [
+      "dual_pathway_architecture.md"
+    ],
+    "speaker": [
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md"
+    ],
+    "intent": [
+      "dual_pathway_architecture.md"
+    ],
+    "allows": [
+      "dual_pathway_architecture.md",
+      "transcription_honesty_principle.md"
+    ],
+    "but": [
+      "dual_pathway_architecture.md"
+    ],
+    "not": [
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md",
+      "transcription_honesty_principle.md"
+    ],
+    "blocking": [
+      "dual_pathway_architecture.md"
+    ],
+    "path": [
+      "dual_pathway_architecture.md"
+    ],
+    "richer": [
+      "dual_pathway_architecture.md"
+    ],
+    "invocation": [
+      "dual_pathway_architecture.md"
+    ],
+    "criteria": [
+      "dual_pathway_architecture.md"
+    ],
+    "noisy": [
+      "dual_pathway_architecture.md"
+    ],
+    "transcript": [
+      "dual_pathway_architecture.md",
+      "transcription_honesty_principle.md"
+    ],
+    "needing": [
+      "dual_pathway_architecture.md"
+    ],
+    "disambiguation": [
+      "dual_pathway_architecture.md"
+    ],
+    "unclear": [
+      "dual_pathway_architecture.md"
+    ],
+    "demand": [
+      "dual_pathway_architecture.md"
+    ],
+    "from": [
+      "dual_pathway_architecture.md"
+    ],
+    "pfc": [
+      "dual_pathway_architecture.md",
+      "modality_isolation_boundary.md",
+      "transcription_honesty_principle.md"
+    ],
+    "every": [
+      "dual_pathway_architecture.md",
+      "transcription_honesty_principle.md"
+    ],
+    "expensive": [
+      "dual_pathway_architecture.md"
+    ],
+    "window": [
+      "dual_pathway_architecture.md"
+    ],
+    "500ms": [
+      "dual_pathway_architecture.md"
+    ],
+    "windows": [
+      "dual_pathway_architecture.md"
+    ],
+    "continuous": [
+      "dual_pathway_architecture.md"
+    ],
+    "855z": [
+      "modality_isolation_boundary.md"
+    ],
+    "modality": [
+      "modality_isolation_boundary.md"
+    ],
+    "isolation": [
+      "modality_isolation_boundary.md"
+    ],
+    "boundaries": [
+      "modality_isolation_boundary.md"
+    ],
+    "what": [
+      "modality_isolation_boundary.md"
+    ],
+    "owns": [
+      "modality_isolation_boundary.md"
+    ],
+    "exclusively": [
+      "modality_isolation_boundary.md"
+    ],
+    "hardware": [
+      "modality_isolation_boundary.md"
+    ],
+    "subscription": [
+      "modality_isolation_boundary.md"
+    ],
+    "acl": [
+      "modality_isolation_boundary.md"
+    ],
+    "enforced": [
+      "modality_isolation_boundary.md"
+    ],
+    "other": [
+      "modality_isolation_boundary.md"
+    ],
+    "region": [
+      "modality_isolation_boundary.md"
+    ],
+    "subscribe": [
+      "modality_isolation_boundary.md"
+    ],
+    "all": [
+      "modality_isolation_boundary.md"
+    ],
+    "publication": [
+      "modality_isolation_boundary.md",
+      "modulator_response_rules.md"
+    ],
+    "does": [
+      "modality_isolation_boundary.md"
+    ],
+    "access": [
+      "modality_isolation_boundary.md"
+    ],
+    "camera": [
+      "modality_isolation_boundary.md"
+    ],
+    "motor": [
+      "modality_isolation_boundary.md"
+    ],
+    "speak": [
+      "modality_isolation_boundary.md"
+    ],
+    "broca": [
+      "modality_isolation_boundary.md"
+    ],
+    "integrate": [
+      "modality_isolation_boundary.md"
+    ],
+    "across": [
+      "modality_isolation_boundary.md"
+    ],
+    "modalities": [
+      "modality_isolation_boundary.md"
+    ],
+    "association": [
+      "modality_isolation_boundary.md",
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "command": [
+      "modality_isolation_boundary.md"
+    ],
+    "regions": [
+      "modality_isolation_boundary.md",
+      "transcription_honesty_principle.md"
+    ],
+    "modulators": [
+      "modality_isolation_boundary.md"
+    ],
+    "hold": [
+      "modality_isolation_boundary.md"
+    ],
+    "long": [
+      "modality_isolation_boundary.md"
+    ],
+    "term": [
+      "modality_isolation_boundary.md"
+    ],
+    "memory": [
+      "modality_isolation_boundary.md"
+    ],
+    "hippocampus": [
+      "modality_isolation_boundary.md",
+      "transcription_honesty_principle.md"
+    ],
+    "encodes": [
+      "modality_isolation_boundary.md"
+    ],
+    "salient": [
+      "modality_isolation_boundary.md"
+    ],
+    "interpret": [
+      "modality_isolation_boundary.md"
+    ],
+    "meaning": [
+      "modality_isolation_boundary.md"
+    ],
+    "deeply": [
+      "modality_isolation_boundary.md"
+    ],
+    "filesystem": [
+      "modality_isolation_boundary.md"
+    ],
+    "sandbox": [
+      "modality_isolation_boundary.md"
+    ],
+    "self": [
+      "modality_isolation_boundary.md"
+    ],
+    "evolution": [
+      "modality_isolation_boundary.md"
+    ],
+    "stays": [
+      "modality_isolation_boundary.md"
+    ],
+    "within": [
+      "modality_isolation_boundary.md"
+    ],
+    "writes": [
+      "modality_isolation_boundary.md"
+    ],
+    "outside": [
+      "modality_isolation_boundary.md"
+    ],
+    "boundary": [
+      "modality_isolation_boundary.md",
+      "transcription_honesty_principle.md"
+    ],
+    "821z": [
+      "modulator_response_rules.md"
+    ],
+    "modulator": [
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "rules": [
+      "modulator_response_rules.md"
+    ],
+    "norepinephrine": [
+      "modulator_response_rules.md"
+    ],
+    "high": [
+      "modulator_response_rules.md"
+    ],
+    "sharpen": [
+      "modulator_response_rules.md"
+    ],
+    "sensitivity": [
+      "modulator_response_rules.md"
+    ],
+    "prioritize": [
+      "modulator_response_rules.md"
+    ],
+    "novel": [
+      "modulator_response_rules.md"
+    ],
+    "unusual": [
+      "modulator_response_rules.md"
+    ],
+    "sounds": [
+      "modulator_response_rules.md"
+    ],
+    "increase": [
+      "modulator_response_rules.md"
+    ],
+    "temporal": [
+      "modulator_response_rules.md"
+    ],
+    "resolution": [
+      "modulator_response_rules.md"
+    ],
+    "feature": [
+      "modulator_response_rules.md"
+    ],
+    "cortisol": [
+      "modulator_response_rules.md"
+    ],
+    "relevant": [
+      "modulator_response_rules.md"
+    ],
+    "specifically": [
+      "modulator_response_rules.md"
+    ],
+    "sudden": [
+      "modulator_response_rules.md"
+    ],
+    "loud": [
+      "modulator_response_rules.md"
+    ],
+    "sharp": [
+      "modulator_response_rules.md"
+    ],
+    "onsets": [
+      "modulator_response_rules.md"
+    ],
+    "frequency": [
+      "modulator_response_rules.md"
+    ],
+    "transients": [
+      "modulator_response_rules.md"
+    ],
+    "with": [
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "urgency": [
+      "modulator_response_rules.md"
+    ],
+    "when": [
+      "modulator_response_rules.md"
+    ],
+    "elevated": [
+      "modulator_response_rules.md"
+    ],
+    "dopamine": [
+      "modulator_response_rules.md"
+    ],
+    "low": [
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "fatigue": [
+      "modulator_response_rules.md"
+    ],
+    "permit": [
+      "modulator_response_rules.md"
+    ],
+    "reduced": [
+      "modulator_response_rules.md"
+    ],
+    "fidelity": [
+      "modulator_response_rules.md"
+    ],
+    "remains": [
+      "modulator_response_rules.md"
+    ],
+    "uncompromised": [
+      "modulator_response_rules.md"
+    ],
+    "log": [
+      "modulator_response_rules.md"
+    ],
+    "degraded": [
+      "modulator_response_rules.md"
+    ],
+    "metacognition": [
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "error": [
+      "modulator_response_rules.md",
+      "transcription_honesty_principle.md"
+    ],
+    "sustained": [
+      "modulator_response_rules.md"
+    ],
+    "gamma": [
+      "modulator_response_rules.md"
+    ],
+    "rhythm": [
+      "modulator_response_rules.md"
+    ],
+    "binding": [
+      "modulator_response_rules.md"
+    ],
+    "synchronize": [
+      "modulator_response_rules.md"
+    ],
+    "phase": [
+      "modulator_response_rules.md"
+    ],
+    "possible": [
+      "modulator_response_rules.md"
+    ],
+    "supports": [
+      "modulator_response_rules.md"
+    ],
+    "cross": [
+      "modulator_response_rules.md"
+    ],
+    "modal": [
+      "modulator_response_rules.md"
+    ],
+    "837z": [
+      "transcription_honesty_principle.md"
+    ],
+    "honesty": [
+      "transcription_honesty_principle.md"
+    ],
+    "principle": [
+      "transcription_honesty_principle.md"
+    ],
+    "core": [
+      "transcription_honesty_principle.md"
+    ],
+    "rule": [
+      "transcription_honesty_principle.md"
+    ],
+    "confidence": [
+      "transcription_honesty_principle.md"
+    ],
+    "include": [
+      "transcription_honesty_principle.md"
+    ],
+    "that": [
+      "transcription_honesty_principle.md"
+    ],
+    "uncertainty": [
+      "transcription_honesty_principle.md"
+    ],
+    "explicitly": [
+      "transcription_honesty_principle.md"
+    ],
+    "published": [
+      "transcription_honesty_principle.md"
+    ],
+    "output": [
+      "transcription_honesty_principle.md"
+    ],
+    "fabricate": [
+      "transcription_honesty_principle.md"
+    ],
+    "clarity": [
+      "transcription_honesty_principle.md"
+    ],
+    "rationale": [
+      "transcription_honesty_principle.md"
+    ],
+    "downstream": [
+      "transcription_honesty_principle.md"
+    ],
+    "trust": [
+      "transcription_honesty_principle.md"
+    ],
+    "confidently": [
+      "transcription_honesty_principle.md"
+    ],
+    "wrong": [
+      "transcription_honesty_principle.md"
+    ],
+    "propagates": [
+      "transcription_honesty_principle.md"
+    ],
+    "errors": [
+      "transcription_honesty_principle.md"
+    ],
+    "through": [
+      "transcription_honesty_principle.md"
+    ],
+    "entire": [
+      "transcription_honesty_principle.md"
+    ],
+    "cognitive": [
+      "transcription_honesty_principle.md"
+    ],
+    "stack": [
+      "transcription_honesty_principle.md"
+    ],
+    "flagged": [
+      "transcription_honesty_principle.md"
+    ],
+    "uncertain": [
+      "transcription_honesty_principle.md"
+    ],
+    "weight": [
+      "transcription_honesty_principle.md"
+    ],
+    "appropriately": [
+      "transcription_honesty_principle.md"
+    ],
+    "request": [
+      "transcription_honesty_principle.md"
+    ],
+    "clarification": [
+      "transcription_honesty_principle.md"
+    ],
+    "implementation": [
+      "transcription_honesty_principle.md"
+    ],
+    "guidance": [
+      "transcription_honesty_principle.md"
+    ],
+    "score": [
+      "transcription_honesty_principle.md"
+    ],
+    "segment": [
+      "transcription_honesty_principle.md"
+    ],
+    "threshold": [
+      "transcription_honesty_principle.md"
+    ],
+    "suggest": [
+      "transcription_honesty_principle.md"
+    ],
+    "initial": [
+      "transcription_honesty_principle.md"
+    ],
+    "value": [
+      "transcription_honesty_principle.md"
+    ],
+    "add": [
+      "transcription_honesty_principle.md"
+    ],
+    "explicit": [
+      "transcription_honesty_principle.md"
+    ],
+    "complete": [
+      "transcription_honesty_principle.md"
+    ],
+    "failure": [
+      "transcription_honesty_principle.md"
+    ],
+    "detected": [
+      "transcription_honesty_principle.md"
+    ],
+    "rather": [
+      "transcription_honesty_principle.md"
+    ],
+    "than": [
+      "transcription_honesty_principle.md"
+    ],
+    "guessed": [
+      "transcription_honesty_principle.md"
+    ],
+    "string": [
+      "transcription_honesty_principle.md"
+    ],
+    "partial": [
+      "transcription_honesty_principle.md"
+    ],
+    "transcripts": [
+      "transcription_honesty_principle.md"
+    ],
+    "gaps": [
+      "transcription_honesty_principle.md"
+    ],
+    "are": [
+      "transcription_honesty_principle.md"
+    ],
+    "preferable": [
+      "transcription_honesty_principle.md"
+    ],
+    "filled": [
+      "transcription_honesty_principle.md"
+    ],
+    "guesses": [
+      "transcription_honesty_principle.md"
+    ],
+    "constitutional": [
+      "transcription_honesty_principle.md"
+    ],
+    "commitment": [
+      "transcription_honesty_principle.md"
+    ],
+    "capability": [
+      "transcription_honesty_principle.md"
+    ],
+    "overridden": [
+      "transcription_honesty_principle.md"
+    ],
+    "attention": [
+      "transcription_honesty_principle.md"
+    ],
+    "focus": [
+      "transcription_honesty_principle.md"
+    ]
+  }
+}
