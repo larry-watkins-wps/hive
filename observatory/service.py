@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import aiomqtt
 import structlog
@@ -34,6 +36,13 @@ from observatory.ws import ConnectionHub, build_ws_router
 log = structlog.get_logger(__name__)
 
 _SHUTDOWN_TIMEOUT_S = 2.0
+# Reconnect backoff — matches region_template/mqtt_client.py's §B.10 shape
+# (1s, 2s, 4s, ... capped at 30s). The observatory never gives up: unlike
+# a region, a dead MQTT feed is recoverable without data loss (ring buffer
+# simply has a gap), so we prefer "eventually catch up" over "crash the
+# container and have the orchestrator restart us".
+_RECONNECT_BACKOFF_INITIAL_S = 1.0
+_RECONNECT_BACKOFF_CAP_S = 30.0
 
 
 def _parse_mqtt_url(url: str) -> tuple[str, int]:
@@ -47,6 +56,74 @@ def _parse_mqtt_url(url: str) -> tuple[str, int]:
     rest = url.split("://", 1)[1]
     host, _, port_s = rest.partition(":")
     return host, int(port_s or "1883")
+
+
+def _backoff_delay(attempt: int, *, initial: float, cap: float) -> float:
+    """Exponential backoff with a ceiling. Pure function, independently tested.
+
+    ``attempt=0 → initial``, ``attempt=1 → 2*initial``, doubling until ``cap``.
+    """
+    return min(cap, initial * (2 ** attempt))
+
+
+async def _mqtt_run_with_reconnect(
+    *,
+    client_factory: Callable[[], aiomqtt.Client],
+    subscriber: Any,
+    stop_event: asyncio.Event,
+    backoff_initial_s: float = _RECONNECT_BACKOFF_INITIAL_S,
+    backoff_cap_s: float = _RECONNECT_BACKOFF_CAP_S,
+) -> None:
+    """Run the subscriber against the broker, reconnecting on broker failure.
+
+    On :class:`aiomqtt.MqttError` (initial connect, subscribe, or mid-stream
+    iteration) the loop logs a warning, sleeps with exponential backoff, and
+    reopens with a fresh client. The backoff counter resets after a
+    successful connect, so a one-off disconnect doesn't penalize the next
+    one. Non-MqttError exceptions propagate so programmer bugs are loud.
+
+    Exits when ``stop_event`` fires — either mid-session (the subscriber's
+    own stop check breaks its loop) or mid-backoff (this function wakes
+    early from its sleep).
+    """
+    attempt = 0
+    while not stop_event.is_set():
+        try:
+            client = client_factory()
+            async with client:
+                await client.subscribe("hive/#")
+                if attempt > 0:
+                    log.info("observatory.mqtt_reconnected", attempts=attempt)
+                else:
+                    log.info("observatory.mqtt_connected")
+                attempt = 0
+                await subscriber.run(client, stop_event)
+            # Clean exit from subscriber.run — normally means stop_event fired.
+            # If not, loop again and reopen (shouldn't happen with aiomqtt
+            # semantics, but cheaper to retry than to wonder).
+            if stop_event.is_set():
+                return
+        except aiomqtt.MqttError as err:
+            if stop_event.is_set():
+                return
+            delay = _backoff_delay(
+                attempt, initial=backoff_initial_s, cap=backoff_cap_s
+            )
+            log.warning(
+                "observatory.mqtt_disconnected",
+                attempt=attempt,
+                delay_s=delay,
+                err=str(err),
+            )
+            attempt += 1
+            # Sleep with early-wake on stop_event. ``asyncio.wait_for`` returns
+            # when the event fires, raises ``TimeoutError`` when the delay
+            # expires — either branch cleanly resolves to "should I retry?".
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=delay)
+                return
+            except TimeoutError:
+                continue
 
 
 def build_app(settings: Settings) -> FastAPI:  # noqa: PLR0915 — composition factory
@@ -101,26 +178,33 @@ def build_app(settings: Settings) -> FastAPI:  # noqa: PLR0915 — composition f
                 port=port,
                 note="mqtts:// URL given but TLS is not configured in v1",
             )
-        client = aiomqtt.Client(
-            hostname=host, port=port, identifier=f"observatory-{host}-{port}"
-        )
+
+        # Fresh client per (re)connect. aiomqtt.Client instances aren't
+        # re-enterable after __aexit__, so the reconnect loop must build a
+        # new one each attempt.
+        def client_factory() -> aiomqtt.Client:
+            return aiomqtt.Client(
+                hostname=host, port=port, identifier=f"observatory-{host}-{port}"
+            )
+
         await hub.start()
         task: asyncio.Task | None = None
 
-        async def _run() -> None:
-            async with client:
-                await client.subscribe("hive/#")
-                await subscriber.run(client, stop_event)
-
-        task = asyncio.create_task(_run())
+        task = asyncio.create_task(
+            _mqtt_run_with_reconnect(
+                client_factory=client_factory,
+                subscriber=subscriber,
+                stop_event=stop_event,
+            )
+        )
 
         def _on_mqtt_task_done(t: asyncio.Task) -> None:
-            """Surface broker failures loudly.
+            """Surface unrecoverable failures loudly.
 
-            Without this callback, an exception inside ``_run`` (e.g. broker
-            unreachable at startup) would only appear as an "unretrieved task
-            exception" warning at GC time — by which point the user has
-            already hit ``/api/health`` and seen a misleading 200 OK.
+            The reconnect loop swallows ``aiomqtt.MqttError`` and retries, so
+            we only see exceptions here for truly unexpected failures
+            (programmer bugs, non-MQTT crashes). Cancellation during shutdown
+            is normal and ignored.
             """
             if t.cancelled():
                 return
