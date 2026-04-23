@@ -172,6 +172,13 @@ class MqttSubscriber:
         self.registry = registry
         self.adjacency = adjacency
         self._sub_map = subscription_map
+        # Monotonic counter incremented on every message that survives
+        # JSON parsing. Consumed by the watchdog in ``service.py`` to detect
+        # silent MQTT stalls — aiomqtt's async iterator can wait forever
+        # when paho's `loop_read` degrades without firing `on_disconnect`
+        # (observed on aiomqtt 2.5.1), and the supervising loop has no
+        # signal to reconnect with. A stagnant counter = force-reconnect.
+        self.messages_received_total = 0
 
     def _inferred_destinations(self, topic: str, source: str | None) -> tuple[str, ...]:
         if source is None:
@@ -228,6 +235,11 @@ class MqttSubscriber:
         )
         if source and destinations:
             self.adjacency.record(source, list(destinations), now=now)
+
+        # Increment at the end so malformed payloads (non-JSON / non-dict)
+        # don't count as "we are receiving traffic" — the watchdog needs a
+        # signal that the decode path is healthy, not just that bytes arrived.
+        self.messages_received_total += 1
 
     @staticmethod
     def _extract_heartbeat_stats(payload: Any, *, topic: str) -> dict[str, Any] | None:

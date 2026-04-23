@@ -44,6 +44,18 @@ _SHUTDOWN_TIMEOUT_S = 2.0
 _RECONNECT_BACKOFF_INITIAL_S = 1.0
 _RECONNECT_BACKOFF_CAP_S = 30.0
 
+# Watchdog: force a reconnect if the subscriber's `messages_received_total`
+# counter stops incrementing. aiomqtt 2.5.1's async iterator can silently
+# wait forever when paho's internal `loop_read` degrades without firing
+# `on_disconnect` — the client looks connected, no MqttError is raised,
+# and the reconnect loop in `_mqtt_run_with_reconnect` has no trigger to
+# act on. Hive's normal traffic (heartbeats alone, one per region per
+# second) is ~14 msg/s, so a 20 s gap with zero messages is unambiguously
+# a stall, not a quiet broker. The watchdog cancels the subscriber task;
+# the outer reconnect loop then builds a fresh aiomqtt client.
+_WATCHDOG_STALL_THRESHOLD_S = 20.0
+_WATCHDOG_POLL_INTERVAL_S = 5.0
+
 
 def _parse_mqtt_url(url: str) -> tuple[str, int]:
     """Split an MQTT URL into (host, port).
@@ -64,6 +76,71 @@ def _backoff_delay(attempt: int, *, initial: float, cap: float) -> float:
     ``attempt=0 → initial``, ``attempt=1 → 2*initial``, doubling until ``cap``.
     """
     return min(cap, initial * (2 ** attempt))
+
+
+async def _run_subscriber_with_watchdog(
+    *,
+    client: aiomqtt.Client,
+    subscriber: Any,
+    stop_event: asyncio.Event,
+) -> None:
+    """Run ``subscriber.run(client, stop_event)`` with a stall-watchdog.
+
+    aiomqtt's async iterator (``client.messages``) waits forever on the
+    internal queue when paho's ``loop_read`` degrades silently — no
+    ``on_disconnect`` fires, no ``MqttError`` is raised, and the outer
+    reconnect loop has nothing to react to. The watchdog polls
+    ``subscriber.messages_received_total`` every
+    ``_WATCHDOG_POLL_INTERVAL_S`` and cancels the subscriber if the
+    counter hasn't moved in ``_WATCHDOG_STALL_THRESHOLD_S``. A cancel
+    bubbles up as ``CancelledError``, which this function converts to a
+    normal return so ``_mqtt_run_with_reconnect`` can loop and rebuild
+    the client.
+
+    The watchdog only arms once at least one message has been seen on
+    this connection — that avoids a false-positive reconnect storm on a
+    genuinely quiet broker right after boot.
+    """
+    sub_task = asyncio.create_task(subscriber.run(client, stop_event))
+    try:
+        last_total = subscriber.messages_received_total
+        last_change_ts = asyncio.get_running_loop().time()
+        while not sub_task.done():
+            # Use wait() rather than wait_for(shield(...)) so we don't
+            # accumulate a shield wrapper per iteration. FIRST_COMPLETED
+            # returns immediately when sub_task finishes on its own.
+            await asyncio.wait(
+                {sub_task}, timeout=_WATCHDOG_POLL_INTERVAL_S,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if sub_task.done():
+                return  # subscriber finished on its own (stop_event)
+            now = asyncio.get_running_loop().time()
+            cur_total = subscriber.messages_received_total
+            if cur_total != last_total:
+                last_total = cur_total
+                last_change_ts = now
+                continue
+            if cur_total == 0:
+                last_change_ts = now
+                continue
+            if now - last_change_ts >= _WATCHDOG_STALL_THRESHOLD_S:
+                log.warning(
+                    "observatory.mqtt_stall_detected",
+                    messages_received_total=cur_total,
+                    stall_seconds=round(now - last_change_ts, 1),
+                    action="force_reconnect",
+                )
+                sub_task.cancel()
+                break
+    finally:
+        if not sub_task.done():
+            sub_task.cancel()
+        # Swallow CancelledError from the subscriber — it's the watchdog's
+        # doing, not a programmer bug. Any other exception propagates to
+        # the reconnect loop's MqttError handler (or up, for non-MQTT bugs).
+        with contextlib.suppress(asyncio.CancelledError):
+            await sub_task
 
 
 async def _mqtt_run_with_reconnect(
@@ -97,10 +174,12 @@ async def _mqtt_run_with_reconnect(
                 else:
                     log.info("observatory.mqtt_connected")
                 attempt = 0
-                await subscriber.run(client, stop_event)
-            # Clean exit from subscriber.run — normally means stop_event fired.
-            # If not, loop again and reopen (shouldn't happen with aiomqtt
-            # semantics, but cheaper to retry than to wonder).
+                await _run_subscriber_with_watchdog(
+                    client=client, subscriber=subscriber, stop_event=stop_event
+                )
+            # Clean exit from subscriber.run — either stop_event fired (shutdown)
+            # or the watchdog forced a reconnect due to a silent stall. Loop
+            # back and reopen unless shutdown was requested.
             if stop_event.is_set():
                 return
         except aiomqtt.MqttError as err:
@@ -155,12 +234,19 @@ def build_app(settings: Settings) -> FastAPI:  # noqa: PLR0915 — composition f
     original_dispatch = subscriber.dispatch
 
     async def dispatch_and_fanout(msg: object) -> None:
-        pre_len = len(ring)
+        # Trigger broadcast on the subscriber's success counter, not on
+        # ring length. Once the deque fills to `ring_buffer_size` (default
+        # 10 000, ≈20 s at 500 msg/s), `len(ring)` stops growing because
+        # `deque.maxlen` caps it — making `post_len > pre_len` permanently
+        # false and silently killing all envelope broadcasts. The counter
+        # increments once per successful dispatch regardless of ring
+        # fullness, and `ring.last()` is O(1) vs. `snapshot()[-1]`'s O(N).
+        pre_count = subscriber.messages_received_total
         await original_dispatch(msg)
-        post_len = len(ring)
-        if post_len > pre_len:
-            rec: RingRecord = ring.snapshot()[-1]
-            await hub.broadcast_envelope(rec)
+        if subscriber.messages_received_total > pre_count:
+            rec = ring.last()
+            if rec is not None:
+                await hub.broadcast_envelope(rec)
 
     subscriber.dispatch = dispatch_and_fanout  # type: ignore[method-assign]
 

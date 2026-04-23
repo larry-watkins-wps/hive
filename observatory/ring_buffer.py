@@ -26,6 +26,19 @@ class RingBuffer:
     def snapshot(self) -> tuple[RingRecord, ...]:
         return tuple(self._deque)
 
+    def last(self) -> RingRecord | None:
+        """Return the most-recently-appended record, or ``None`` if empty.
+
+        O(1) peek — used by ``dispatch_and_fanout`` in ``service.py`` to
+        hand the just-appended record to the hub without copying the whole
+        deque. Do NOT compose this into a substitute for ``snapshot()``:
+        the deque is shared with the consumer task, and iterating by
+        repeatedly calling ``last()`` would race.
+        """
+        if not self._deque:
+            return None
+        return self._deque[-1]
+
     def extend(self, records: Iterable[RingRecord]) -> None:
         self._deque.extend(records)
 
