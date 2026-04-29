@@ -1,0 +1,15 @@
+proposal_id: assoc-cortex-perception-2026-04-29
+target: regions/association_cortex/subscriptions.yaml
+kind: subscription_addition
+diff:
+  add:
+    - topic: hive/external/perception
+      qos: 1
+      description: "External perception — thought-form text arriving from outside the organism (chat, future STT, future captioning)."
+rationale: |
+  Observatory v4 introduces a chat surface that publishes typed user input
+  to hive/external/perception (see observatory/docs/specs/2026-04-29-observatory-v4-chat-design.md).
+  Association_cortex is the natural first reader because its prompt already
+  declares multi-modal integration as its role. Without this subscription
+  no region listens to chat input, and the conversation is one-way.
+cosign_required: true

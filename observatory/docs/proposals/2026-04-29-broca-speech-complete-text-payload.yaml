@@ -1,0 +1,17 @@
+proposal_id: broca-complete-text-payload-2026-04-29
+target: regions/broca_area/prompt.md  # plus any handler that emits `complete`
+kind: payload_enrichment
+diff:
+  field: text
+  on_topic: hive/motor/speech/complete
+  type: string
+  required: true
+  semantics: "verbatim text of the utterance broca articulated"
+rationale: |
+  Observatory v4's chat reads hive/motor/speech/complete to render Hive's
+  responses in the transcript. With audio bytes alone the chat can show
+  only an "🔊 hive spoke" placeholder. Adding text to the complete payload
+  is biologically natural — a speaker knows what they just said — and
+  costs broca nothing because it already holds the intent text it just
+  synthesised.
+cosign_required: true
