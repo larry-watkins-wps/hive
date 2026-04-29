@@ -1,5 +1,5 @@
 // observatory/web-src/src/chat/useChatKeys.test.tsx
-import { render } from '@testing-library/react';
+import { cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { useStore } from '../store';
@@ -15,6 +15,7 @@ describe('useChatKeys', () => {
     useStore.setState({ chatVisible: false });
   });
   afterEach(() => {
+    cleanup();
     useStore.setState({ chatVisible: false });
   });
 
