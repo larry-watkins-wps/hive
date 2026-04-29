@@ -1,8 +1,8 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-29 (session 8 — v4 session 1: backend + proposals landed)*
+*Last updated: 2026-04-29 (session 9 — v4 session 2: frontend data layer landed)*
 
-**Canonical resume prompt:** `continue observatory v4 — session 2`
+**Canonical resume prompt:** `continue observatory v4 — session 3`
 
 ---
 
@@ -54,22 +54,27 @@
 | v4 Task 4 — component test: POST → real broker round-trip | ✅ Complete | `f4f3558` (no review-fix; APPROVED both stages; full component suite 4 passed; round-trip verified < 500 ms over real testcontainers `eclipse-mosquitto:2`) |
 | v4 Task 5 — code-change proposal artifacts (assoc_cortex sub + broca payload) | ✅ Complete | `1c0084b` — two inert YAML payloads under `observatory/docs/proposals/`; verbatim from spec §5.1/§5.2; YAML round-trip parsed; review pair skipped (no logic to review) |
 | **v4 backend + proposals — complete, 13 unit (sensory) + 1 component (round-trip) tests passing** | ✅ | session 1 of 3 |
-| v4 Task 6 — frontend store extension + chat persistence | ⏳ Pending | session 2 |
-| v4 Task 7 — frontend api.ts (POST wrapper) | ⏳ Pending | session 2 |
-| v4 Task 8 — Transcript + TranscriptTurn | ⏳ Pending | session 2 |
-| v4 Task 9 — ChatInput | ⏳ Pending | session 2 |
+| v4 baseline-fix `1d41d76` — Sparks length-plateau (lastLenRef → lastTotalRef) | ✅ Complete | mirrors v2 Task 14 Messages fix |
+| v4 baseline-fix `8c36fb9` — `_FakeSubscriber.messages_received_total` + `ws.test.ts` batcher await | ✅ Complete | restored v3 baseline (136 + 2 skipped Python / 169 vitest) |
+| v4 Task 6 — frontend store extension + chat persistence | ✅ Complete | `dfbcf42` + review-fix `2758a0a` (cleanup + selector-scoped subscribe + 3 regression tests) |
+| v4 Task 7 — frontend api.ts (POST wrapper) | ✅ Complete | `bd0f88b` + review-fix `d1f3990` (guard 2xx `resp.json()` parse + `{id, timestamp}` shape validation) |
+| v4 Task 8 — Transcript + TranscriptTurn | ✅ Complete | `6b6cde6` (no review-fix; APPROVED both stages with non-blocking auto-scroll/selector consistency notes) |
+| v4 Task 9 — ChatInput | ✅ Complete | `dc88feb` + review-fix `a146aac` (empty-textarea Enter test pin); spec §6.5 confirmed: failed-turn dismissal is intentional silence |
+| **v4 frontend data layer — complete, 193 vitest passing** | ✅ | session 2 of 3 |
 | v4 Task 10 — ChatOverlay (frame + drag + resize) | ⏳ Pending | session 3 |
 | v4 Task 11 — useChatKeys hotkey | ⏳ Pending | session 3 |
 | v4 Task 12 — App.tsx mount + production build | ⏳ Pending | session 3 |
 | v4 Task 13 — verification + HANDOFF closure (v4 ships) | ⏳ Pending | session 3 |
 
-## Suite + lint snapshot (end of session 8 — v4 session 1)
+## Suite + lint snapshot (end of session 9 — v4 session 2)
 
-- `python -m pytest observatory/tests/unit/sensory/ -q` → **15 passed** (Task 1: 4 + Task 2: 4 + Task 3: 7).
-- `python -m pytest observatory/tests/unit/ -q` → **133 passed + 2 skipped + 3 failed**. The 3 failures are pre-existing in `observatory/tests/unit/test_mqtt_reconnect.py::TestReconnectLoop` (introduced by `83b0bd3`'s stall watchdog: `_FakeSubscriber` lacks `messages_received_total`); orthogonal to v4 — see decisions.md 2026-04-29.
-- `python -m pytest observatory/tests/component/ -m component -v` → **4 passed** (3 existing v1/v2/v3 + 1 new v4 round-trip; full suite 1.57 s end-to-end including broker boot via `eclipse-mosquitto:2`).
-- `python -m ruff check observatory/sensory/ observatory/config.py observatory/tests/unit/sensory/ observatory/tests/component/test_end_to_end.py` → **clean**. (`observatory/service.py` carries one pre-existing `F401: RingRecord` import — predates v4; out of scope.)
-- Frontend: not modified in session 1; v3 baseline (168 vitest + 1.08 MB JS bundle) unchanged.
+- `python -m pytest observatory/tests/unit/sensory/ -q` → **15 passed** (unchanged from session 1).
+- `python -m pytest observatory/tests/unit/ -q` → **136 passed + 2 skipped** (was 133 + 2 skipped + 3 failed; the 3 mqtt-reconnect failures fixed by `8c36fb9` — `_FakeSubscriber.messages_received_total = 0`).
+- `python -m pytest observatory/tests/component/ -m component -v` → **4 passed** (unchanged).
+- `python -m ruff check observatory/sensory/ observatory/config.py observatory/tests/unit/sensory/ observatory/tests/component/test_end_to_end.py` → **clean**. (`observatory/service.py` `F401: RingRecord` still pre-existing; not session-2 scope.)
+- Frontend: `cd observatory/web-src && npx vitest run` → **193 passed** across 29 test files (was 169 → +4 useChatPersistence + +5 api + +6 Transcript + +6 ChatInput; baseline ws-test fix added timer await without changing count). New chat tests: useChatPersistence 7 (hydrate / clamp / debounce position+size / unmount-cleanup / coalesce-window / malformed-JSON), api 5 (POST happy + speaker / 5xx body / network / parse-failure), Transcript 6 (filter / speaker / hive-text / audio-placeholder / dedupe / error placeholder), ChatInput 6 (whitespace-trim / Enter-submit-+-rekey / Shift+Enter newline / clear-after-success / fail-flip / bare-empty-Enter).
+- Frontend: `npx tsc -b` → clean. Production build not exercised this session (Task 12 territory).
+- New devDep: `@testing-library/user-event@^14` (first consumer; ChatInput tests).
 
 ## Suite + lint snapshot (end of session 7 — v3 ship)
 
@@ -81,24 +86,27 @@
 
 ## Next session resume protocol
 
-1. **v4 session 1 (backend + proposals) is complete.** Canonical resume prompt: `continue observatory v4 — session 2`. Session 2 covers Tasks 6–9 (frontend store extension + chat persistence + REST wrapper + Transcript/TranscriptTurn + ChatInput). Session 3 covers Tasks 10–13 (ChatOverlay + hotkey + App.tsx mount + verification/ship).
-2. `git log --oneline observatory/` shows the v4 session-1 task commits `370db6f` → `1c0084b` on top of the v3 ship history.
-3. **v4 session-2 starting state:**
-   - Backend POST `/sensory/text/in` is fully wired (Task 3 commit `cef8728`).
-   - SensoryPublisher connects to MQTT in the FastAPI lifespan; allowlist is `frozenset({"hive/external/perception"})`.
-   - `Settings` carries `chat_default_speaker` (default `"Larry"`), `chat_publish_qos` (default `1`), `chat_text_max_length` (default `4000`).
-   - Component test pins the round-trip < 500 ms against a real `eclipse-mosquitto:2` testcontainer.
-   - Two inert proposal YAMLs under `observatory/docs/proposals/` await Larry's cosign before regions react to chat input.
-4. **v4 session-2 entry checklist:**
-   - Read `observatory/docs/specs/2026-04-29-observatory-v4-chat-design.md` §6 (frontend chat surface) end-to-end. The §6.5 dedupe rule (envelope `id` round-trip) and §6.6 hotkey rules are the trickiest specifications.
-   - Read the v4 plan's Tasks 6–9 blocks (lines 1070–2170 of the plan).
-   - Run `PYTHONPATH=./src python -m pytest observatory/tests/unit/sensory/ -q` and `python -m pytest observatory/tests/component/ -m component -v` to confirm session-1 contracts are still green.
-   - The frontend has not been modified in v4 yet; v3 vitest suite remains 168 passed.
-5. **v4 session-1 deferrals (`observatory/memory/decisions.md` 2026-04-29):**
-   - JSONResponse drift correction for route 5xx body shape (already applied; documented).
-   - B008 module-level Depends hoist (`_PUBLISHER_DEP`/`_SETTINGS_DEP`); applies to future routes.
-   - 422 `RequestValidationError` path does not attach `Cache-Control: no-store` globally — no current test asserts it; revisit if a future spec section does.
-   - Code-quality reviewer's debuggability suggestions on the Task 4 component test (capture-thread exception forwarding, `pytest.fail` on queue empty, tighten `elapsed` window inside the `with` block) — non-blocking; defer.
+1. **v4 session 2 (frontend data layer) is complete.** Canonical resume prompt: `continue observatory v4 — session 3`. Session 3 covers Tasks 10–13 (ChatOverlay frame + drag + resize, useChatKeys `c` toggle / Esc dismiss, App.tsx mount + production build, integration verification + HANDOFF closure / v4 ships).
+2. `git log --oneline observatory/` shows the v4 session-2 task commits `dfbcf42` → `a146aac` (plus baseline-fixes `1d41d76` and `8c36fb9`) on top of session-1 history.
+3. **v4 session-3 starting state:**
+   - Backend POST `/sensory/text/in` fully wired (session 1).
+   - Store has the chat slice: `chatVisible`, `chatPosition`, `chatSize`, `pendingChatTurns: Record<string, PendingChatTurn>` plus 7 setters incl. the optimistic-turn lifecycle (`addPendingChatTurn` / `resolvePendingChatTurn` / `failPendingChatTurn` / `dropPendingChatTurn`). `State` and `PendingChatTurn` are exported.
+   - `chat/useChatPersistence.ts` hydrates+debounces position/size to `localStorage['observatory.chat.{position,size}']`, selector-scoped subscribe per dock-hook precedent.
+   - `chat/api.ts` exports `postChatText(text, speaker?)` and `ChatPostError`. Returns `{id, timestamp}` on 2xx, normalises 4xx/5xx/network/parse failures into `ChatPostError(kind, detail)`.
+   - `chat/Transcript.tsx` renders the filtered ring (perception + complete) unioned with `pendingChatTurns`, deduped at render time by envelope id; auto-scroll within 40 px.
+   - `chat/ChatInput.tsx` drives the optimistic lifecycle: Enter submits, Shift+Enter newlines, empty-trim suppressed, failed turns linger per spec §6.5.
+   - **None of the chat components are mounted in `App.tsx` yet** — Task 12's territory.
+4. **v4 session-3 entry checklist:**
+   - Read `observatory/docs/specs/2026-04-29-observatory-v4-chat-design.md` §6.3 (overlay drag/resize), §6.6 (hotkey + focus), §11 (mount placement).
+   - Read the v4 plan's Tasks 10–13 blocks (lines 2171–end of the plan).
+   - Run `cd observatory/web-src && npx vitest run` — should be 193 passed across 29 files. `npx tsc -b` should be clean.
+   - Run `PYTHONPATH=./src python -m pytest observatory/tests/unit/ -q` — 136 passed + 2 skipped (no longer 3 failures since baseline fix `8c36fb9`).
+5. **v4 session-2 deferrals (`observatory/memory/decisions.md` 2026-04-29):**
+   - **Suggestion-tier `resolvePendingChatTurn` overwrite hazard**: if `envelopeId` somehow already exists in the map (e.g. firehose echo lands in the ring AND resolves before POST-resolve runs), spread silently overwrites. Cheap guard `if (envelopeId in s.pendingChatTurns) return {};` deferred — the `Transcript.tsx` render-time dedupe already suppresses duplicates visually.
+   - **Auto-scroll consistency**: Transcript checks within-40 px only at turn-list change, vs `Messages.tsx`'s `followTailRef` from a scroll listener. Not a bug; reviewer-flagged consistency note. House-style unification can land alongside Messages.tsx refactor in a future iteration.
+   - **Selector-narrow optimisation**: `useStore((s) => s.envelopes)` re-renders Transcript on every push including non-transcript topics. Acceptable for chat surface load profile; revisit if the chat becomes a hot path under heavy firehose traffic.
+   - **`api.ts` test gaps (Suggestion)**: 422 FastAPI `{detail: [...]}` body, 4xx without `error`/`detail`, 5xx with non-JSON body. Code paths exist; tests don't exercise them. Add if a regression appears.
+   - Pre-existing `F401: RingRecord` in `observatory/service.py` still uncleaned — orthogonal to v4.
 6. **v3 post-ship checklist Larry may want to address in v4 or earlier:**
    - **Scene outline ring on Topics row click** — spec §6.1 line 171 / §8 lines 231-233. Deferred from Task 6 (requires scene-level state + FuzzyOrbs outline mesh + 15 s decay timer). Decisions.md entry logs the scope split.
    - **SystemMetrics tooltip `last-hb HH:MM:SS`** — spec §10.1 line 312 references a field that `glia/metrics.py::build_region_health_payload` doesn't currently emit. Either spec amends or glia extends. Decisions.md entry logged.
@@ -302,4 +310,5 @@ Plan Step 3 requires a real browser + live Hive broker. The Task 16 implementer 
 | 2026-04-22 | Session 5 ships v2. Opened with the deferred Task 12 reviews (review-fix `1fc7a1f`): slide-out animation via a 300 ms `displayName` hold, `useStatsHistory` tail-compare dedup so sparklines sample heartbeats not envelopes, `shutdown` phase badge branch, shared `fmtBytes` helper. Then Tasks 13 → 14 → 15 with subagent-driven-development: fresh implementer per task, two-stage review (spec + code-quality) after each. Task 13 (`10b90c0` + review-fix `a98a39e`): Prompt + STM sections with auto-refetch on phase/last_error_ts, plus in-repo `JsonTree` recursive renderer; review-fix skipped the first-render double-fetch and swapped string rendering to `JSON.stringify` for escape-safety. Task 14 (`6a8df79`, no review-fix — APPROVED with Suggestions only): Messages section with monotonic `envelopesReceivedTotal`-gated incremental scan (fixes plan's length-plateau race, same class as v1 Counters'), stable `observed_at\|topic` expand-state keys, auto-scroll follow-tail within 40 px. Task 15 (this commit): HANDOFF bump only; no code changes. Suite grew to 92 unit + 2 component Python + 84 frontend vitest (was 78 pre-session-5). Canonical resume prompt pivoted to v3. |
 | 2026-04-22 | Session 6: v3 scoping. Brainstormed real-time-visibility MVP with Larry (visual companion mockups for layout; picked bottom-dock A with collapsible/resizable, 3D primary, click-region-popup). Audited Hive's MQTT surface — confirmed all v3 needs are already on the wire (cognitive/sensory/motor/metacog/self/modulator/etc. + retained metrics + heartbeat); no Hive-side publish changes required. Found post-v2 staleness: `ecd8a94` made `prompt.md` immutable with `memory/appendices/rolling.md` as the rolling appendix, and `155854d` dropped `hive/self/developmental_stage` + `hive/self/age` (both still referenced by current SelfPanel). Wrote v3 spec (`7d5762e`, 477 lines) — six-item MVP: bottom dock (Firehose + Topics + Metacog tabs), inspector Appendix section, HUD SystemMetrics + expanded SelfState, full-envelope JsonTree in Messages, unified dock-row→scene-focus→popup interaction. Wrote v3 plan (`7813c92`, 11 tasks, ~2950 lines). Next session: execute via subagent-driven-development. Canonical resume prompt: `continue observatory v3 implementation`. |
 | 2026-04-22 | Session 7 ships v3. Executed all 11 tasks via `superpowers:subagent-driven-development`: fresh implementer per task, two-stage review after each (spec-compliance `general-purpose` + code-quality `superpowers:code-reviewer`), fix-loop on anything Important+. Total: 11 task commits + 9 review-fix commits + 1 doc-fix + this ship commit. Suite grew from 92 unit + 2 component + 84 frontend → 99 unit + 3 component + 168 frontend. Ruff + tsc clean throughout; production build emits 1.08 MB JS bundle. Significant arbitrations along the way: Task 1 spec §9.2 literal 404 body (`appendix_missing`) won over plan's reuse of `_error_detail`; Task 6 10-s sparkline buckets won over plan's 1-tick-per-bucket code; Task 9 SystemMetrics `region_health.per_region` schema reconciled against `glia/metrics.py` actual shape `{status, consecutive_misses, uptime_s}` rather than plan's bare-string fixture; Task 10 pendingEnvelopeKey mount race fixed by adding `filtered` to the consumption effect's deps. Larry course-corrected once early in session ("where there is confusion or ambiguity you should be asking me") — subsequent arbitration of spec-vs-plan conflicts surfaced to him explicitly. All 10 implementer prompts + this Task 11 prompt-of-record stored at `observatory/prompts/v3-task-NN-<slug>.md`. Decisions.md entries appended through session. Canonical resume prompt pivoted to `continue observatory v4` — v4 not yet scoped. |
+| 2026-04-29 | Session 9 — v4 session 2: frontend data layer landed. Executed Tasks 6–9 via `superpowers:subagent-driven-development`: fresh implementer per task, two-stage review (spec-compliance `general-purpose` + code-quality `superpowers:code-reviewer`) on each, fix-loops on Important+ findings (Tasks 6, 7, 9 all required one review-fix; Task 8 APPROVED both stages on first pass). Session opened with a stop-and-ask: 4 pre-existing baseline failures (3 `_FakeSubscriber.messages_received_total` + 1 `ws.test.ts` batcher-await) were post-v3-ship drift unrelated to session 1; Larry authorised committing the uncommitted Sparks length-plateau fix and repairing the 4 failures before starting Tasks 6–9. Three baseline commits (`1d41d76`, `8c36fb9`) plus 4 task commits + 3 review-fix commits + this HANDOFF closure. Suite grew 169 → 193 vitest (+24: 7 useChatPersistence + 5 api + 6 Transcript + 6 ChatInput); Python pre-existing failures cleared (133 + 2 skipped + 3 failed → 136 + 2 skipped). `tsc -b` clean throughout. Significant arbitrations: Task 6 selector-scoped subscribe + cleanup (matched dock-hook precedent the implementer initially deviated from); Task 7 success-path `resp.json()` guarded with `ChatPostError('parse', ...)` + `{id, timestamp}` shape validation; Task 9 review-confused failed-turn dismissal as a hole — re-read of spec §6.5 confirmed lingering failure IS the dismissal protocol by design ("user re-types. No retry storms."). New devDep: `@testing-library/user-event@^14`. All 4 implementer prompts stored at `observatory/prompts/v4-task-NN-<slug>.md`. 6 new decisions.md entries appended. Next: `continue observatory v4 — session 3` covers Tasks 10–13 (ChatOverlay + hotkey + App.tsx mount + verification/ship). |
 | 2026-04-29 | Session 8 — v4 session 1: backend + proposals landed. Executed Tasks 1–5 via `superpowers:subagent-driven-development`: fresh implementer per task, two-stage review (spec-compliance `general-purpose` + code-quality `superpowers:code-reviewer`) on Tasks 1–4. Task 5 (two inert YAML proposal artifacts) committed directly without the review pair — the content is verbatim from spec §5.1/§5.2 and has no logic. Total session-8 commits: 5 task commits, no review-fix commits, no doc-fix commits. Every review-pair came back APPROVED on first pass; suggestions deferred to decisions.md. Significant arbitrations: Task 3 pre-approved JSONResponse drift (route returns `JSONResponse` directly for 5xx so the route's bare-FastAPI() unit-test fixture sees the flat `{error, message}` body shape regardless of the wider app's exception handler — without this, the plan-verbatim `raise HTTPException(detail={...})` would yield `{detail: {...}}` and break `body["error"]` assertions); Task 3 module-level `_PUBLISHER_DEP`/`_SETTINGS_DEP` Depends singletons to dodge ruff B008 cleanly (matches FastAPI DI semantics, B008-clean). Pre-existing 3 `test_mqtt_reconnect.py::TestReconnectLoop` failures (introduced by `83b0bd3`'s stall watchdog `_FakeSubscriber` gap) confirmed orthogonal to v4 — flagged for a follow-up fix. Component test verified round-trip < 500 ms over real `eclipse-mosquitto:2` testcontainer. Suite snapshot: sensory unit 15 passed (4 + 4 + 7), full unit 133 passed + 2 skipped + 3 pre-existing failed, component 4 passed (3 prior + 1 new v4), ruff clean on v4 paths, frontend untouched. All 4 implementer prompts (Tasks 1–4) stored at `observatory/prompts/v4-task-NN-<slug>.md`. Decisions.md entries appended (4 new). Next: `continue observatory v4 — session 2` covers Tasks 6–9 (frontend store + chat persistence + REST wrapper + Transcript/TranscriptTurn + ChatInput). |
