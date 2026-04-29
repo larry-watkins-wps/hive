@@ -30,6 +30,8 @@ from observatory.region_reader import RegionReader
 from observatory.region_registry import RegionRegistry
 from observatory.retained_cache import RetainedCache
 from observatory.ring_buffer import RingBuffer
+from observatory.sensory.publisher import SensoryPublisher
+from observatory.sensory.routes import build_sensory_router
 from observatory.types import RingRecord
 from observatory.ws import ConnectionHub, build_ws_router
 
@@ -300,6 +302,11 @@ def build_app(settings: Settings) -> FastAPI:  # noqa: PLR0915 — composition f
 
         task.add_done_callback(_on_mqtt_task_done)
 
+        sensory_publisher = SensoryPublisher(settings)
+        await sensory_publisher.connect()
+        _app.state.sensory_publisher = sensory_publisher
+        _app.state.settings = settings
+
         try:
             yield
         finally:
@@ -308,6 +315,7 @@ def build_app(settings: Settings) -> FastAPI:  # noqa: PLR0915 — composition f
             # a stuck broker-disconnect doesn't hang shutdown. CancelledError
             # and TimeoutError are both swallowed — the task is being torn
             # down and neither outcome is actionable here.
+            await sensory_publisher.disconnect()
             stop_event.set()
             await hub.stop()
             if task is not None:
@@ -351,6 +359,7 @@ def build_app(settings: Settings) -> FastAPI:  # noqa: PLR0915 — composition f
     # resolves routes in registration order and a `/` mount registered
     # first would shadow `/api/*` and `/ws`.
     app.include_router(build_router(region_registry=registry))
+    app.include_router(build_sensory_router())
     app.include_router(build_ws_router(hub))
 
     web_dir = Path(__file__).parent / "web"
