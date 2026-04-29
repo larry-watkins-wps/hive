@@ -29,6 +29,9 @@ class Settings:
     mqtt_url: str = "mqtt://127.0.0.1:1883"
     regions_root: Path = Path("regions")
     ring_buffer_size: int = 10000
+    chat_default_speaker: str = "Larry"
+    chat_publish_qos: int = 1
+    chat_text_max_length: int = 4000
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -44,4 +47,13 @@ class Settings:
                 os.environ.get("OBSERVATORY_REGIONS_ROOT", str(cls.regions_root))
             ),
             ring_buffer_size=_int_env("OBSERVATORY_RING_BUFFER_SIZE", cls.ring_buffer_size),
+            chat_default_speaker=os.environ.get(
+                "OBSERVATORY_CHAT_DEFAULT_SPEAKER", cls.chat_default_speaker
+            ),
+            chat_publish_qos=_int_env(
+                "OBSERVATORY_CHAT_PUBLISH_QOS", cls.chat_publish_qos
+            ),
+            chat_text_max_length=_int_env(
+                "OBSERVATORY_CHAT_TEXT_MAX_LENGTH", cls.chat_text_max_length
+            ),
         )
