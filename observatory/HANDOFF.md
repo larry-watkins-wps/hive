@@ -1,8 +1,8 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-22 (session 7 — v3 SHIPPED)*
+*Last updated: 2026-04-29 (session 8 — v4 session 1: backend + proposals landed)*
 
-**Canonical resume prompt:** `continue observatory v4` (v4 not yet scoped)
+**Canonical resume prompt:** `continue observatory v4 — session 2`
 
 ---
 
@@ -46,6 +46,30 @@
 | v3 Task 10 — Messages JsonTree expand + pendingEnvelopeKey | ✅ Complete | `abd8556` + review-fix `f12221d` (pendingEnvelopeKey mount race — filtered in dep array) |
 | v3 Task 11 — integration + verification + HANDOFF closure | ✅ Complete | this commit (component E2E /appendix test + HANDOFF bump) |
 | **v3 — SHIPPED** | ✅ | 11 tasks + 9 review-fix commits + 1 doc-fix + 1 ship commit |
+| v4 spec written | ✅ Complete | `observatory/docs/specs/2026-04-29-observatory-v4-chat-design.md` · commit `5144d97` (sensory bridge + floating overlay) |
+| v4 plan written | ✅ Complete | `observatory/docs/plans/2026-04-29-observatory-v4-plan.md` (13 tasks) · commit `2d37be7` |
+| v4 Task 1 — sensory module skeleton + Settings chat fields | ✅ Complete | `370db6f` (no review-fix; APPROVED both stages with Suggestions) |
+| v4 Task 2 — SensoryPublisher (aiomqtt + allowlist + lifecycle) | ✅ Complete | `473dd30` (no review-fix; APPROVED both stages with Suggestions) |
+| v4 Task 3 — POST /sensory/text/in route + service.py wiring | ✅ Complete | `cef8728` (no review-fix; APPROVED both stages — pre-approved JSONResponse drift for stand-alone test contract; module-level Depends singletons for B008) |
+| v4 Task 4 — component test: POST → real broker round-trip | ✅ Complete | `f4f3558` (no review-fix; APPROVED both stages; full component suite 4 passed; round-trip verified < 500 ms over real testcontainers `eclipse-mosquitto:2`) |
+| v4 Task 5 — code-change proposal artifacts (assoc_cortex sub + broca payload) | ✅ Complete | `1c0084b` — two inert YAML payloads under `observatory/docs/proposals/`; verbatim from spec §5.1/§5.2; YAML round-trip parsed; review pair skipped (no logic to review) |
+| **v4 backend + proposals — complete, 13 unit (sensory) + 1 component (round-trip) tests passing** | ✅ | session 1 of 3 |
+| v4 Task 6 — frontend store extension + chat persistence | ⏳ Pending | session 2 |
+| v4 Task 7 — frontend api.ts (POST wrapper) | ⏳ Pending | session 2 |
+| v4 Task 8 — Transcript + TranscriptTurn | ⏳ Pending | session 2 |
+| v4 Task 9 — ChatInput | ⏳ Pending | session 2 |
+| v4 Task 10 — ChatOverlay (frame + drag + resize) | ⏳ Pending | session 3 |
+| v4 Task 11 — useChatKeys hotkey | ⏳ Pending | session 3 |
+| v4 Task 12 — App.tsx mount + production build | ⏳ Pending | session 3 |
+| v4 Task 13 — verification + HANDOFF closure (v4 ships) | ⏳ Pending | session 3 |
+
+## Suite + lint snapshot (end of session 8 — v4 session 1)
+
+- `python -m pytest observatory/tests/unit/sensory/ -q` → **15 passed** (Task 1: 4 + Task 2: 4 + Task 3: 7).
+- `python -m pytest observatory/tests/unit/ -q` → **133 passed + 2 skipped + 3 failed**. The 3 failures are pre-existing in `observatory/tests/unit/test_mqtt_reconnect.py::TestReconnectLoop` (introduced by `83b0bd3`'s stall watchdog: `_FakeSubscriber` lacks `messages_received_total`); orthogonal to v4 — see decisions.md 2026-04-29.
+- `python -m pytest observatory/tests/component/ -m component -v` → **4 passed** (3 existing v1/v2/v3 + 1 new v4 round-trip; full suite 1.57 s end-to-end including broker boot via `eclipse-mosquitto:2`).
+- `python -m ruff check observatory/sensory/ observatory/config.py observatory/tests/unit/sensory/ observatory/tests/component/test_end_to_end.py` → **clean**. (`observatory/service.py` carries one pre-existing `F401: RingRecord` import — predates v4; out of scope.)
+- Frontend: not modified in session 1; v3 baseline (168 vitest + 1.08 MB JS bundle) unchanged.
 
 ## Suite + lint snapshot (end of session 7 — v3 ship)
 
@@ -57,9 +81,25 @@
 
 ## Next session resume protocol
 
-1. **v3 is shipped.** Canonical resume prompt for the next phase: `continue observatory v4` — v4 is not yet scoped. Start with a brainstorm session before writing a v4 spec.
-2. `git log --oneline -25 observatory/` should show the v3 task commits + review-fixes culminating in the v3 ship commit. v2 and v1 commits are older history.
-3. v3 post-ship checklist Larry may want to address in v4 or earlier:
+1. **v4 session 1 (backend + proposals) is complete.** Canonical resume prompt: `continue observatory v4 — session 2`. Session 2 covers Tasks 6–9 (frontend store extension + chat persistence + REST wrapper + Transcript/TranscriptTurn + ChatInput). Session 3 covers Tasks 10–13 (ChatOverlay + hotkey + App.tsx mount + verification/ship).
+2. `git log --oneline observatory/` shows the v4 session-1 task commits `370db6f` → `1c0084b` on top of the v3 ship history.
+3. **v4 session-2 starting state:**
+   - Backend POST `/sensory/text/in` is fully wired (Task 3 commit `cef8728`).
+   - SensoryPublisher connects to MQTT in the FastAPI lifespan; allowlist is `frozenset({"hive/external/perception"})`.
+   - `Settings` carries `chat_default_speaker` (default `"Larry"`), `chat_publish_qos` (default `1`), `chat_text_max_length` (default `4000`).
+   - Component test pins the round-trip < 500 ms against a real `eclipse-mosquitto:2` testcontainer.
+   - Two inert proposal YAMLs under `observatory/docs/proposals/` await Larry's cosign before regions react to chat input.
+4. **v4 session-2 entry checklist:**
+   - Read `observatory/docs/specs/2026-04-29-observatory-v4-chat-design.md` §6 (frontend chat surface) end-to-end. The §6.5 dedupe rule (envelope `id` round-trip) and §6.6 hotkey rules are the trickiest specifications.
+   - Read the v4 plan's Tasks 6–9 blocks (lines 1070–2170 of the plan).
+   - Run `PYTHONPATH=./src python -m pytest observatory/tests/unit/sensory/ -q` and `python -m pytest observatory/tests/component/ -m component -v` to confirm session-1 contracts are still green.
+   - The frontend has not been modified in v4 yet; v3 vitest suite remains 168 passed.
+5. **v4 session-1 deferrals (`observatory/memory/decisions.md` 2026-04-29):**
+   - JSONResponse drift correction for route 5xx body shape (already applied; documented).
+   - B008 module-level Depends hoist (`_PUBLISHER_DEP`/`_SETTINGS_DEP`); applies to future routes.
+   - 422 `RequestValidationError` path does not attach `Cache-Control: no-store` globally — no current test asserts it; revisit if a future spec section does.
+   - Code-quality reviewer's debuggability suggestions on the Task 4 component test (capture-thread exception forwarding, `pytest.fail` on queue empty, tighten `elapsed` window inside the `with` block) — non-blocking; defer.
+6. **v3 post-ship checklist Larry may want to address in v4 or earlier:**
    - **Scene outline ring on Topics row click** — spec §6.1 line 171 / §8 lines 231-233. Deferred from Task 6 (requires scene-level state + FuzzyOrbs outline mesh + 15 s decay timer). Decisions.md entry logs the scope split.
    - **SystemMetrics tooltip `last-hb HH:MM:SS`** — spec §10.1 line 312 references a field that `glia/metrics.py::build_region_health_payload` doesn't currently emit. Either spec amends or glia extends. Decisions.md entry logged.
    - **Identity render as key-value when dict-shaped** — spec §10.2 line 324 "key-value list of payload's top-level string/number fields". Current Hive publishes `{"value": "<text>"}` which the store coerces to a bare string; SelfState renders as paragraph. Object-shaped identity WOULD render as key-value correctly via the existing object branch.
@@ -72,9 +112,11 @@
    - Appendix: entries newest-first, 360 px max-height, empty state on fresh regions, reload button.
    - HUD: SystemMetrics renders from retained topics, region-health heatmap colors correct, SelfState tab switching, tabs hide missing data with empty-state copy.
    - Messages: chevron expand, pendingEnvelopeKey scrolls + expands the target row, auto-scroll-to-bottom still works for new envelopes, follow-tail yields to pendingKey scroll.
-5. Authoritative references (v3):
-   - Spec: [observatory/docs/specs/2026-04-22-observatory-v3-design.md](docs/specs/2026-04-22-observatory-v3-design.md)
-   - Plan: [observatory/docs/plans/2026-04-22-observatory-v3-plan.md](docs/plans/2026-04-22-observatory-v3-plan.md)
+5. Authoritative references:
+   - v4 spec: [observatory/docs/specs/2026-04-29-observatory-v4-chat-design.md](docs/specs/2026-04-29-observatory-v4-chat-design.md)
+   - v4 plan: [observatory/docs/plans/2026-04-29-observatory-v4-plan.md](docs/plans/2026-04-29-observatory-v4-plan.md)
+   - v3 spec: [observatory/docs/specs/2026-04-22-observatory-v3-design.md](docs/specs/2026-04-22-observatory-v3-design.md)
+   - v3 plan: [observatory/docs/plans/2026-04-22-observatory-v3-plan.md](docs/plans/2026-04-22-observatory-v3-plan.md)
    - Project CLAUDE.md: [observatory/CLAUDE.md](CLAUDE.md)
 
 ## v1 legacy suite snapshot (session 3 baseline, unchanged)
@@ -260,3 +302,4 @@ Plan Step 3 requires a real browser + live Hive broker. The Task 16 implementer 
 | 2026-04-22 | Session 5 ships v2. Opened with the deferred Task 12 reviews (review-fix `1fc7a1f`): slide-out animation via a 300 ms `displayName` hold, `useStatsHistory` tail-compare dedup so sparklines sample heartbeats not envelopes, `shutdown` phase badge branch, shared `fmtBytes` helper. Then Tasks 13 → 14 → 15 with subagent-driven-development: fresh implementer per task, two-stage review (spec + code-quality) after each. Task 13 (`10b90c0` + review-fix `a98a39e`): Prompt + STM sections with auto-refetch on phase/last_error_ts, plus in-repo `JsonTree` recursive renderer; review-fix skipped the first-render double-fetch and swapped string rendering to `JSON.stringify` for escape-safety. Task 14 (`6a8df79`, no review-fix — APPROVED with Suggestions only): Messages section with monotonic `envelopesReceivedTotal`-gated incremental scan (fixes plan's length-plateau race, same class as v1 Counters'), stable `observed_at\|topic` expand-state keys, auto-scroll follow-tail within 40 px. Task 15 (this commit): HANDOFF bump only; no code changes. Suite grew to 92 unit + 2 component Python + 84 frontend vitest (was 78 pre-session-5). Canonical resume prompt pivoted to v3. |
 | 2026-04-22 | Session 6: v3 scoping. Brainstormed real-time-visibility MVP with Larry (visual companion mockups for layout; picked bottom-dock A with collapsible/resizable, 3D primary, click-region-popup). Audited Hive's MQTT surface — confirmed all v3 needs are already on the wire (cognitive/sensory/motor/metacog/self/modulator/etc. + retained metrics + heartbeat); no Hive-side publish changes required. Found post-v2 staleness: `ecd8a94` made `prompt.md` immutable with `memory/appendices/rolling.md` as the rolling appendix, and `155854d` dropped `hive/self/developmental_stage` + `hive/self/age` (both still referenced by current SelfPanel). Wrote v3 spec (`7d5762e`, 477 lines) — six-item MVP: bottom dock (Firehose + Topics + Metacog tabs), inspector Appendix section, HUD SystemMetrics + expanded SelfState, full-envelope JsonTree in Messages, unified dock-row→scene-focus→popup interaction. Wrote v3 plan (`7813c92`, 11 tasks, ~2950 lines). Next session: execute via subagent-driven-development. Canonical resume prompt: `continue observatory v3 implementation`. |
 | 2026-04-22 | Session 7 ships v3. Executed all 11 tasks via `superpowers:subagent-driven-development`: fresh implementer per task, two-stage review after each (spec-compliance `general-purpose` + code-quality `superpowers:code-reviewer`), fix-loop on anything Important+. Total: 11 task commits + 9 review-fix commits + 1 doc-fix + this ship commit. Suite grew from 92 unit + 2 component + 84 frontend → 99 unit + 3 component + 168 frontend. Ruff + tsc clean throughout; production build emits 1.08 MB JS bundle. Significant arbitrations along the way: Task 1 spec §9.2 literal 404 body (`appendix_missing`) won over plan's reuse of `_error_detail`; Task 6 10-s sparkline buckets won over plan's 1-tick-per-bucket code; Task 9 SystemMetrics `region_health.per_region` schema reconciled against `glia/metrics.py` actual shape `{status, consecutive_misses, uptime_s}` rather than plan's bare-string fixture; Task 10 pendingEnvelopeKey mount race fixed by adding `filtered` to the consumption effect's deps. Larry course-corrected once early in session ("where there is confusion or ambiguity you should be asking me") — subsequent arbitration of spec-vs-plan conflicts surfaced to him explicitly. All 10 implementer prompts + this Task 11 prompt-of-record stored at `observatory/prompts/v3-task-NN-<slug>.md`. Decisions.md entries appended through session. Canonical resume prompt pivoted to `continue observatory v4` — v4 not yet scoped. |
+| 2026-04-29 | Session 8 — v4 session 1: backend + proposals landed. Executed Tasks 1–5 via `superpowers:subagent-driven-development`: fresh implementer per task, two-stage review (spec-compliance `general-purpose` + code-quality `superpowers:code-reviewer`) on Tasks 1–4. Task 5 (two inert YAML proposal artifacts) committed directly without the review pair — the content is verbatim from spec §5.1/§5.2 and has no logic. Total session-8 commits: 5 task commits, no review-fix commits, no doc-fix commits. Every review-pair came back APPROVED on first pass; suggestions deferred to decisions.md. Significant arbitrations: Task 3 pre-approved JSONResponse drift (route returns `JSONResponse` directly for 5xx so the route's bare-FastAPI() unit-test fixture sees the flat `{error, message}` body shape regardless of the wider app's exception handler — without this, the plan-verbatim `raise HTTPException(detail={...})` would yield `{detail: {...}}` and break `body["error"]` assertions); Task 3 module-level `_PUBLISHER_DEP`/`_SETTINGS_DEP` Depends singletons to dodge ruff B008 cleanly (matches FastAPI DI semantics, B008-clean). Pre-existing 3 `test_mqtt_reconnect.py::TestReconnectLoop` failures (introduced by `83b0bd3`'s stall watchdog `_FakeSubscriber` gap) confirmed orthogonal to v4 — flagged for a follow-up fix. Component test verified round-trip < 500 ms over real `eclipse-mosquitto:2` testcontainer. Suite snapshot: sensory unit 15 passed (4 + 4 + 7), full unit 133 passed + 2 skipped + 3 pre-existing failed, component 4 passed (3 prior + 1 new v4), ruff clean on v4 paths, frontend untouched. All 4 implementer prompts (Tasks 1–4) stored at `observatory/prompts/v4-task-NN-<slug>.md`. Decisions.md entries appended (4 new). Next: `continue observatory v4 — session 2` covers Tasks 6–9 (frontend store + chat persistence + REST wrapper + Transcript/TranscriptTurn + ChatInput). |
