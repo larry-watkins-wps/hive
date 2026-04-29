@@ -103,19 +103,23 @@ export function ChatOverlay() {
     }
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
     };
   }, [setPos, setSize, size.w, size.h]);
 
   if (!visible) return null;
 
   function onHeaderDown(e: RPE) {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     dragStart.current = { cx: e.clientX, cy: e.clientY, px: pos.x, py: pos.y };
   }
   function onResizeDown(e: RPE) {
     e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     resizeStart.current = { cx: e.clientX, cy: e.clientY, w: size.w, h: size.h };
   }
 

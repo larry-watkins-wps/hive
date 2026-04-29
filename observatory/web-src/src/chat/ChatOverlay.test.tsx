@@ -70,8 +70,8 @@ describe('ChatOverlay', () => {
     fireEvent.pointerMove(window, { clientX: 999_999, clientY: 999_999 });
     fireEvent.pointerUp(window);
     const pos = useStore.getState().chatPosition;
-    expect(pos.x).toBeLessThanOrEqual(1200 - 320 - 16);
-    expect(pos.y).toBeLessThanOrEqual(800 - 260 - 16);
+    expect(pos.x).toBe(1200 - 320 - 16);  // 864 — clamped to maxX
+    expect(pos.y).toBe(800 - 260 - 16);   // 524 — clamped to maxY
   });
 
   it('resize from corner handle updates chatSize and clamps to range', () => {
