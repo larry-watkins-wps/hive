@@ -46,7 +46,22 @@ type Snapshot = {
   server_version: string;
 };
 
-type State = {
+export type PendingChatTurn = {
+  /** Stable id for React keys and lookup. Initially a client uuid; replaced
+   * by the envelope id once POST returns. */
+  id: string;
+  text: string;
+  speaker: string;
+  /** ISO timestamp string. Initially the local time at submit; replaced
+   * with the server-assigned envelope timestamp on POST success. */
+  timestamp: string;
+  /** Lifecycle state for rendering. */
+  status: 'sending' | 'sent' | 'failed';
+  /** Failure reason when status === 'failed'. */
+  errorReason?: string;
+};
+
+export type State = {
   regions: Record<string, RegionMeta>;
   envelopes: Envelope[];
   envelopesReceivedTotal: number;
@@ -82,6 +97,24 @@ type State = {
   setFirehoseFilter: (s: string) => void;
   toggleRowExpand: (id: string) => void;
   setPendingEnvelopeKey: (key: string | null) => void;
+
+  // Chat slice — see spec §6.2, §6.5
+  chatVisible: boolean;
+  chatPosition: { x: number; y: number };  // viewport px (top-left of overlay)
+  chatSize: { w: number; h: number };
+  /** Optimistic user turns awaiting firehose echo. Keyed by:
+   *  - temporary client id while the POST is in flight (no envelope id yet)
+   *  - envelope id once POST returns
+   * Dropped when an envelope with the same id arrives in the firehose ring. */
+  pendingChatTurns: Record<string, PendingChatTurn>;
+
+  setChatVisible: (v: boolean) => void;
+  setChatPosition: (p: { x: number; y: number }) => void;
+  setChatSize: (s: { w: number; h: number }) => void;
+  addPendingChatTurn: (turn: PendingChatTurn) => void;
+  resolvePendingChatTurn: (clientId: string, envelopeId: string, timestamp: string) => void;
+  failPendingChatTurn: (clientId: string, reason: string) => void;
+  dropPendingChatTurn: (id: string) => void;
 };
 
 const RING_CAP = 5000;
@@ -136,6 +169,10 @@ export function createStore() {
     firehoseFilter: '',
     expandedRowIds: new Set<string>(),
     pendingEnvelopeKey: null,
+    chatVisible: false,
+    chatPosition: { x: 0, y: 16 },     // x is recomputed lazily on first open
+    chatSize: { w: 320, h: 260 },
+    pendingChatTurns: {},
     applySnapshot: (s) => set({
       regions: s.regions,
       envelopes: s.recent,
@@ -223,6 +260,37 @@ export function createStore() {
       set({ expandedRowIds: next });
     },
     setPendingEnvelopeKey: (key) => set({ pendingEnvelopeKey: key }),
+    setChatVisible: (v) => set({ chatVisible: v }),
+    setChatPosition: (p) => set({ chatPosition: p }),
+    setChatSize: (s) => set({ chatSize: s }),
+    addPendingChatTurn: (turn) => set((s) => ({
+      pendingChatTurns: { ...s.pendingChatTurns, [turn.id]: turn },
+    })),
+    resolvePendingChatTurn: (clientId, envelopeId, timestamp) => set((s) => {
+      const existing = s.pendingChatTurns[clientId];
+      if (!existing) return {};
+      const { [clientId]: _, ...rest } = s.pendingChatTurns;
+      return {
+        pendingChatTurns: {
+          ...rest,
+          [envelopeId]: { ...existing, id: envelopeId, timestamp, status: 'sent' },
+        },
+      };
+    }),
+    failPendingChatTurn: (clientId, reason) => set((s) => {
+      const existing = s.pendingChatTurns[clientId];
+      if (!existing) return {};
+      return {
+        pendingChatTurns: {
+          ...s.pendingChatTurns,
+          [clientId]: { ...existing, status: 'failed', errorReason: reason },
+        },
+      };
+    }),
+    dropPendingChatTurn: (id) => set((s) => {
+      const { [id]: _, ...rest } = s.pendingChatTurns;
+      return { pendingChatTurns: rest };
+    }),
     })),
   );
 }
