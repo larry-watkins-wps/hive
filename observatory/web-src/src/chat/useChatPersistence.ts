@@ -6,14 +6,33 @@
  * shrunk between sessions. Spec §6.2.
  */
 import { useEffect, useRef } from 'react';
-import type { StoreApi } from 'zustand';
-
-import type { State } from '../store';
 
 const POSITION_KEY = 'observatory.chat.position';
 const SIZE_KEY = 'observatory.chat.size';
 const DEBOUNCE_MS = 200;
 const VIEWPORT_MARGIN = 16;
+
+/**
+ * Minimal shape of the store this hook needs. The `subscribe` signature
+ * reflects the overload added by `subscribeWithSelector` middleware in
+ * `store.ts`: a selector + listener + optional equalityFn. Mirrors the
+ * `DockSlice` / `AnyStore` pattern in useDockPersistence.ts.
+ */
+type ChatStoreSlice = {
+  chatPosition: { x: number; y: number };
+  chatSize: { w: number; h: number };
+  setChatPosition: (p: { x: number; y: number }) => void;
+  setChatSize: (s: { w: number; h: number }) => void;
+};
+
+type AnyStore = {
+  getState: () => ChatStoreSlice;
+  subscribe: <U>(
+    selector: (state: ChatStoreSlice) => U,
+    listener: (selected: U, previous: U) => void,
+    options?: { equalityFn?: (a: U, b: U) => boolean; fireImmediately?: boolean },
+  ) => () => void;
+};
 
 function clampPosition(
   pos: { x: number; y: number },
@@ -27,7 +46,7 @@ function clampPosition(
   };
 }
 
-export function useChatPersistence(store: StoreApi<State>): void {
+export function useChatPersistence(store: AnyStore): void {
   const hydratedRef = useRef(false);
   const posTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sizeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,25 +80,41 @@ export function useChatPersistence(store: StoreApi<State>): void {
     }
   }, [store]);
 
-  // Debounced writes for position.
+  // Debounced writes for position. Selector overload scopes the
+  // subscription to chatPosition only, so high-frequency pushEnvelope
+  // ticks (firehose rates) do not traverse this listener.
   useEffect(() => {
-    return store.subscribe((s, prev) => {
-      if (s.chatPosition === prev.chatPosition) return;
+    const unsub = store.subscribe(
+      (s) => s.chatPosition,
+      (next, prev) => {
+        if (next === prev) return;
+        if (posTimer.current) clearTimeout(posTimer.current);
+        posTimer.current = setTimeout(() => {
+          localStorage.setItem(POSITION_KEY, JSON.stringify(next));
+        }, DEBOUNCE_MS);
+      },
+    );
+    return () => {
+      unsub();
       if (posTimer.current) clearTimeout(posTimer.current);
-      posTimer.current = setTimeout(() => {
-        localStorage.setItem(POSITION_KEY, JSON.stringify(s.chatPosition));
-      }, DEBOUNCE_MS);
-    });
+    };
   }, [store]);
 
   // Debounced writes for size.
   useEffect(() => {
-    return store.subscribe((s, prev) => {
-      if (s.chatSize === prev.chatSize) return;
+    const unsub = store.subscribe(
+      (s) => s.chatSize,
+      (next, prev) => {
+        if (next === prev) return;
+        if (sizeTimer.current) clearTimeout(sizeTimer.current);
+        sizeTimer.current = setTimeout(() => {
+          localStorage.setItem(SIZE_KEY, JSON.stringify(next));
+        }, DEBOUNCE_MS);
+      },
+    );
+    return () => {
+      unsub();
       if (sizeTimer.current) clearTimeout(sizeTimer.current);
-      sizeTimer.current = setTimeout(() => {
-        localStorage.setItem(SIZE_KEY, JSON.stringify(s.chatSize));
-      }, DEBOUNCE_MS);
-    });
+    };
   }, [store]);
 }

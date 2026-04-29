@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react';
+import { cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useStore } from '../store';
@@ -10,6 +10,12 @@ describe('useChatPersistence', () => {
     vi.useFakeTimers();
   });
   afterEach(() => {
+    // Unmount any hooks rendered during the test so their subscribe
+    // cleanup runs and pending debounce timers are cleared. Without
+    // this, leaked subscriptions from earlier tests fire on later
+    // setChatPosition / setChatSize calls (the singleton `useStore`
+    // is shared across tests).
+    cleanup();
     vi.useRealTimers();
   });
 
@@ -53,5 +59,38 @@ describe('useChatPersistence', () => {
     vi.advanceTimersByTime(201);
     expect(JSON.parse(localStorage.getItem('observatory.chat.size')!))
       .toEqual({ w: 500, h: 350 });
+  });
+
+  it('does not write if unmounted before the debounce fires', () => {
+    const { unmount } = renderHook(() => useChatPersistence(useStore));
+    useStore.getState().setChatPosition({ x: 123, y: 234 });
+    // Mid-debounce: timer scheduled but not yet fired.
+    vi.advanceTimersByTime(50);
+    unmount();
+    // Push past the debounce window — cleanup must have cleared the timer.
+    vi.advanceTimersByTime(500);
+    expect(localStorage.getItem('observatory.chat.position')).toBeNull();
+  });
+
+  it('coalesces rapid position changes within the debounce window', () => {
+    renderHook(() => useChatPersistence(useStore));
+    useStore.getState().setChatPosition({ x: 10, y: 10 });
+    vi.advanceTimersByTime(100);
+    useStore.getState().setChatPosition({ x: 50, y: 60 });
+    // Still within the window after the second set; no write yet.
+    vi.advanceTimersByTime(100);
+    expect(localStorage.getItem('observatory.chat.position')).toBeNull();
+    // Past the second set's window: exactly one write with the latest value.
+    vi.advanceTimersByTime(150);
+    expect(JSON.parse(localStorage.getItem('observatory.chat.position')!))
+      .toEqual({ x: 50, y: 60 });
+  });
+
+  it('falls back to defaults silently when localStorage JSON is malformed', () => {
+    // Reset to the store's initial default so we can assert no hydration occurred.
+    useStore.getState().setChatPosition({ x: 0, y: 16 });
+    localStorage.setItem('observatory.chat.position', 'not-json{');
+    expect(() => renderHook(() => useChatPersistence(useStore))).not.toThrow();
+    expect(useStore.getState().chatPosition).toEqual({ x: 0, y: 16 });
   });
 });
