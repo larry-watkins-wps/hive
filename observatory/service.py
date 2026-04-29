@@ -32,7 +32,6 @@ from observatory.retained_cache import RetainedCache
 from observatory.ring_buffer import RingBuffer
 from observatory.sensory.publisher import SensoryPublisher
 from observatory.sensory.routes import build_sensory_router
-from observatory.types import RingRecord
 from observatory.ws import ConnectionHub, build_ws_router
 
 log = structlog.get_logger(__name__)

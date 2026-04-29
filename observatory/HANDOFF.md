@@ -1,8 +1,8 @@
 # Observatory — Session Handoff
 
-*Last updated: 2026-04-29 (session 9 — v4 session 2: frontend data layer landed)*
+*Last updated: 2026-04-29 (session 10 — v4 SHIPPED ✅)*
 
-**Canonical resume prompt:** `continue observatory v4 — session 3`
+**Canonical resume prompt:** `continue observatory v5` (v5 not yet scoped)
 
 ---
 
@@ -61,10 +61,20 @@
 | v4 Task 8 — Transcript + TranscriptTurn | ✅ Complete | `6b6cde6` (no review-fix; APPROVED both stages with non-blocking auto-scroll/selector consistency notes) |
 | v4 Task 9 — ChatInput | ✅ Complete | `dc88feb` + review-fix `a146aac` (empty-textarea Enter test pin); spec §6.5 confirmed: failed-turn dismissal is intentional silence |
 | **v4 frontend data layer — complete, 193 vitest passing** | ✅ | session 2 of 3 |
-| v4 Task 10 — ChatOverlay (frame + drag + resize) | ⏳ Pending | session 3 |
-| v4 Task 11 — useChatKeys hotkey | ⏳ Pending | session 3 |
-| v4 Task 12 — App.tsx mount + production build | ⏳ Pending | session 3 |
-| v4 Task 13 — verification + HANDOFF closure (v4 ships) | ⏳ Pending | session 3 |
+| v4 Task 10 — ChatOverlay (frame + drag + resize) | ✅ Complete | `c029dd0` + review-fix `43e67c0` (pointer capture + tighten clamp test) |
+| v4 Task 11 — useChatKeys hotkey | ✅ Complete | `72a31d6` + review-fix `7741190` (cleanup() prevents listener stacking; mutation-verified) |
+| v4 Task 12 — App.tsx mount + production build | ✅ Complete | `5a7bda4` (no review-fix; APPROVED both stages with 1 Suggestion-only note) |
+| v4 Task 13 — verification + HANDOFF closure (v4 ships) | ✅ Complete | this commit (HANDOFF + dead-import cleanup `RingRecord` in `observatory/service.py`) |
+| **v4 — SHIPPED** ✅ | | session 3 of 3 — 4 task commits + 2 review-fix commits + 1 ship commit |
+
+## Suite + lint snapshot (end of session 10 — v4 ship)
+
+- `python -m pytest observatory/tests/unit/ -q` → **136 passed + 2 skipped** (unchanged from session 2; sensory-suite numbers folded in).
+- `python -m pytest observatory/tests/component/ -m component -v` → **4 passed** (3 prior v1/v2/v3 + 1 v4 round-trip; cosmetic aiomqtt event-loop teardown warnings on Windows are harmless).
+- `python -m ruff check observatory/sensory/ observatory/tests/unit/sensory/ observatory/config.py observatory/service.py observatory/tests/component/test_end_to_end.py` → **clean** (pre-existing `F401: RingRecord` in `observatory/service.py` cleared in this ship commit — the import had been dead since `83b0bd3`).
+- Frontend: `cd observatory/web-src && npx vitest run` → **207 passed across 31 test files** (was 193 / 29; +8 ChatOverlay + +6 useChatKeys). New chat tests: ChatOverlay 8 (render-empty / render-visible / lazy-position / preserve-position / drag / drag-clamp / resize / resize-clamp), useChatKeys 6 (c-toggle / c-input-guard / c-textarea-guard / Esc-inside-overlay / Esc-when-hidden / Esc-outside-overlay).
+- Frontend: `npx tsc -b` → clean.
+- Frontend: `npm run build` → **1,088.06 kB JS** (gzip 302.04 kB) + 16.63 kB CSS (gzip 4.25 kB) + 0.43 kB index.html in 3.65 s. Pre-existing chunk-size >500 kB warning expected (three.js + drei + fiber + d3-force-3d).
 
 ## Suite + lint snapshot (end of session 9 — v4 session 2)
 
@@ -84,11 +94,51 @@
 - Frontend: `cd observatory/web-src && npx vitest run` → **168 passed** across 25 test files (was 84 pre-v3, +84 new — store 14, ws 3, topicColors 34 (13 topicColor + 18 kindTag + 3 new), rest 16, useRegionFetch 9, FuzzyOrbs 4, Labels 6, Edges 7, Header 3, Stats 4, Inspector 3, Stm 3, Messages 8 (was 3, +5), parseAppendix 6, useRegionAppendix 4, Dock frame 3, useDockPersistence 4, selectRegionFromRow 3, Firehose 6 (4+2), Topics 4 (2+2 sort/expand), useTopicStats 4 (3+1 roll), Metacog 2, SystemMetrics 4, SelfState 4 (3+1 autobio sort), Appendix 4)
 - Frontend: `npx tsc -b` → clean; `npm run build` → `observatory/web/index.html` + `assets/index-*.{css,js}` emitted (~1.08 MB JS, 16.4 kB CSS; chunk-size warning pre-existing from v1).
 
+## v4 post-ship checklist (Larry may want to address in v5 or earlier)
+
+- **Cosign `assoc-cortex-perception-2026-04-29.yaml`** under `observatory/docs/proposals/` — wires `hive/external/perception` into `regions/association_cortex/subscriptions.yaml`. Until cosigned, the chat is one-way (no region listens to user input).
+- **Cosign `broca-complete-text-payload-2026-04-29.yaml`** when broca evolves speech-output handlers — the chat transcript renders Hive's responses with `text` rather than the audio-only `🔊 hive spoke` placeholder once the payload carries `text`.
+- **STT decision for hive audio responses** — pick server-side (in `observatory/sensory/`) vs. browser-side (Web Speech API) once we see whether the audio-only placeholder is acceptable in practice.
+- **Manual browser smoke test (Task 13 Step 6)** — explicitly deferred from session 3; requires a workstation with Hive broker + browser. Once available, validate:
+  - Hit `c`, type a message, press Enter — optimistic turn appears immediately, re-renders without flicker once firehose echo arrives (dedupe by envelope id).
+  - Press `c` again to hide; `c` again to show — overlay re-opens at the same position.
+  - Drag header → position persists across page reload.
+  - Drag bottom-right handle → size persists across page reload.
+  - No server console errors throughout.
+- **Visual-E2E v4 punch list** (deferred to Larry's human-loop review):
+  - Hotkey: `c` toggles, `Esc` inside overlay dismisses, both ignored in input fields / inspector slide-out.
+  - Overlay: drag from header repositions, bottom-right handle resizes, both clamp to viewport / size range, both persist across reloads via localStorage. Pointer-capture covers the drag-out-of-viewport release case.
+  - Transcript: user turns blue/caps, hive turns purple, audio placeholder for missing text payload, error placeholder on POST failure.
+  - Optimistic dedupe: turn appears instantly, doesn't double-render when firehose echo arrives ~tens of ms later.
+  - Pure-B: no spinner, no delivery receipt, no attention indicator — silence is silence when broca produces no `complete`.
+
+## Session 10 — v4 ship deliverables
+
+Executed Tasks 10–13 via `superpowers:subagent-driven-development`: fresh implementer per task, two-stage review (`general-purpose` spec-compliance + `superpowers:code-reviewer` code-quality) on each, fix-loop on Important+ findings (Tasks 10 and 11 both required one review-fix; Task 12 APPROVED both stages on first pass).
+
+**Session 10 totals:** 4 task commits + 2 review-fix commits + 1 ship commit (HANDOFF + dead-import cleanup).
+
+Significant arbitrations / drifts:
+
+- **Task 10 test deviation** — replaced `expect(...).toBeInTheDocument()` with `expect(...).not.toBeNull()` because `@testing-library/jest-dom` is not installed in this repo (no setup file, no other test uses the matcher). Added `afterEach(() => cleanup())` to match `inspector/Stm.test.tsx` precedent. Both pre-approved by the controller; not spec violations.
+- **Task 10 review-fix `43e67c0`** — Important findings from code-quality review: (1) drag-clamp test asserted `toBeLessThanOrEqual(maxX)` which is satisfied by the pre-drag value too; tightened to exact `toBe(maxX)` / `toBe(maxY)`. (2) No pointer capture on drag/resize → sticky-drag bug if pointerup fires outside viewport (mouse released over another monitor never delivers `pointerup` to `window`); added optional-chained `setPointerCapture` (jsdom-safe) on `onHeaderDown` and `onResizeDown`, plus `pointercancel` listener mirroring `pointerup`.
+- **Task 11 review-fix `7741190`** — Important: missing `cleanup()` in test-file `afterEach` caused `<Harness/>` instances to stack across tests, accumulating window keydown listeners. Reviewer mutation-verified that test 2 (input-focus guard) was a false-positive — removing the `targetIsTextSink` guard from the hook still passed it because two listeners cancelled each other on a single `c` press. Adding `cleanup()` mirrors `ChatOverlay.test.tsx`/`Transcript.test.tsx`/`ChatInput.test.tsx` precedent. Mutation-reverified after the fix: input-guard test now correctly fails when the guard is removed.
+- **Pre-existing `F401: RingRecord` in `observatory/service.py`** — dead since `83b0bd3` removed its only usage when the stall watchdog landed. Cleaned in this ship commit so Task 13 Step 3's `ruff check` gate passes verbatim per the plan.
+- **Task 13 Step 6 (manual browser smoke test)** — explicitly out of scope for session 3 per Larry's instructions; documented in v4 post-ship checklist alongside the visual-E2E punch list.
+
+Implementer prompts stored at `observatory/prompts/v4-task-10-chat-overlay.md`, `v4-task-11-use-chat-keys.md`, `v4-task-12-app-mount.md`.
+
 ## Next session resume protocol
 
-1. **v4 session 2 (frontend data layer) is complete.** Canonical resume prompt: `continue observatory v4 — session 3`. Session 3 covers Tasks 10–13 (ChatOverlay frame + drag + resize, useChatKeys `c` toggle / Esc dismiss, App.tsx mount + production build, integration verification + HANDOFF closure / v4 ships).
-2. `git log --oneline observatory/` shows the v4 session-2 task commits `dfbcf42` → `a146aac` (plus baseline-fixes `1d41d76` and `8c36fb9`) on top of session-1 history.
-3. **v4 session-3 starting state:**
+1. **v4 has shipped.** Canonical resume prompt: `continue observatory v5` (v5 not yet scoped — needs brainstorm/spec/plan). Until v5 is scoped, post-ship items above (cosign proposals, STT decision, manual smoke + visual-E2E) are the only outstanding work.
+2. `git log --oneline observatory/` for session 10's chain: `c029dd0` (Task 10) → `43e67c0` (Task 10 fix) → `72a31d6` (Task 11) → `7741190` (Task 11 fix) → `5a7bda4` (Task 12) → ship commit (this).
+3. **v4 final shape (for v5 brainstorm reference):**
+   - Backend `observatory/sensory/` module: `allowlist.py`, `errors.py`, `publisher.py`, `routes.py`, plus `Settings.chat_*` fields.
+   - One new MQTT topic: `hive/external/perception` (single-publisher, allowlist-gated).
+   - Frontend `observatory/web-src/src/chat/` subtree: `ChatOverlay.tsx`, `Transcript.tsx`, `TranscriptTurn.tsx`, `ChatInput.tsx`, `useChatPersistence.ts`, `useChatKeys.ts`, `api.ts`, plus their vitest specs.
+   - App.tsx mounts `<ChatOverlay />` as a sibling to Scene/Hud/Inspector/Dock; installs `useChatKeys()` + `useChatPersistence(useStore)` at App root.
+   - Two cosignable proposal artifacts under `observatory/docs/proposals/` (assoc_cortex subscription + broca text payload) — inert until cosigned.
+4. **(legacy) v4 session-3 starting state — kept for reference:**
    - Backend POST `/sensory/text/in` fully wired (session 1).
    - Store has the chat slice: `chatVisible`, `chatPosition`, `chatSize`, `pendingChatTurns: Record<string, PendingChatTurn>` plus 7 setters incl. the optimistic-turn lifecycle (`addPendingChatTurn` / `resolvePendingChatTurn` / `failPendingChatTurn` / `dropPendingChatTurn`). `State` and `PendingChatTurn` are exported.
    - `chat/useChatPersistence.ts` hydrates+debounces position/size to `localStorage['observatory.chat.{position,size}']`, selector-scoped subscribe per dock-hook precedent.
@@ -312,3 +362,4 @@ Plan Step 3 requires a real browser + live Hive broker. The Task 16 implementer 
 | 2026-04-22 | Session 7 ships v3. Executed all 11 tasks via `superpowers:subagent-driven-development`: fresh implementer per task, two-stage review after each (spec-compliance `general-purpose` + code-quality `superpowers:code-reviewer`), fix-loop on anything Important+. Total: 11 task commits + 9 review-fix commits + 1 doc-fix + this ship commit. Suite grew from 92 unit + 2 component + 84 frontend → 99 unit + 3 component + 168 frontend. Ruff + tsc clean throughout; production build emits 1.08 MB JS bundle. Significant arbitrations along the way: Task 1 spec §9.2 literal 404 body (`appendix_missing`) won over plan's reuse of `_error_detail`; Task 6 10-s sparkline buckets won over plan's 1-tick-per-bucket code; Task 9 SystemMetrics `region_health.per_region` schema reconciled against `glia/metrics.py` actual shape `{status, consecutive_misses, uptime_s}` rather than plan's bare-string fixture; Task 10 pendingEnvelopeKey mount race fixed by adding `filtered` to the consumption effect's deps. Larry course-corrected once early in session ("where there is confusion or ambiguity you should be asking me") — subsequent arbitration of spec-vs-plan conflicts surfaced to him explicitly. All 10 implementer prompts + this Task 11 prompt-of-record stored at `observatory/prompts/v3-task-NN-<slug>.md`. Decisions.md entries appended through session. Canonical resume prompt pivoted to `continue observatory v4` — v4 not yet scoped. |
 | 2026-04-29 | Session 9 — v4 session 2: frontend data layer landed. Executed Tasks 6–9 via `superpowers:subagent-driven-development`: fresh implementer per task, two-stage review (spec-compliance `general-purpose` + code-quality `superpowers:code-reviewer`) on each, fix-loops on Important+ findings (Tasks 6, 7, 9 all required one review-fix; Task 8 APPROVED both stages on first pass). Session opened with a stop-and-ask: 4 pre-existing baseline failures (3 `_FakeSubscriber.messages_received_total` + 1 `ws.test.ts` batcher-await) were post-v3-ship drift unrelated to session 1; Larry authorised committing the uncommitted Sparks length-plateau fix and repairing the 4 failures before starting Tasks 6–9. Three baseline commits (`1d41d76`, `8c36fb9`) plus 4 task commits + 3 review-fix commits + this HANDOFF closure. Suite grew 169 → 193 vitest (+24: 7 useChatPersistence + 5 api + 6 Transcript + 6 ChatInput); Python pre-existing failures cleared (133 + 2 skipped + 3 failed → 136 + 2 skipped). `tsc -b` clean throughout. Significant arbitrations: Task 6 selector-scoped subscribe + cleanup (matched dock-hook precedent the implementer initially deviated from); Task 7 success-path `resp.json()` guarded with `ChatPostError('parse', ...)` + `{id, timestamp}` shape validation; Task 9 review-confused failed-turn dismissal as a hole — re-read of spec §6.5 confirmed lingering failure IS the dismissal protocol by design ("user re-types. No retry storms."). New devDep: `@testing-library/user-event@^14`. All 4 implementer prompts stored at `observatory/prompts/v4-task-NN-<slug>.md`. 6 new decisions.md entries appended. Next: `continue observatory v4 — session 3` covers Tasks 10–13 (ChatOverlay + hotkey + App.tsx mount + verification/ship). |
 | 2026-04-29 | Session 8 — v4 session 1: backend + proposals landed. Executed Tasks 1–5 via `superpowers:subagent-driven-development`: fresh implementer per task, two-stage review (spec-compliance `general-purpose` + code-quality `superpowers:code-reviewer`) on Tasks 1–4. Task 5 (two inert YAML proposal artifacts) committed directly without the review pair — the content is verbatim from spec §5.1/§5.2 and has no logic. Total session-8 commits: 5 task commits, no review-fix commits, no doc-fix commits. Every review-pair came back APPROVED on first pass; suggestions deferred to decisions.md. Significant arbitrations: Task 3 pre-approved JSONResponse drift (route returns `JSONResponse` directly for 5xx so the route's bare-FastAPI() unit-test fixture sees the flat `{error, message}` body shape regardless of the wider app's exception handler — without this, the plan-verbatim `raise HTTPException(detail={...})` would yield `{detail: {...}}` and break `body["error"]` assertions); Task 3 module-level `_PUBLISHER_DEP`/`_SETTINGS_DEP` Depends singletons to dodge ruff B008 cleanly (matches FastAPI DI semantics, B008-clean). Pre-existing 3 `test_mqtt_reconnect.py::TestReconnectLoop` failures (introduced by `83b0bd3`'s stall watchdog `_FakeSubscriber` gap) confirmed orthogonal to v4 — flagged for a follow-up fix. Component test verified round-trip < 500 ms over real `eclipse-mosquitto:2` testcontainer. Suite snapshot: sensory unit 15 passed (4 + 4 + 7), full unit 133 passed + 2 skipped + 3 pre-existing failed, component 4 passed (3 prior + 1 new v4), ruff clean on v4 paths, frontend untouched. All 4 implementer prompts (Tasks 1–4) stored at `observatory/prompts/v4-task-NN-<slug>.md`. Decisions.md entries appended (4 new). Next: `continue observatory v4 — session 2` covers Tasks 6–9 (frontend store + chat persistence + REST wrapper + Transcript/TranscriptTurn + ChatInput). |
+| 2026-04-29 | Session 10 ships v4. Executed Tasks 10–13 via `superpowers:subagent-driven-development`: fresh implementer per task, two-stage review (`general-purpose` spec-compliance + `superpowers:code-reviewer` code-quality) on each. Task 10 (ChatOverlay) and Task 11 (useChatKeys) each required one review-fix; Task 12 (App.tsx mount) APPROVED both stages on first pass. Two notable Important findings: pointer-capture absence in ChatOverlay (sticky-drag bug if pointerup fires outside viewport — fixed via optional-chained `setPointerCapture` + `pointercancel` listener); missing `cleanup()` in `useChatKeys.test.tsx` causing window keydown listener stacking that **mutation-verified** masked the input-focus guard test (fixed by adding `cleanup()` to `afterEach`, matching sibling chat-test precedent). Pre-existing `F401: RingRecord` in `observatory/service.py` (dead since `83b0bd3`) cleared in the ship commit so Task 13 Step 3's ruff gate passes verbatim. Manual browser smoke test (Step 6) explicitly out of scope per Larry's session 3 instructions; deferred to v4 post-ship checklist alongside visual-E2E. Total session-10 commits: 4 task commits + 2 review-fix commits + this ship commit. Suite grew 193 → 207 vitest (+14: ChatOverlay 8 + useChatKeys 6); Python unchanged (136 + 2 skipped + 4 component); production build emitted at 1.09 MB JS / 16.6 kB CSS. All 3 session-3 implementer prompts stored at `observatory/prompts/v4-task-NN-<slug>.md`. **v4 — SHIPPED.** Canonical resume prompt pivoted to `continue observatory v5` — v5 not yet scoped. Outstanding post-ship items: cosign assoc_cortex subscription proposal, cosign broca text-payload proposal, STT decision, manual browser smoke + visual-E2E with live broker. |
