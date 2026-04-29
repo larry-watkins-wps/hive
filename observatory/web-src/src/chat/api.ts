@@ -48,5 +48,14 @@ export async function postChatText(
     } catch { /* response wasn't JSON — keep status defaults */ }
     throw new ChatPostError(errKind, errMsg);
   }
-  return (await resp.json()) as PostChatTextResponse;
+  let data: PostChatTextResponse;
+  try {
+    data = (await resp.json()) as PostChatTextResponse;
+  } catch (e) {
+    throw new ChatPostError('parse', (e as Error).message);
+  }
+  if (typeof data?.id !== 'string' || typeof data?.timestamp !== 'string') {
+    throw new ChatPostError('parse', 'response missing id or timestamp');
+  }
+  return data;
 }

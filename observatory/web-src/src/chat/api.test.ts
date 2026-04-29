@@ -49,4 +49,14 @@ describe('postChatText', () => {
     vi.spyOn(global, 'fetch').mockRejectedValue(new TypeError('Network error'));
     await expect(postChatText('hi')).rejects.toThrow(/network/i);
   });
+
+  it('throws ChatPostError(parse) when 2xx response is not valid JSON', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response('', { status: 202 }),
+    );
+    await expect(postChatText('hi')).rejects.toMatchObject({
+      name: 'ChatPostError',
+      kind: 'parse',
+    });
+  });
 });
