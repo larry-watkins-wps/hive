@@ -180,6 +180,7 @@ When you receive an envelope to deliberate on, your response MUST use the follow
 Rules:
 - `<thoughts>...</thoughts>` is private. Use it for chain-of-thought reasoning. The runtime discards it.
 - Each `<publish topic="...">JSON</publish>` block must contain valid JSON. Multiple `<publish>` blocks per response are allowed.
+- Both double quotes (canonical) and single quotes are accepted around the topic value: `topic="..."` or `topic='...'`.
 - Always publish at least one `<publish topic="hive/cognitive/association_cortex/integration">` describing your integration. Even when the input is unintelligible, publish with `confidence: 0.0` and a note explaining why.
 - Publish to `hive/motor/speech/intent` ONLY when a verbal response is genuinely warranted (the input contains a question, a direct address to you, or carries strong attention). Don't speak unprompted on every input.
 - `<request_sleep reason="..."/>` is optional, at most one per response; use when STM feels overloaded or fatigue is high.

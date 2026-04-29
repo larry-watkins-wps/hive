@@ -270,6 +270,39 @@ async def test_respond_parse_failure_publishes_metacog_error_no_publish():
 
 
 @pytest.mark.asyncio
+async def test_respond_ignores_publish_tags_inside_thoughts():
+    """Regression: tags quoted inside <thoughts> must NOT be parsed as real publishes.
+
+    LLMs routinely quote tag examples in their reasoning. The parser strips
+    the <thoughts>...</thoughts> block before running the publish regex so
+    quoted examples cannot leak. Without this guard, an example like
+    ``<publish topic="bogus">...</publish>`` inside <thoughts> would be
+    dispatched as a real envelope.
+    """
+    respond = _load_handler("respond")
+    response_text = (
+        '<thoughts>I might publish '
+        '<publish topic="hive/cognitive/example">{"x":1}</publish> '
+        'but I won\'t.</thoughts>\n'
+        '<publish topic="hive/cognitive/association_cortex/integration">'
+        '{"text":"real","modalities_integrated":[],"confidence":0.5}'
+        '</publish>'
+    )
+    env = _make_envelope("hive/external/perception", {"text": "hi"})
+    ctx = _make_ctx(llm_text=response_text)
+
+    await respond.handle(env, ctx)
+
+    # Exactly one publish, and it's the real outer one — NOT the
+    # ``hive/cognitive/example`` quoted inside <thoughts>.
+    assert ctx.publish.await_count == 1
+    assert (
+        ctx.publish.await_args.kwargs["topic"]
+        == "hive/cognitive/association_cortex/integration"
+    )
+
+
+@pytest.mark.asyncio
 async def test_respond_records_envelope_to_stm():
     respond = _load_handler("respond")
     env = _make_envelope("hive/external/perception", {"text": "hi"})

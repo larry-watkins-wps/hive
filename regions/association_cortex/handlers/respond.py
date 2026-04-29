@@ -41,8 +41,21 @@ _DEFAULT_ATTENTION_HINT = 0.5
 
 # Tag-schema parsing. We use ``re.DOTALL`` so the body can span lines and
 # accept either self-closing or paired ``<request_sleep>`` forms.
+#
+# ``_THOUGHTS_RE`` is stripped FIRST, before the publish/request_sleep
+# parsers run. LLMs commonly quote tag examples inside their <thoughts>
+# reasoning ("I might publish <publish topic='example'>{...}</publish>"),
+# and without this strip pass those quoted examples would be parsed as
+# real publishes. Regression test:
+# tests/unit/regions/association_cortex/test_handlers.py
+#   ::test_respond_ignores_publish_tags_inside_thoughts
+_THOUGHTS_RE = re.compile(r"<thoughts>.*?</thoughts>", re.DOTALL)
+# Accept both double quotes (canonical) and single quotes around the
+# topic attribute, plus optional whitespace around ``=``. Real LLMs
+# occasionally emit ``topic='...'`` and routing those to the metacog
+# error path is unnecessarily strict.
 _PUBLISH_RE = re.compile(
-    r'<publish\s+topic="([^"]+)"\s*>(.*?)</publish>',
+    r'''<publish\s+topic\s*=\s*["']([^"']+)["']\s*>(.*?)</publish>''',
     re.DOTALL,
 )
 _REQUEST_SLEEP_RE = re.compile(
@@ -63,7 +76,11 @@ def _parse_response(text: str) -> tuple[list[tuple[str, dict]], str | None, str 
     ``parse_error`` is None on success, or a short reason string when
     something went wrong (zero blocks, JSON decode failure).
     """
-    blocks = _PUBLISH_RE.findall(text)
+    # Strip <thoughts>...</thoughts> first so quoted tag examples inside
+    # private reasoning are not parsed as real publishes / sleep requests.
+    stripped_text = _THOUGHTS_RE.sub("", text)
+
+    blocks = _PUBLISH_RE.findall(stripped_text)
     if not blocks:
         return [], None, "no_publish_blocks"
 
@@ -79,9 +96,16 @@ def _parse_response(text: str) -> tuple[list[tuple[str, dict]], str | None, str 
         publishes.append((topic, parsed))
 
     sleep_reason: str | None = None
-    sleep_match = _REQUEST_SLEEP_RE.search(text)
+    sleep_match = _REQUEST_SLEEP_RE.search(stripped_text)
     if sleep_match is not None:
-        sleep_reason = sleep_match.group(1) or sleep_match.group(2)
+        # Use explicit ``is not None`` discrimination: an empty-string
+        # ``reason=""`` (group 1 == "") still triggers sleep, since the
+        # LLM clearly intended to request it. ``or`` would short-circuit
+        # on the falsy empty string and silently drop the request.
+        if sleep_match.group(1) is not None:
+            sleep_reason = sleep_match.group(1)
+        else:
+            sleep_reason = sleep_match.group(2)
 
     return publishes, sleep_reason, None
 
