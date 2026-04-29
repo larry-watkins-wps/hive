@@ -76,6 +76,10 @@ class _FakeSubscriber:
 
     def __init__(self) -> None:
         self.run_calls = 0
+        # Required by the stall watchdog in `_mqtt_run_with_reconnect`
+        # (commit 83b0bd3); these tests run faster than the stall
+        # threshold, so a static zero is fine.
+        self.messages_received_total = 0
 
     async def run(self, client: Any, stop_event: asyncio.Event) -> None:
         self.run_calls += 1

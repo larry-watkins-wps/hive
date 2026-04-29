@@ -1,8 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { handleServerMessage } from './ws';
 import { createStore } from '../store';
 
 describe('handleServerMessage', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
   it('routes snapshot', () => {
     const s = createStore();
     const spy = vi.spyOn(s.getState(), 'applySnapshot');
@@ -16,6 +19,10 @@ describe('handleServerMessage', () => {
     handleServerMessage(s, { type: 'envelope', payload: {
       observed_at: 1, topic: 'x', envelope: {}, source_region: null, destinations: [],
     }});
+    // ws.ts batches envelopes through a ~100ms _scheduleFlush() (introduced
+    // by commit 5b93ce5 to bound Firehose re-render rate); advance the
+    // fake timer past the flush window to drain `_pending` into the store.
+    vi.advanceTimersByTime(150);
     expect(s.getState().envelopes.length).toBe(1);
   });
 
