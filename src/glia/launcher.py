@@ -94,6 +94,12 @@ class Launcher:
         pwd = os.environ.get(f"MQTT_PASSWORD_{region.upper()}")
         if pwd:
             out["MQTT_PASSWORD"] = pwd
+        # Bootstrap-debt 2026-04-29: shared MQTT_USERNAME (read by
+        # region_template/mqtt_client.py as a per-region username override).
+        # Forward to spawned region containers so they auth identically.
+        username = os.environ.get("MQTT_USERNAME")
+        if username:
+            out["MQTT_USERNAME"] = username
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if api_key:
             out["ANTHROPIC_API_KEY"] = api_key

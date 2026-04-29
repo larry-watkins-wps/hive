@@ -163,11 +163,23 @@ class MqttClient:
         password = (
             os.getenv(self._cfg.password_env) if self._cfg.password_env else None
         )
+        # MQTT_PASSWORD override (bootstrap-debt 2026-04-29): glia's launcher
+        # injects a bare MQTT_PASSWORD env into spawned regions (not the
+        # per-region MQTT_PASSWORD_<REGION> name that config.yaml references),
+        # so per-region lookup above resolves to None. Fall back to the bare
+        # name when present. Revert when launcher emits per-region names.
+        if not password:
+            password = os.getenv("MQTT_PASSWORD")
+        # MQTT_USERNAME override (bootstrap-debt 2026-04-29): when set, all
+        # regions auth as a single shared user. Default behavior (per-region
+        # username) is preserved when unset, which is what spec §B/§E.6 ACLs
+        # depend on. Revert when Hive's own broker with per-region ACLs is back.
+        username = os.getenv("MQTT_USERNAME") or self._region_name
         return aiomqtt.Client(
             hostname=self._cfg.broker_host,
             port=self._cfg.broker_port,
             identifier=f"hive-{self._region_name}",
-            username=self._region_name,
+            username=username,
             password=password,
             will=will,
             keepalive=self._cfg.keepalive_s,

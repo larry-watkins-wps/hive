@@ -1,6 +1,6 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-23 (Phase 11 — broker portability, bridge wiring, spawn pipeline, `src/` layout refactor; observatory client-backpressure + ring-full broadcast drops fixed; scoped out docker-events listener, mypy CI job, offline LLM stub, smoke_operator cred, test_harness container)
+**Last updated:** 2026-04-29 (bootstrap-debt: shared `hive` MQTT user / `!Hive1234` password to piggy-back on Argus's EMQX broker on port 1883; surfaced pre-existing launcher↔region-config password-env mismatch)
 **Current phase:** v0 DNA complete; Phase 11 (Runtime evolution — first self-mod cycles, post-v0 region additions) **in progress**
 **Repo path:** `C:/repos/hive/`
 
@@ -872,6 +872,12 @@ deliberate Larry + ACC decision — not an automatic dispatch.
 
 ### 🟡 Open (not scoped out, just unscheduled)
 
+- **Bootstrap-debt: shared MQTT user (2026-04-29).** To get Hive running on Argus's pre-existing EMQX broker (port 1883), all 14 regions + glia auth as a single user `hive` / `!Hive1234`, and EMQX **Authorization is disabled**. To revert when Hive's own broker with per-region ACLs is back:
+  1. Remove the `MQTT_USERNAME` / `MQTT_PASSWORD` env-fallback blocks in [src/region_template/mqtt_client.py](../src/region_template/mqtt_client.py:163) (two short blocks, both tagged `bootstrap-debt 2026-04-29`).
+  2. Remove the `MQTT_USERNAME` forwarding in [src/glia/launcher.py](../src/glia/launcher.py:97) (`_default_env_loader`).
+  3. In [.env](../.env): unset `MQTT_USERNAME` / `MQTT_PASSWORD`, repopulate the 15 `MQTT_PASSWORD_*` slots with distinct secrets, run `scripts/make_passwd.sh`.
+  4. Re-enable EMQX (or successor broker) ACLs with the rendered `bus/acl.conf`.
+  5. **Pre-existing bug surfaced and worked around** by step 1's `MQTT_PASSWORD` fallback: the launcher's `_default_env_loader` injects bare `MQTT_PASSWORD` into spawned regions, but each `regions/<name>/config.yaml` declares `password_env: MQTT_PASSWORD_<REGION>`. Real fix is to align: either launcher emits per-region env names, or all region configs reference bare `MQTT_PASSWORD`. Either way, drop the env-fallback once aligned.
 - **Post-v0 region authoring pattern.** Before Track B spawns
   (raphe_nuclei, locus_coeruleus, etc.), we need a decided flow
   for writing + reviewing + committing a new region's starter prompt.
