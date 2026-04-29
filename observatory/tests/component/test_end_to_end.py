@@ -27,9 +27,13 @@ a component run; we pay it once per test module.
 """
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
+import queue
 import socket
+import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -319,3 +323,68 @@ def test_v3_appendix_endpoint_over_real_service(tmp_path, broker_url) -> None:
             "error": "appendix_missing",
             "message": "No appendix file for region",
         }
+
+
+def test_post_sensory_text_in_publishes_to_broker(
+    broker_url: str, tmp_path: Path,
+) -> None:
+    """Spec §9.2: POST → real broker confirms publish on
+    hive/external/perception with the spec §3.2 envelope shape; round-trip < 500 ms.
+
+    Capture subscriber runs in a side-channel thread (its own asyncio loop)
+    so the FastAPI app's lifespan-owned aiomqtt client and the test's
+    listener don't share a single event loop. The test starts the
+    listener, awaits a `ready` event (which only fires after `subscribe`
+    is acknowledged by the broker), then drives the POST via TestClient.
+    """
+    regions_root = tmp_path / "regions"
+    regions_root.mkdir()
+    settings = dataclasses.replace(
+        Settings(),
+        mqtt_url=broker_url,
+        regions_root=regions_root,
+    )
+    app = build_app(settings)
+
+    captured: queue.Queue[dict] = queue.Queue()
+    ready = threading.Event()
+    host, _, port_s = broker_url.split("://", 1)[1].partition(":")
+    port = int(port_s)
+
+    def _capture_loop() -> None:
+        async def _go() -> None:
+            async with aiomqtt.Client(host, port) as c:
+                await c.subscribe("hive/external/perception", qos=1)
+                ready.set()
+                async for msg in c.messages:
+                    captured.put(json.loads(msg.payload.decode()))
+                    return
+        asyncio.run(_go())
+
+    cap_thread = threading.Thread(target=_capture_loop, daemon=True)
+    cap_thread.start()
+    assert ready.wait(timeout=5.0), (  # noqa: PLR2004 — generous startup budget
+        "capture subscriber never reported ready"
+    )
+
+    with TestClient(app) as client:
+        t0 = time.monotonic()
+        resp = client.post("/sensory/text/in", json={"text": "hi from test"})
+        assert resp.status_code == 202  # noqa: PLR2004
+        body = resp.json()
+        assert "id" in body and "timestamp" in body
+
+    env = captured.get(timeout=2.0)  # noqa: PLR2004 — drain budget
+    elapsed = time.monotonic() - t0
+    assert elapsed < 0.5, f"round-trip too slow: {elapsed:.2f}s"  # noqa: PLR2004 — spec literal
+
+    assert env["topic"] == "hive/external/perception"
+    assert env["source_region"] == "observatory.sensory"
+    assert env["envelope_version"] == 1
+    assert env["id"] == body["id"]
+    assert env["timestamp"] == body["timestamp"]
+    data = env["payload"]["data"]
+    assert data["text"] == "hi from test"
+    assert data["speaker"] == "Larry"
+    assert data["channel"] == "observatory.chat"
+    assert data["source_modality"] == "text"
