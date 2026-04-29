@@ -1,8 +1,22 @@
 # Handler Bootstrap Plan — bring all 14 regions to working cognition by hand
 
-*Drafted: 2026-04-29 · Author: Claude (Opus 4.7) for Larry · Status: draft, awaiting Larry's review*
+*Drafted: 2026-04-29 · Author: Claude (Opus 4.7) for Larry · Status: ratified by Larry; in execution.*
 
 > **Larry's framing (2026-04-29):** "We need to bootstrap a completely working system. After it works, we can let it evolve."
+
+## Decisions ratified (2026-04-29)
+
+1. **Tag schema:** `<thoughts>...</thoughts>` (private, not published) + `<publish topic="X">{...json body...}</publish>` (one or more per response) + `<request_sleep reason="..."/>` (optional). Every region's `prompt.md` gets a "Response format" appendix committing to this. Parsing failures publish `hive/metacognition/error/detected` with `kind: "llm_parse_failure"`.
+2. **VTA is LLM-driven**, not algorithmic. VTA's handler becomes a `respond.py` (not `signal.py`), reads motor-outcome envelopes, and the LLM produces a nuanced dopamine value with reasoning. Higher cost than the algorithmic version, biologically more apt.
+3. **No test fixtures, no recorded-LLM CI fixtures.** Tests use real LLM input/output. Unit-level `ctx.llm` stubs are allowed only where needed to isolate handler control flow; integration + component tests hit the real API. CI runs real LLM and consumes real tokens. Acceptable cost per Larry.
+4. **No "sleep observation" coded task.** Larry runs the system after Phase B and handles bugs/observations in real time as they surface. Original Phase C drops; original Phase D folds into the final HANDOFF commit alongside Phase B.
+5. **No token-budget caps, no phase pauses.** Drive all tasks consecutively — bootstrap a working system ASAP.
+6. **Every task ships in a working state.** Subscription edits and handler edits land in the same commit per task. No "subscription separately, handler later" splits. The bootstrap-mode allowance from CLAUDE.md (commit `42e60df`) is the authority for hand-applied region edits.
+
+Mechanical defaults (also ratified):
+- **Execution model:** `superpowers:subagent-driven-development` — fresh implementer per task, two-stage review (general-purpose spec compliance + superpowers:code-reviewer code quality), fix-loop on Important+ findings, one commit per task.
+- **Test location:** `tests/unit/regions/<name>/test_handlers.py` (matches existing `tests/unit/` repo-root convention).
+- **Per-region prompt revisions:** "Response format" section appended in the same task as that region's handler.
 
 That shapes the plan: hand-write working deliberation handlers for **every** region, get a fully functional Hive (chat round-trips, sensory→cognition→motor loops fire, modulators move, sleep is meaningful), and only **then** let self-modification take over. Don't bootstrap thin and lean on sleep-cycle evolution to close the gap — the gap is too big and self-mod is unproven end-to-end.
 
@@ -144,9 +158,9 @@ The bootstrap deliverable. Each cell is a file we hand-write. Bold = LLM-driven.
 | **prefrontal_cortex** | extend existing notebook to cover cognitive/hippocampus/response, motor/{complete,failed,partial,speech/complete}, habit/suggestion, cognitive/prefrontal_cortex/#, **external/perception** | **deliberate** on `cognitive/association_cortex/integration` + `motor/{complete,failed,partial,speech/complete}` (prediction error) → publish `motor/intent` or `motor/speech/intent` or `cognitive/prefrontal_cortex/plan` | — | The deliberation hub. |
 | **thalamus** | sensory/#, cognitive/thalamus/# | **route** on cognitive/<X>/integration that targets `<thalamus>` namespace or carries a routing-hint tag → publish `cognitive/thalamus/route` (a routing decision envelope downstream regions consume) | — | Lighter LLM use; the routing logic is mostly tag/heuristic-driven, LLM only for ambiguous cases. |
 | **visual_cortex** | hardware/camera, cognitive/visual_cortex/# | **caption** stub on `cognitive/visual_cortex/caption_request` → publish `sensory/visual/text` | — | Real captioning lands when camera hardware does. |
-| **vta** | motor/{complete,speech/complete,failed} | — | **reward** on motor outcomes → compute reward from outcome semantics + publish `modulator/dopamine` | Pure signal, no LLM. |
+| **vta** | motor/{complete,speech/complete,failed} | **reward** on motor outcomes → LLM reads outcome semantics + recent context + publishes `modulator/dopamine` with a reasoned value | — | LLM-driven per ratified decision 2. |
 
-**Totals:** 14 notebooks (extend PFC's; new for the other 13), 12 respond.py (no respond.py for VTA — pure signal; auditory_cortex/visual_cortex respond stubs are LLM-driven but trivially small until hardware arrives), 3 signal.py (VTA, insula, basal_ganglia).
+**Totals:** 14 notebooks (extend PFC's; new for the other 13), 13 respond.py (every cognitive region + VTA + speech regions; auditory_cortex/visual_cortex respond stubs are LLM-driven but trivially small until hardware arrives), 2 signal.py (insula metric rollup, basal_ganglia habit counter).
 
 ## 5. Sequencing — chat-loop first, then expand outward
 
@@ -194,8 +208,8 @@ Files: `regions/motor_cortex/handlers/*`, `regions/basal_ganglia/handlers/*`.
 Closes the motor side: `motor/intent` → motor_cortex stub-executes → publishes `motor/complete`/`failed`. basal_ganglia subscribes to upstream cognitive integration to decide between competing intents.
 
 **Task 7 — VTA reward + amygdala threat → modulators move**
-Files: `regions/vta/handlers/signal.py`, `regions/amygdala/handlers/{notebook.py, respond.py}`.
-VTA publishes `modulator/dopamine` on motor outcomes; amygdala publishes `modulator/cortisol` on threat-shaped envelopes (perception with negative-valence text, or threat-tagged sensory features when hardware lands).
+Files: `regions/vta/handlers/{notebook.py, respond.py}`, `regions/amygdala/handlers/{notebook.py, respond.py}`.
+VTA's respond is LLM-driven (decision 2): reads motor-outcome envelopes + recent context, publishes `modulator/dopamine` with reasoned value. Amygdala publishes `modulator/cortisol` on threat-shaped envelopes (perception with negative-valence text, or threat-tagged sensory features when hardware lands).
 
 **Task 8 — insula felt_state + anterior_cingulate conflict + mPFC reflection**
 Files: `regions/insula/handlers/*`, `regions/anterior_cingulate/handlers/*`, `regions/medial_prefrontal_cortex/handlers/*`.
@@ -209,32 +223,26 @@ thalamus routes ambiguous cognitive traffic; auditory/visual cortexes have respo
 File: `observatory/tests/component/test_full_loop.py`.
 Recorded-LLM fixture exercising: chat input → assoc_cortex → PFC → motor_cortex stub → motor/complete → VTA dopamine publish → PFC sees outcome → publishes a follow-up. Asserts every link in the chain fires within a budget.
 
-### Phase C — sleep cycle observation (Task 11)
+### Phase C — HANDOFF + retrospective (Task 11)
 
-**Task 11 — observe a sleep cycle**
-With STM accumulating across all 14 regions (Tasks 1–9), trigger sleep on assoc_cortex (and one region per layer for breadth). Capture what the sleep coordinator does. This is the experiment that tells us whether self-mod actually works.
-- If sleep produces meaningful commits (handler refinements, prompt tweaks, memory consolidation): we have a working evolution loop. Document.
-- If sleep produces `no_change` despite meaningful STM: separate plan for sleep-coordinator debugging.
+(Original Phase C "sleep observation" dropped per ratified decision 4 — Larry handles sleep observation in real time during operation.)
 
-### Phase D — HANDOFF + retrospective (Task 12)
-
-**Task 12 — close the plan**
+**Task 11 — close the plan**
 - Update `docs/HANDOFF.md` with the bootstrap completion state.
-- Document any tasks that didn't ship cleanly.
+- Document anything that didn't ship cleanly + any sleep/cognition issues Larry surfaced during the build.
 - Decide what becomes v1.1: hardware bridges, modulator-based saliency, audio synthesis, prompt refinement.
 
 ## 6. Testing strategy
 
-- **Per-handler unit tests** with stubbed `ctx.llm` / `ctx.publish` / `ctx.memory` — copy the pattern from existing `tests/unit/`.
-- **Per-region integration tests** (no broker, just the runtime mocked end-to-end) verifying handler chains within a single region.
-- **Cross-region component tests** with real broker + recorded-LLM — Tasks 5 and 10.
-- **No live-LLM in CI.** Live-LLM verification is a manual smoke per phase. Budget ~$5–20/phase.
+- **Per-handler unit tests** isolate handler control flow only — `ctx.publish` / `ctx.memory` are stubbed, but `ctx.llm` may be stubbed only when verifying purely structural behavior (e.g. parse-failure path produces a metacog error). Most assertion logic should run against real LLM output (decision 3).
+- **Cross-region component tests** with real broker + **real LLM** — Tasks 5 and 10. CI consumes API tokens; that's the trade for not having canned fixtures.
+- **No recorded-LLM fixtures anywhere.** Per Larry: real input, real output.
 - **Lint:** ruff over `regions/*/handlers/`. Each handler file is self-contained.
 - **Schema validation:** every published envelope's `source_region` must satisfy the `^[a-z][a-z0-9_]{2,30}$` regex. This is now enforced by `Envelope.new`. Tests should never use literal source_region values that violate it (we caught one such bug in v4 — `observatory.sensory` → `observatory_sensory`).
 
 ## 7. Risks + mitigations
 
-- **Token cost.** Tier-2 handlers fire on subscribed traffic. Mitigation: hard topic gates + STM-pressure gates (§3.4); recorded-LLM fixtures in CI; live-LLM only at phase boundaries.
+- **Token cost.** Per ratified decision 5, no budget caps — bootstrap ASAP. Topic gates + STM-pressure gates (§3.4) are the only structural cost controls; CI runs against real LLM. Larry monitors live; if cost runs hot mid-bootstrap, escalate before continuing.
 - **LLM output parsing.** Handlers depend on a tag schema (§3.3) the prompts must follow. Mitigation: every handler logs raw responses + parse-status; on parse failure publish a metacog/error envelope rather than crash; prompts get explicit "Response format" sections.
 - **Cascade failures.** A bad publish from assoc_cortex cascades into PFC, broca, etc. Mitigation: each handler logs its publishes; observatory's metacog tab visualizes `metacognition/error/detected` clusters; at 5+ errors/min, system pauses cognition (out of scope for v0; track as v0.1).
 - **Regions drift apart.** Hand-writing 12 sets of handlers means subtle inconsistencies (different tag conventions, different summary formats). Mitigation: a `regions/_template/handlers/` directory with reference notebook + respond + signal files, copied per region. CI lint checks adherence.
@@ -251,22 +259,7 @@ With STM accumulating across all 14 regions (Tasks 1–9), trigger sleep on asso
 
 ## 9. Effort + sequencing
 
-- Phase A (Tasks 1–5, chat loop): ~2 days of concentrated work + ~$5–20 of LLM cost for verification.
-- Phase B (Tasks 6–10, full cognitive layer): ~3–4 days + ~$10–30 verification.
-- Phase C (Task 11, sleep observation): half a day; depends on what sleep produces.
-- Phase D (Task 12, HANDOFF): a few hours.
-
-Total: ~1 week of focused work, contingent on Larry being available for token-burn checkpoints between phases.
-
-## 10. Decisions Larry needs to make before kickoff
-
-1. **Token budget per phase.** Phase A ~$20 cap, Phase B ~$30 cap, OK?
-2. **Tag schema (§3.3).** Use the proposed `<thoughts>`/`<publish topic="...">`/`<request_sleep/>` shape, or pick a different convention you've already committed to elsewhere?
-3. **Sequencing.** Drive Tasks 1–12 via `superpowers:subagent-driven-development` like the v4 ship, with two-stage review per task? My default is yes.
-4. **Test location.** Per-region tests under `tests/unit/regions/<name>/test_handlers.py` (mirrors `regions/<name>/handlers/`), or per-region under `regions/<name>/tests/`? Existing convention is `tests/unit/` at repo root.
-5. **Recorded-LLM fixtures.** Build a small fixture format (canned responses keyed by prompt-hash) for CI, or skip CI integration and only run round-trip tests manually with live LLM?
-6. **VTA reward function.** §4 lists VTA as `signal.py` (algorithmic dopamine from motor outcome) — what's the function? "+0.5 dopamine on motor/complete, -0.3 on motor/failed, decay over 10s" as a v0 spec, then refine? Or do you want VTA to call LLM for nuanced reward? (LLM-VTA is more biologically apt but expensive.)
-7. **Phase C trigger.** Do you want sleep observation right after Phase B, or after Phase B has run for a while accumulating real STM (e.g. a week of operation)?
+Per ratified decisions 4 + 5: drive all 11 tasks consecutively, no phase pauses, no token-budget caps. Estimated ~5–7 days of focused work end-to-end. Cost depends on iteration count during real-LLM verification; rough order-of-magnitude $50–150 across Phase A + B at chat-only volumes; will run hotter once amygdala/insula respond on metric streams.
 
 ## 11. Acceptance criteria
 
