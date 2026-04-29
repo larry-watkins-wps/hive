@@ -35,11 +35,18 @@ RUN pip install --no-cache-dir \
   "aiomqtt>=2.0,<3" \
   "pydantic>=2.6" \
   "structlog>=24" \
-  "ruamel.yaml"
+  "ruamel.yaml" \
+  "jsonschema>=4.20"
 
 # Copy observatory source + built frontend bundle.
 COPY observatory/ ./observatory/
 COPY --from=frontend /web ./observatory/web
+
+# v4 sensory module imports `from shared.message_envelope import Envelope` to
+# construct Hive envelopes for hive/external/perception. PYTHONPATH=/app means
+# /app/shared/ is importable as `shared`. Read-only at runtime — observatory
+# is a sidecar instrument and does not modify shared.
+COPY src/shared/ ./shared/
 
 # Drop the dev-only web-src/ and tests/ from the runtime image. The fresh
 # frontend bundle at ./observatory/web is what FastAPI's static mount serves.

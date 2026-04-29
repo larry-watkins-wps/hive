@@ -271,7 +271,11 @@ def build_app(settings: Settings) -> FastAPI:  # noqa: PLR0915 — composition f
         # new one each attempt.
         def client_factory() -> aiomqtt.Client:
             return aiomqtt.Client(
-                hostname=host, port=port, identifier=f"observatory-{host}-{port}"
+                hostname=host,
+                port=port,
+                identifier=f"observatory-{host}-{port}",
+                username=settings.mqtt_username,
+                password=settings.mqtt_password,
             )
 
         await hub.start()

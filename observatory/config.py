@@ -27,6 +27,11 @@ class Settings:
     hive_repo_root: Path = Path(".").resolve()
     max_ws_rate: int = 200  # envelopes/sec per client before decimation kicks in
     mqtt_url: str = "mqtt://127.0.0.1:1883"
+    # Optional broker auth. None (default) means no auth — matches an
+    # un-secured local broker. When the broker requires auth, set both via
+    # OBSERVATORY_MQTT_USERNAME / OBSERVATORY_MQTT_PASSWORD env vars.
+    mqtt_username: str | None = None
+    mqtt_password: str | None = None
     regions_root: Path = Path("regions")
     ring_buffer_size: int = 10000
     chat_default_speaker: str = "Larry"
@@ -43,6 +48,20 @@ class Settings:
             ).resolve(),
             max_ws_rate=_int_env("OBSERVATORY_MAX_WS_RATE", cls.max_ws_rate),
             mqtt_url=os.environ.get("OBSERVATORY_MQTT_URL", cls.mqtt_url),
+            # OBSERVATORY_MQTT_{USERNAME,PASSWORD} take precedence so an
+            # operator can override per-deploy. Otherwise fall back to the
+            # repo-wide MQTT_{USERNAME,PASSWORD} pair (same vars Hive's
+            # glia + region containers use).
+            mqtt_username=(
+                os.environ.get("OBSERVATORY_MQTT_USERNAME")
+                or os.environ.get("MQTT_USERNAME")
+                or None
+            ),
+            mqtt_password=(
+                os.environ.get("OBSERVATORY_MQTT_PASSWORD")
+                or os.environ.get("MQTT_PASSWORD")
+                or None
+            ),
             regions_root=Path(
                 os.environ.get("OBSERVATORY_REGIONS_ROOT", str(cls.regions_root))
             ),

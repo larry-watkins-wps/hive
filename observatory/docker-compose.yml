@@ -24,6 +24,12 @@ services:
       # name needs the extra_hosts line below uncommented, or swap for
       # the host's actual LAN IP.
       OBSERVATORY_MQTT_URL: mqtt://host.docker.internal:1883
+      # Broker auth: env_file (../.env) injects MQTT_USERNAME +
+      # MQTT_PASSWORD into the container; observatory.config.Settings reads
+      # those directly (with OBSERVATORY_MQTT_USERNAME / OBSERVATORY_MQTT_PASSWORD
+      # as a higher-precedence override). When the broker is configured for
+      # auth, both must be present or the connection rejects with
+      # `Not authorized`.
       OBSERVATORY_REGIONS_ROOT: /hive/regions
       OBSERVATORY_HIVE_ROOT: /hive
       # Per-client envelope rate cap (decimator threshold). Default 200 is too
@@ -32,6 +38,8 @@ services:
       # drops all envelopes for that client. 30/s keeps sparks continuous
       # while giving the frontend breathing room.
       OBSERVATORY_MAX_WS_RATE: "30"
+    env_file:
+      - ../.env
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"    # Linux only
     volumes:

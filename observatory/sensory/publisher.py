@@ -53,7 +53,12 @@ class SensoryPublisher:
         """Open the aiomqtt connection. Idempotent: a second call is a no-op."""
         if self._client is not None:
             return
-        client = aiomqtt.Client(hostname=self._host, port=self._port)
+        client = aiomqtt.Client(
+            hostname=self._host,
+            port=self._port,
+            username=self._settings.mqtt_username,
+            password=self._settings.mqtt_password,
+        )
         await client.__aenter__()
         self._client = client
         log.info("sensory_publisher.connected", host=self._host, port=self._port)
