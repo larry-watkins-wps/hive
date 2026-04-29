@@ -83,7 +83,11 @@ def build_sensory_router() -> APIRouter:
             body.speaker if body.speaker is not None else settings.chat_default_speaker
         )
         envelope = Envelope.new(
-            source_region="observatory.sensory",
+            # See spec §3.2: shared/message_envelope.py constrains source_region
+            # to ^[a-z][a-z0-9_]{2,30}$, so the dotted "observatory.sensory" form
+            # the early v4 draft used was rejected by Hive's region-side schema
+            # validator. observatory_sensory keeps the prefix-based filtering hint.
+            source_region="observatory_sensory",
             topic="hive/external/perception",
             content_type="application/json",
             data={

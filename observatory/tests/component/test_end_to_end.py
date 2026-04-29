@@ -379,7 +379,7 @@ def test_post_sensory_text_in_publishes_to_broker(
     assert elapsed < 0.5, f"round-trip too slow: {elapsed:.2f}s"  # noqa: PLR2004 — spec literal
 
     assert env["topic"] == "hive/external/perception"
-    assert env["source_region"] == "observatory.sensory"
+    assert env["source_region"] == "observatory_sensory"
     assert env["envelope_version"] == 1
     assert env["id"] == body["id"]
     assert env["timestamp"] == body["timestamp"]

@@ -53,7 +53,7 @@ def test_happy_path_publishes_envelope_and_returns_id_timestamp(
     stub_publisher.publish.assert_awaited_once()
     envelope: Envelope = stub_publisher.publish.call_args.args[0]
     assert envelope.topic == "hive/external/perception"
-    assert envelope.source_region == "observatory.sensory"
+    assert envelope.source_region == "observatory_sensory"
     assert envelope.id == body["id"]
     assert envelope.timestamp == body["timestamp"]
     data = envelope.payload.data

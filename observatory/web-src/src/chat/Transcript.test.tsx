@@ -9,11 +9,11 @@ function envOnTopic(topic: string, data: unknown, id: string, ts: string): Envel
   return {
     observed_at: Date.parse(ts),
     topic,
-    source_region: 'observatory.sensory',
+    source_region: 'observatory_sensory',
     destinations: [],
     envelope: {
       id, timestamp: ts, envelope_version: 1,
-      source_region: 'observatory.sensory',
+      source_region: 'observatory_sensory',
       topic,
       payload: { content_type: 'application/json', encoding: 'utf-8', data },
       attention_hint: 0.5, reply_to: null, correlation_id: null,

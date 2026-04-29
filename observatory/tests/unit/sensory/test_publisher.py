@@ -24,7 +24,7 @@ def settings() -> Settings:
 @pytest.fixture
 def envelope() -> Envelope:
     return Envelope.new(
-        source_region="observatory.sensory",
+        source_region="observatory_sensory",
         topic="hive/external/perception",
         content_type="application/json",
         data={
@@ -62,7 +62,7 @@ async def test_publish_forbidden_topic_raises(settings: Settings) -> None:
     pub._client = MagicMock()  # not used — we should raise before publish
 
     bad = Envelope.new(
-        source_region="observatory.sensory",
+        source_region="observatory_sensory",
         topic="hive/cognitive/pfc/oops",
         content_type="application/json",
         data={"x": 1},

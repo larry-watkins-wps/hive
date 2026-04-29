@@ -11,6 +11,7 @@ import { Color } from 'three';
 const PREFIXES: Array<[string, string]> = [
   ['hive/cognitive/',     '#e8e8e8'],
   ['hive/sensory/',       '#99ee66'],
+  ['hive/external/',      '#7be3c8'],   // v4 — chat input from outside the organism (spec §3.1, §3.2)
   ['hive/motor/',         '#ee9966'],
   ['hive/metacognition/', '#bb66ff'],
   ['hive/self/',          '#d4b3ff'],   // v3 — spec §5.3
@@ -64,6 +65,7 @@ export function topicColorObject(topic: string): Color {
 export function kindTag(topic: string): string {
   if (topic.startsWith('hive/cognitive/')) return 'cog';
   if (topic.startsWith('hive/sensory/')) return 'sns';
+  if (topic.startsWith('hive/external/')) return 'ext';
   if (topic.startsWith('hive/motor/')) return 'mot';
   if (topic.startsWith('hive/metacognition/')) return 'meta';
   if (topic.startsWith('hive/self/')) return 'self';
