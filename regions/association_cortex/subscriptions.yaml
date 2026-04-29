@@ -23,6 +23,9 @@ subscriptions:
   - topic: hive/sensory/#
     qos: 0
     description: "All sensory inputs for cross-modal binding"
+  - topic: hive/external/perception
+    qos: 1
+    description: "External perception — thought-form text from outside the organism (chat, future STT, future captioning). See observatory/docs/proposals/2026-04-29-association-cortex-perception-subscription.yaml."
   - topic: hive/cognitive/association_cortex/#
     qos: 1
     description: "Directed requests to association cortex"

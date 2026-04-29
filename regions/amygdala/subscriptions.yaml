@@ -35,3 +35,6 @@ subscriptions:
   - topic: hive/cognitive/hippocampus/response
     qos: 1
     description: "Memory responses for emotional context"
+  - topic: hive/external/perception
+    qos: 1
+    description: "External perception — chat input contributes to emotional/threat salience computation. Hand-applied alongside the assoc_cortex sub during v4 chat bootstrap (see CLAUDE.md bootstrap-mode note)."
