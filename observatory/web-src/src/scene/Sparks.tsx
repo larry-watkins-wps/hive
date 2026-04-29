@@ -21,7 +21,10 @@ type Spark = {
 export function Sparks({ nodesRef }: { nodesRef: React.MutableRefObject<Map<string, ForceNode>> }) {
   const meshRef = useRef<InstancedMesh>(null);
   const sparks = useRef<Spark[]>([]);
-  const lastLenRef = useRef(0);
+  // Track the monotonic counter, NOT envelopes.length — the ring caps at
+  // RING_CAP (5000) and length plateaus once full, which silently zeroes
+  // newCount forever. envelopesReceivedTotal grows without bound.
+  const lastTotalRef = useRef(0);
 
   // Force count to 0 on first mount so the default MAX_SPARKS instances
   // don't flash at the origin (identity matrices) before useFrame runs.
@@ -30,13 +33,16 @@ export function Sparks({ nodesRef }: { nodesRef: React.MutableRefObject<Map<stri
     if (meshRef.current) meshRef.current.count = 0;
   }, []);
 
-  // Subscribe to envelope appends by polling the envelopes array length each frame.
+  // Subscribe to envelope appends by polling the monotonic counter each frame.
   useFrame((state) => {
     const store = useStore.getState();
     const envs = store.envelopes;
-    const newCount = envs.length - lastLenRef.current;
+    const total = store.envelopesReceivedTotal;
+    const newCount = total - lastTotalRef.current;
     if (newCount > 0) {
       // Prefer freshness: if a burst >100 arrived in one frame, take the last 100.
+      // Slice from the tail of the ring — tail is always most-recent regardless
+      // of cap rotation.
       const slice = envs.slice(envs.length - Math.min(newCount, 100));
       for (const e of slice) {
         if (!e.source_region || e.destinations.length === 0) continue;
@@ -73,7 +79,7 @@ export function Sparks({ nodesRef }: { nodesRef: React.MutableRefObject<Map<stri
         }
       }
     }
-    lastLenRef.current = envs.length;
+    lastTotalRef.current = total;
 
     if (!meshRef.current) return;
     const m = new Matrix4();
