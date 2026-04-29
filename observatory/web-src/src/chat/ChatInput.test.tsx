@@ -25,6 +25,18 @@ describe('ChatInput', () => {
     expect(useStore.getState().pendingChatTurns).toEqual({});
   });
 
+  it('Enter on a never-typed-into textarea does not submit', async () => {
+    const post = vi.spyOn(api, 'postChatText');
+    render(<ChatInput />);
+    const textarea = screen.getByRole('textbox');
+    const u = userEvent.setup();
+    // No u.type(...) — go straight to Enter on the empty textarea.
+    textarea.focus();
+    await u.keyboard('{Enter}');
+    expect(useStore.getState().pendingChatTurns).toEqual({});
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it('submit on Enter: adds optimistic pending turn and POSTs', async () => {
     const post = vi.spyOn(api, 'postChatText').mockResolvedValue({
       id: 'env-1', timestamp: '2026-04-29T14:00:00.000Z',
