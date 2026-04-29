@@ -130,7 +130,7 @@ If `text` is absent, the transcript renders an audio-only placeholder row: `🔊
 ### 4.1 Module layout
 
 ```
-observatory/observatory/sensory/
+observatory/sensory/
 ├── __init__.py
 ├── allowlist.py     # frozenset of permitted topics
 ├── errors.py        # ForbiddenTopicError, PublishFailedError
@@ -138,7 +138,9 @@ observatory/observatory/sensory/
 └── routes.py        # FastAPI APIRouter; POST /sensory/text/in
 ```
 
-Module is mounted into the existing FastAPI app (`observatory/observatory/service.py::build_app`) via `app.include_router(sensory.routes.router, prefix="")`. Mounted at the root prefix; routes namespaced under `/sensory/*` for forward-compat with future audio/visual endpoints.
+(The observatory backend is a flat package at `observatory/`, not `observatory/observatory/` — Python imports are `from observatory.X import …`. The sensory module sits as a subpackage `observatory.sensory`.)
+
+Module is mounted into the existing FastAPI app (`observatory/service.py::build_app`) by extending the existing API router (or via `app.include_router(sensory.routes.router)` — implementer choice). Routes namespaced under `/sensory/*` for forward-compat with future audio/visual endpoints.
 
 ### 4.2 Allowlist
 
@@ -202,8 +204,8 @@ Endpoint behaviour:
 
 - Accepts `{text, speaker?}`. Trims `text` (server-side); rejects empty post-trim with 422.
 - Constructs the envelope via `Envelope.new(source_region="observatory.sensory", topic="hive/external/perception", content_type="application/json", data={...})` (the factory generates `id` and `timestamp`).
-- Inner `data` fills: `speaker` defaults to `settings.chat.default_speaker`, `channel="observatory.chat"`, `source_modality="text"`.
-- Calls `publisher.publish(envelope, qos=settings.chat.publish_qos)` (publisher reads `topic` off the envelope and validates it against the allowlist).
+- Inner `data` fills: `speaker` defaults to `settings.chat_default_speaker`, `channel="observatory.chat"`, `source_modality="text"`.
+- Calls `publisher.publish(envelope, qos=settings.chat_publish_qos)` (publisher reads `topic` off the envelope and validates it against the allowlist).
 - On success: `202 Accepted`, body `{id: "<uuid>", timestamp: "<iso>"}` — the envelope identifiers the frontend uses to dedupe its locally-rendered turn against the firehose echo (§6.5).
 - On `ForbiddenTopicError`: 500 (programming error — should never happen from this route, since the route always builds an allowlist-permitted topic).
 - On `PublishFailedError`: 502 with body `{error: "publish_failed", message: "<aiomqtt error>"}`.
@@ -213,24 +215,38 @@ Cache-Control: `no-store` (mirrors v2's REST-route convention).
 
 ### 4.5 Settings
 
-`observatory/observatory/config.py::Settings` gains:
+`observatory/config.py::Settings` is a `@dataclass(frozen=True)` populated by `Settings.from_env()` reading `os.environ`. v4 extends it with three flat fields (matching the existing flat naming convention — the file does not use Pydantic-Settings):
 
 ```python
-class ChatSettings(BaseModel):
-    default_speaker: str = "Larry"
-    publish_qos: int = 1
-    text_max_length: int = 4000
-
-class Settings(BaseSettings):
+# observatory/config.py
+@dataclass(frozen=True)
+class Settings:
     # … existing fields …
-    chat: ChatSettings = ChatSettings()
+    chat_default_speaker: str = "Larry"
+    chat_publish_qos: int = 1
+    chat_text_max_length: int = 4000
+
+    @classmethod
+    def from_env(cls) -> Settings:
+        return cls(
+            # … existing fields …
+            chat_default_speaker=os.environ.get(
+                "OBSERVATORY_CHAT_DEFAULT_SPEAKER", cls.chat_default_speaker
+            ),
+            chat_publish_qos=_int_env(
+                "OBSERVATORY_CHAT_PUBLISH_QOS", cls.chat_publish_qos
+            ),
+            chat_text_max_length=_int_env(
+                "OBSERVATORY_CHAT_TEXT_MAX_LENGTH", cls.chat_text_max_length
+            ),
+        )
 ```
 
-Env overrides via Pydantic-Settings nested-env (`__` separator):
+Env vars (flat names, matching existing `OBSERVATORY_*` convention):
 
-- `OBSERVATORY_CHAT__DEFAULT_SPEAKER`
-- `OBSERVATORY_CHAT__PUBLISH_QOS`
-- `OBSERVATORY_CHAT__TEXT_MAX_LENGTH`
+- `OBSERVATORY_CHAT_DEFAULT_SPEAKER`
+- `OBSERVATORY_CHAT_PUBLISH_QOS`
+- `OBSERVATORY_CHAT_TEXT_MAX_LENGTH`
 
 ## 5. Code-change proposal artifacts
 
@@ -419,9 +435,9 @@ Visual restraint matches existing observatory norms (Inspector, Dock, Labels): t
 
 | Setting | Default | Env override |
 |---|---|---|
-| `chat.default_speaker` | `"Larry"` | `OBSERVATORY_CHAT__DEFAULT_SPEAKER` |
-| `chat.publish_qos` | `1` | `OBSERVATORY_CHAT__PUBLISH_QOS` |
-| `chat.text_max_length` | `4000` | `OBSERVATORY_CHAT__TEXT_MAX_LENGTH` |
+| `chat_default_speaker` | `"Larry"` | `OBSERVATORY_CHAT_DEFAULT_SPEAKER` |
+| `chat_publish_qos` | `1` | `OBSERVATORY_CHAT_PUBLISH_QOS` |
+| `chat_text_max_length` | `4000` | `OBSERVATORY_CHAT_TEXT_MAX_LENGTH` |
 
 The MQTT broker host/port and credentials reuse observatory's existing settings (no separate config block). Same broker at `127.0.0.1:1883` per `memory/reference_hive_broker.md`.
 
