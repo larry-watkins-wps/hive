@@ -33,10 +33,15 @@ SUBSCRIPTIONS = [
     # external/* topics are captured automatically.
     "hive/external/+",
     # Motor outcomes — prediction-error feedback for executive learning.
-    "hive/motor/complete",
-    "hive/motor/failed",
-    "hive/motor/partial",
-    "hive/motor/speech/complete",
+    # Wildcards rather than exact filters so respond.py can subscribe to
+    # the same outcome topics without colliding (spec §A.6.3 + handlers_loader
+    # _check_no_duplicate_topics: exact topic collisions across handlers fail
+    # bootstrap, but overlapping wildcards are explicitly allowed). 3-segment
+    # ``hive/motor/+`` matches complete/failed/partial; 4-segment
+    # ``hive/motor/+/+`` matches speech/complete and any future
+    # motor/<channel>/<outcome>.
+    "hive/motor/+",
+    "hive/motor/+/+",
     # Basal ganglia habit suggestions.
     "hive/habit/suggestion",
     # Sensory: cover both 3-segment (hive/sensory/<modality>) and
