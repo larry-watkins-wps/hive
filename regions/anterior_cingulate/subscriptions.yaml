@@ -29,3 +29,14 @@ subscriptions:
   - topic: hive/system/codechange/proposed
     qos: 1
     description: "Proposed code changes awaiting approval"
+  # Cognitive streams — for cross-region conflict detection (respond.py)
+  # plus broader notebook-side awareness via the wildcard.
+  - topic: hive/cognitive/+/integration
+    qos: 1
+    description: "Cortical integration outputs (conflict-detection input)"
+  - topic: hive/cognitive/prefrontal_cortex/plan
+    qos: 1
+    description: "PFC deliberation conclusions (conflict-detection input)"
+  - topic: hive/cognitive/+/+
+    qos: 0
+    description: "Broad cognitive surface for divergence-context awareness"
