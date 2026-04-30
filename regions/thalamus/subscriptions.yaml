@@ -26,3 +26,6 @@ subscriptions:
   - topic: hive/cognitive/thalamus/#
     qos: 1
     description: "Directed requests to thalamus"
+  - topic: hive/cognitive/+/integration
+    qos: 0
+    description: "Integration outputs from cortical regions — candidates for routing hints"
