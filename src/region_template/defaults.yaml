@@ -43,9 +43,17 @@ capabilities:
 
 lifecycle:
   heartbeat_interval_s: 5
-  sleep_quiet_window_s: 300
-  sleep_max_wake_s: 3600
-  sleep_max_queue_depth: 5
+  # Bootstrap mode (2026-04-29 onward): the sleep coordinator's edit_handlers
+  # path has been observed to delete hand-applied bootstrap handlers and rewrite
+  # config.yaml's self_modify flag back to true even with self_modify: false at
+  # startup. Until that destructive path is rooted out, automatic sleep
+  # triggers are effectively disabled by setting their thresholds to ~MAXINT.
+  # Manual ctx.request_sleep() calls from handlers still trigger sleep, but
+  # the bootstrap prompts deliberately omit the <request_sleep> tag from
+  # documented output so the LLM doesn't request sleep on its own.
+  sleep_quiet_window_s: 999999999
+  sleep_max_wake_s: 999999999
+  sleep_max_queue_depth: 999999999
   sleep_abort_cortisol_threshold: 0.85
   shutdown_timeout_s: 30
 
