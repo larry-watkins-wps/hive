@@ -29,3 +29,12 @@ subscriptions:
   - topic: hive/cognitive/basal_ganglia/#
     qos: 1
     description: "Directed requests to basal ganglia"
+  - topic: hive/cognitive/+/integration
+    qos: 1
+    description: "Cognitive integration output from any cortex; basal_ganglia may select these as actionable motor intents."
+  - topic: hive/cognitive/prefrontal_cortex/plan
+    qos: 1
+    description: "PFC deliberation conclusions; basal_ganglia may select these as actionable motor intents."
+  - topic: hive/habit/suggestion
+    qos: 0
+    description: "Habit suggestions surface alongside reinforce events for action-selection context."
