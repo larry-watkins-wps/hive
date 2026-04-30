@@ -37,4 +37,7 @@ subscriptions:
     description: "Memory responses for emotional context"
   - topic: hive/external/perception
     qos: 1
-    description: "External perception — chat input contributes to emotional/threat salience computation. Hand-applied alongside the assoc_cortex sub during v4 chat bootstrap (see CLAUDE.md bootstrap-mode note)."
+    description: "External perception — chat input contributes to emotional/threat salience computation."
+  - topic: hive/sensory/auditory/text
+    qos: 0
+    description: "Transcribed audio text — threat-detect on linguistic content (insults, threats, distress signals)."
