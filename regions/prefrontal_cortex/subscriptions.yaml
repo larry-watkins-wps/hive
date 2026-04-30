@@ -44,3 +44,9 @@ subscriptions:
   - topic: hive/cognitive/prefrontal_cortex/#
     qos: 1
     description: "Directed requests to prefrontal cortex"
+  - topic: hive/cognitive/association_cortex/integration
+    qos: 1
+    description: "Cross-modal integration synthesis from association_cortex. PFC's primary deliberation input on chat + sensory."
+  - topic: hive/external/perception
+    qos: 1
+    description: "External perception — chat input recorded for episodic context. PFC deliberates on the assoc_cortex integration synthesis, not the raw input directly."

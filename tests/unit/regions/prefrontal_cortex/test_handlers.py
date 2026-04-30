@@ -1,0 +1,332 @@
+"""Unit tests for prefrontal_cortex handlers (notebook + respond).
+
+Phase A Task 2 of the handler bootstrap plan. Mirrors the structure of
+``tests/unit/regions/association_cortex/test_handlers.py``: handlers
+live outside ``src/`` so we import them by file path. The ``respond.py``
+parser is a verbatim copy of the assoc_cortex one (post-19e035a), so
+the regression coverage (C1 thoughts-leak guard, single+double quote
+tolerance, ``<request_sleep>`` empty-string discrimination, STM record
+in ``finally``) carries over directly.
+"""
+from __future__ import annotations
+
+import importlib.util
+import sys
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+import structlog
+
+from region_template.llm_adapter import CompletionResult
+from region_template.token_ledger import TokenUsage
+from shared.message_envelope import Envelope
+
+# ---------------------------------------------------------------------------
+# Module loading helpers — handlers live outside src/, import by file path.
+# ---------------------------------------------------------------------------
+
+REGION_HANDLERS_DIR = (
+    Path(__file__).resolve().parents[4]
+    / "regions"
+    / "prefrontal_cortex"
+    / "handlers"
+)
+
+
+def _load_handler(name: str):
+    """Import a handler module from its file path under regions/."""
+    path = REGION_HANDLERS_DIR / f"{name}.py"
+    module_name = f"_test_pfc_handler_{name}"
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    assert spec is not None and spec.loader is not None, (
+        f"could not load handler at {path}"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+# ---------------------------------------------------------------------------
+# Helpers for building envelopes and ctx mocks.
+# ---------------------------------------------------------------------------
+
+
+def _make_envelope(topic: str, data, content_type: str = "application/json") -> Envelope:
+    return Envelope.new(
+        source_region="test_origin",
+        topic=topic,
+        content_type=content_type,
+        data=data,
+    )
+
+
+def _make_ctx(*, llm_text: str | None = None) -> MagicMock:
+    """Build a HandlerContext-shaped mock.
+
+    The handlers only touch ctx.publish, ctx.llm.complete, ctx.memory.record_event,
+    ctx.memory.recent_events, ctx.request_sleep, and ctx.log. Everything else
+    is irrelevant.
+    """
+    ctx = MagicMock()
+    ctx.region_name = "prefrontal_cortex"
+    ctx.publish = AsyncMock()
+    ctx.memory.record_event = AsyncMock()
+    ctx.memory.recent_events = AsyncMock(return_value=[])
+    ctx.request_sleep = MagicMock()
+    ctx.log = structlog.get_logger("test")
+
+    if llm_text is not None:
+        result = CompletionResult(
+            text=llm_text,
+            tool_calls=(),
+            finish_reason="stop",
+            usage=TokenUsage(
+                input_tokens=10,
+                output_tokens=20,
+                cache_read_tokens=0,
+                cache_write_tokens=0,
+            ),
+            model="stub-model",
+            cached_prefix_tokens=0,
+            elapsed_ms=1,
+            raw={},
+        )
+        ctx.llm.complete = AsyncMock(return_value=result)
+    else:
+        ctx.llm.complete = AsyncMock()
+
+    return ctx
+
+
+# ---------------------------------------------------------------------------
+# notebook.py
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_notebook_records_motor_complete():
+    notebook = _load_handler("notebook")
+    env = _make_envelope(
+        "hive/motor/complete",
+        {"action": "wave", "status": "ok"},
+    )
+    ctx = _make_ctx()
+
+    await notebook.handle(env, ctx)
+
+    ctx.memory.record_event.assert_awaited_once()
+    args, kwargs = ctx.memory.record_event.await_args
+    summary = kwargs.get("summary", args[1] if len(args) > 1 else None)
+    assert summary is not None
+    assert summary.startswith("motor.complete:"), summary
+
+
+@pytest.mark.asyncio
+async def test_notebook_records_external_perception():
+    notebook = _load_handler("notebook")
+    env = _make_envelope(
+        "hive/external/perception",
+        {"text": "Hello, are you there?", "speaker": "Larry"},
+    )
+    ctx = _make_ctx()
+
+    await notebook.handle(env, ctx)
+
+    ctx.memory.record_event.assert_awaited_once()
+    args, kwargs = ctx.memory.record_event.await_args
+    summary = kwargs.get("summary", args[1] if len(args) > 1 else None)
+    assert summary is not None
+    assert summary.startswith("external.perception:"), summary
+    assert "Hello, are you there?" in summary
+
+
+@pytest.mark.asyncio
+async def test_notebook_records_cognitive_hippocampus_response():
+    notebook = _load_handler("notebook")
+    env = _make_envelope(
+        "hive/cognitive/hippocampus/response",
+        {"text": "recalled: Larry said hello yesterday"},
+    )
+    ctx = _make_ctx()
+
+    await notebook.handle(env, ctx)
+
+    ctx.memory.record_event.assert_awaited_once()
+    args, kwargs = ctx.memory.record_event.await_args
+    summary = kwargs.get("summary", args[1] if len(args) > 1 else None)
+    assert summary is not None
+    assert summary.startswith("cognitive.hippocampus.response:"), summary
+
+
+@pytest.mark.asyncio
+async def test_notebook_handles_non_dict_payload():
+    notebook = _load_handler("notebook")
+    env = _make_envelope("hive/external/perception", "raw string body")
+    ctx = _make_ctx()
+
+    await notebook.handle(env, ctx)
+
+    ctx.memory.record_event.assert_awaited_once()
+    args, kwargs = ctx.memory.record_event.await_args
+    summary = kwargs.get("summary", args[1] if len(args) > 1 else None)
+    assert summary.startswith("external.perception:")
+    assert "raw string body" in summary
+
+
+# ---------------------------------------------------------------------------
+# respond.py
+# ---------------------------------------------------------------------------
+
+
+_GOOD_LLM_RESPONSE = """\
+<thoughts>
+Larry said hello via the integration synthesis. I should plan a verbal response.
+</thoughts>
+
+<publish topic="hive/cognitive/prefrontal_cortex/plan">
+{"summary": "Greet Larry back.", "next_action": "speak", "confidence": 0.8}
+</publish>
+
+<publish topic="hive/motor/speech/intent">
+{"text": "Hello Larry."}
+</publish>
+"""
+
+_RESPONSE_WITH_SLEEP = """\
+<thoughts>STM is filling.</thoughts>
+
+<publish topic="hive/cognitive/prefrontal_cortex/plan">
+{"summary": "Defer planning until after consolidation.", "next_action": "wait", "confidence": 0.2}
+</publish>
+
+<request_sleep reason="STM overloaded" />
+"""
+
+_RESPONSE_NO_PUBLISH = """\
+<thoughts>I have nothing to plan and I will not plan it.</thoughts>
+"""
+
+
+@pytest.mark.asyncio
+async def test_respond_parses_publish_blocks():
+    respond = _load_handler("respond")
+    env = _make_envelope(
+        "hive/cognitive/association_cortex/integration",
+        {"text": "Larry says hi", "modalities_integrated": ["external"], "confidence": 0.9},
+    )
+    ctx = _make_ctx(llm_text=_GOOD_LLM_RESPONSE)
+
+    await respond.handle(env, ctx)
+
+    # Two <publish> blocks → two ctx.publish awaits.
+    assert ctx.publish.await_count == 2  # noqa: PLR2004
+    topics = [call.kwargs["topic"] for call in ctx.publish.await_args_list]
+    assert "hive/cognitive/prefrontal_cortex/plan" in topics
+    assert "hive/motor/speech/intent" in topics
+
+    # JSON bodies parsed into dicts.
+    by_topic = {call.kwargs["topic"]: call.kwargs["data"] for call in ctx.publish.await_args_list}
+    plan = by_topic["hive/cognitive/prefrontal_cortex/plan"]
+    assert plan["summary"] == "Greet Larry back."
+    assert plan["next_action"] == "speak"
+    assert by_topic["hive/motor/speech/intent"] == {"text": "Hello Larry."}
+
+    # content_type is application/json on every publish.
+    for call in ctx.publish.await_args_list:
+        assert call.kwargs["content_type"] == "application/json"
+
+
+@pytest.mark.asyncio
+async def test_respond_request_sleep_invokes_ctx():
+    respond = _load_handler("respond")
+    env = _make_envelope(
+        "hive/cognitive/association_cortex/integration",
+        {"text": "ok", "modalities_integrated": [], "confidence": 0.1},
+    )
+    ctx = _make_ctx(llm_text=_RESPONSE_WITH_SLEEP)
+
+    await respond.handle(env, ctx)
+
+    ctx.request_sleep.assert_called_once_with("STM overloaded")
+
+
+@pytest.mark.asyncio
+async def test_respond_parse_failure_publishes_metacog_error():
+    respond = _load_handler("respond")
+    env = _make_envelope(
+        "hive/cognitive/association_cortex/integration",
+        {"text": "huh", "modalities_integrated": [], "confidence": 0.0},
+    )
+    ctx = _make_ctx(llm_text=_RESPONSE_NO_PUBLISH)
+
+    await respond.handle(env, ctx)
+
+    # Exactly one publish, to the metacog error topic.
+    assert ctx.publish.await_count == 1
+    call = ctx.publish.await_args_list[0]
+    assert call.kwargs["topic"] == "hive/metacognition/error/detected"
+    assert call.kwargs["data"]["kind"] == "llm_parse_failure"
+    assert (
+        call.kwargs["data"]["topic"]
+        == "hive/cognitive/association_cortex/integration"
+    )
+    assert "raw_response" in call.kwargs["data"]
+
+
+@pytest.mark.asyncio
+async def test_respond_records_envelope_to_stm():
+    respond = _load_handler("respond")
+    env = _make_envelope(
+        "hive/cognitive/association_cortex/integration",
+        {"text": "hi", "modalities_integrated": [], "confidence": 0.5},
+    )
+
+    # Successful parse path records.
+    ctx = _make_ctx(llm_text=_GOOD_LLM_RESPONSE)
+    await respond.handle(env, ctx)
+    ctx.memory.record_event.assert_awaited_once()
+
+    # Parse-failure path also records (the ``finally`` block).
+    ctx2 = _make_ctx(llm_text=_RESPONSE_NO_PUBLISH)
+    await respond.handle(env, ctx2)
+    ctx2.memory.record_event.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_respond_ignores_publish_tags_inside_thoughts():
+    """Regression for C1: <publish> tags quoted inside <thoughts> must NOT be dispatched.
+
+    LLMs routinely quote tag examples in their reasoning. The parser strips
+    <thoughts>...</thoughts> before running the publish regex so quoted
+    examples cannot leak. Without this guard, an example like
+    ``<publish topic="bogus">...</publish>`` inside <thoughts> would be
+    dispatched as a real envelope.
+    """
+    respond = _load_handler("respond")
+    response_text = (
+        '<thoughts>I might publish '
+        '<publish topic="hive/cognitive/example">{"x":1}</publish> '
+        'but I won\'t.</thoughts>\n'
+        '<publish topic="hive/cognitive/prefrontal_cortex/plan">'
+        '{"summary":"real","next_action":"wait","confidence":0.5}'
+        '</publish>'
+    )
+    env = _make_envelope(
+        "hive/cognitive/association_cortex/integration",
+        {"text": "hi"},
+    )
+    ctx = _make_ctx(llm_text=response_text)
+
+    await respond.handle(env, ctx)
+
+    # Exactly one publish, and it's the real outer one — NOT the
+    # ``hive/cognitive/example`` quoted inside <thoughts>.
+    assert ctx.publish.await_count == 1
+    assert (
+        ctx.publish.await_args.kwargs["topic"]
+        == "hive/cognitive/prefrontal_cortex/plan"
+    )
