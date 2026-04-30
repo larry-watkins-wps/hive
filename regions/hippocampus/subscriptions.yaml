@@ -38,3 +38,12 @@ subscriptions:
   - topic: hive/cognitive/hippocampus/#
     qos: 1
     description: "Directed requests to hippocampus"
+  - topic: hive/external/perception
+    qos: 1
+    description: "External perception — chat input lands as an episodic event with emotional tag from amygdala (Task 7) when available."
+  - topic: hive/cognitive/association_cortex/integration
+    qos: 1
+    description: "Cross-modal integration synthesis from association_cortex; encoded as an episode."
+  - topic: hive/cognitive/prefrontal_cortex/plan
+    qos: 1
+    description: "Deliberation conclusions from prefrontal_cortex; encoded as an episode."
