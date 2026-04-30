@@ -4,7 +4,7 @@ schema_version: 1
 
 llm:
   provider: anthropic
-  model: claude-haiku-4-5-20251001
+  model: claude-sonnet-4-6
   params:
     temperature: 0.5
     max_tokens: 4096
@@ -18,7 +18,7 @@ llm:
     ttl_hint_s: 300
 
 capabilities:
-  self_modify: true
+  self_modify: false
   tool_use: advanced
   vision: false
   audio: false

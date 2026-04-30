@@ -18,7 +18,7 @@ llm:
     ttl_hint_s: 300
 
 capabilities:
-  self_modify: true
+  self_modify: false
   tool_use: advanced
   vision: false
   audio: false

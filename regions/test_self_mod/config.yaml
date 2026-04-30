@@ -15,7 +15,7 @@ llm:
     per_day_cost_usd: 5
 
 capabilities:
-  self_modify: true
+  self_modify: false
   tool_use: basic
   vision: false
   audio: false
