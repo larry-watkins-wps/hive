@@ -1,16 +1,75 @@
 # Hive — Session Handoff
 
-**Last updated:** 2026-04-29 (bootstrap-debt: shared `hive` MQTT user / `!Hive1234` password to piggy-back on Argus's EMQX broker on port 1883; surfaced pre-existing launcher↔region-config password-env mismatch)
-**Current phase:** v0 DNA complete; Phase 11 (Runtime evolution — first self-mod cycles, post-v0 region additions) **in progress**
+**Last updated:** 2026-04-29 (handler bootstrap COMPLETE — all 14 regions ship LLM-driven `notebook + respond` handlers; chat round-trip alive end-to-end; observed Hive deliberating across assoc_cortex → PFC → broca with hippocampus encoding, amygdala threat-assessing, VTA rewarding)
+**Current phase:** Handler bootstrap complete; Hive is alive. Next: post-bootstrap stabilization (root-cause sleep destruction, re-enable self_modify gradually) + post-v0 region additions
 **Repo path:** `C:/repos/hive/`
 
 This document is the **source of truth for session-to-session continuity.** Any Claude Code session working on Hive should begin by reading this file in full, then proceed according to the current phase.
 
 ---
 
+## Handler bootstrap (2026-04-29) — Hive is alive
+
+After v0 DNA shipped, regions had subscriptions but no handlers (only PFC had a 29-line `notebook.py` scaffold). Subscribed but inert; the runtime's dispatcher returned immediately when no handler matched a topic. Sleep cycles produced `no_change` because STM stayed sparse. Chicken-and-egg.
+
+Per Larry's directive ("bootstrap a completely working system; after it works, we can let it evolve"), hand-wrote LLM-driven `notebook.py` + `respond.py` handlers across all 14 regions over a single session. Plan: [docs/superpowers/plans/2026-04-29-handler-bootstrap-plan.md](superpowers/plans/2026-04-29-handler-bootstrap-plan.md). Implementer prompts: [docs/superpowers/plans/prompts/](superpowers/plans/prompts/).
+
+### What landed
+
+| Region | Notebook | Respond | Commit | Notes |
+|---|---|---|---|---|
+| association_cortex | ✅ | ✅ | `878ec37` + `19e035a` | Chat gateway. Integrates external/perception → publishes integration + speech/intent. Template for the cohort. |
+| prefrontal_cortex | ✅ extended | ✅ | `241d9a9` + `7024d3a` | Deliberation hub. Integration → motor/intent or speech/intent. |
+| broca_area | ✅ | ✅ | `69df91d` | Speech articulator. speech/intent → speech/complete with `text` (closes chat reply loop). Silence-allowed per Pure-B. |
+| hippocampus | ✅ | ✅ | `61e9937` | Episodic encoding + query response. Dual-purpose handler. |
+| motor_cortex | ✅ | ✅ | `fdc1dc3` | LLM world-simulator stub-executor. motor/intent → complete/failed/partial. |
+| basal_ganglia | ✅ | ✅ | `9393bd7` | Action selection (silence-allowed gating). cognitive/integration → motor/intent. |
+| vta | ✅ | ✅ | `f99b812` | LLM-driven dopamine reward (per ratified decision 2 — not algorithmic). motor outcome → modulator/dopamine. |
+| amygdala | ✅ | ✅ | `5b6b1f6` | Threat detection + cortisol. Always emits threat_assessment; conditionally emits cortisol when threat_score > 0.3. |
+| insula | ✅ | ✅ | `60293a2` (label-swapped, real content) | Interoception → felt_state from system metrics. Silence-allowed throttling. |
+| anterior_cingulate | ✅ | ✅ | `a9e6cc3` | Conflict detection across cognitive integration streams. Silence-allowed. |
+| medial_prefrontal_cortex | ✅ | ✅ | `31afab6` (label-swapped, real content) | Reflection on demand. NOT silence-allowed. |
+| thalamus | ✅ | ✅ | `a1505a9` | Routing scaffold. Silence-allowed. |
+| auditory_cortex | ✅ | ✅ stub | `cfba17c` | Transcribe stub (pre-mic). Marks `channel="auditory_cortex.stub"`. |
+| visual_cortex | ✅ | ✅ stub | `f28488e` | Caption stub (pre-camera). Marks `channel="visual_cortex.stub"`. |
+
+**Suite:** 878 unit tests passing across 14 region handler test suites (from a baseline of ~720 pre-bootstrap), 1 pre-existing unrelated launcher failure.
+
+### Architecture decisions ratified by Larry
+
+1. **Tag schema for LLM output:** `<thoughts>...</thoughts>` (private) + `<publish topic="X">{...json...}</publish>` (multiple allowed) + `<request_sleep reason="..."/>` (optional). Parsing failures publish `hive/metacognition/error/detected`.
+2. **VTA is LLM-driven**, not algorithmic. Nuanced reward semantics need LLM judgment.
+3. **No test fixtures, no recorded-LLM CI.** Real LLM input + output everywhere; CI burns real tokens.
+4. **No coded sleep-observation task.** Larry observes during operation.
+5. **No phase pauses, no token-budget caps.** Drive consecutively.
+6. **Subscriptions ship in same commit as their handlers.** Bootstrap-mode CLAUDE.md allowance covers this.
+
+### Stabilization patches that landed during bootstrap
+
+- **`42e60df`** — relaxed CLAUDE.md "Never edit across region boundaries" / "self-mod is sleep-only" to a bootstrap-mode allowance. Cosign path stays operative for `region_template/` (DNA).
+- **`2647458`** — `self_modify: false` across all 14 region configs after observing broca's first sleep cycle delete its own newly-shipped handlers.
+- **`3cfe0d4`** — clamped automatic sleep triggers to ~MAXINT in `src/region_template/defaults.yaml` after observing broca undergo a SECOND destructive sleep with self_modify=false (some path bypasses the capability gate and rewrites config.yaml + deletes handlers; not isolated). Sleep no longer fires autonomously; manual `ctx.request_sleep()` still works but bootstrap prompts deliberately omit `<request_sleep>` tags.
+
+### Verified end-to-end
+
+POST `/sensory/text/in` "What is your name?" → broker → assoc_cortex `integration` + `speech/intent` → PFC `plan` + `speech/intent` → basal_ganglia `speech/intent` selection → broca `speech/complete` with `text="My name is Hive. I'm a distributed cognitive system — a mind assembled from many specialized regions working together..."` → observatory chat surface renders the reply.
+
+In parallel: hippocampus encodes episodes, amygdala emits threat_assessment + cortisol, VTA emits dopamine reward (0.68), anterior_cingulate detects message-duplication conflicts, thalamus routes ambiguous traffic.
+
+### Outstanding follow-ups
+
+1. **Sleep-coordinator destructive path** — root cause unknown. Some path during sleep bypasses `@requires_capability("self_modify")` and writes config.yaml + deletes handler files. Currently mitigated by sleep-trigger MAXINT clamp. To re-enable sleep-driven self-mod safely, need to find and gate that writer.
+2. **Commit-message misalignment from parallel implementer race** (`60293a2` ↔ `31afab6` swap). All real files are in HEAD; only the messages on those two commits are misaligned vs content. Optional: interactive rebase to retitle. Tracked in this HANDOFF.
+3. **30 s LLM timeouts on PFC + hippocampus** — Phase A handlers occasionally hit the `TIMEOUT_S=30` limit on complex deliberation. Phase B raised the default to 60 s; Phase A handlers still use 30 s. Could bump retroactively if observed cascading.
+4. **Fan-out cascade.** assoc_cortex's prompt produces 3 integrations per chat input (its existing topic conventions: integration + world_model_update + binding). Each fans out to PFC + hippocampus + thalamus + basal_ganglia. Token-expensive; saliency moderation is anterior_cingulate's job and will tighten over time.
+5. **broca's sleep regression history is documented** — its handlers were deleted twice during bootstrap (after 1st sleep, restored; after 2nd sleep with self_modify=false but pre-MAXINT-trigger, restored again). Now stable since `3cfe0d4`.
+6. **`test_launcher.py::test_launch_region_env_omits_missing_secrets`** — pre-existing unrelated failure that surfaced during bootstrap; carries through every test run.
+
+---
+
 ## Quick reference
 
-v0 is **complete** — all 10 phases done. The "DNA" (shared runtime, 14 regions, glia, bus, CLI, observability, tests, CI) is in place. Hive can now boot, heartbeat, sleep, self-modify, and roll back. The next era is **growth**: regions evolve their own handlers and memory via sleep cycles, and post-v0 regions (raphe_nuclei, locus_coeruleus, hypothalamus, basal_forebrain, cerebellum) get added when accumulated experience warrants.
+v0 is **complete** — all 10 phases done plus the handler bootstrap above. The "DNA" (shared runtime, 14 regions, glia, bus, CLI, observability, tests, CI) is in place AND every region now ships hand-written LLM-driven cognition. Hive can boot, heartbeat, deliberate end-to-end, and reply via chat. Sleep is currently disabled while we root-cause the destructive sleep-coordinator path. Next era is **growth**: re-enable sleep safely, post-v0 regions (raphe_nuclei, locus_coeruleus, hypothalamus, basal_forebrain, cerebellum), audio + visual hardware bridges.
 
 | Phase | Status | Artifact location |
 |---|---|---|
